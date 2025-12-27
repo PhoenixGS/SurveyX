@@ -543,11 +543,16 @@ class DataFetcherArxivAlternative:
         return bibtex
     
     def search_on_arxiv_single_word(
-        self, key_word: str, projection: str = ""
+        self, key_word: str, projection: str = "", extract_full_content: bool = False
     ) -> List[Dict]:
         """
         搜索单个关键词的论文
-        注意：这个方法需要修改调用方式，因为分页机制不同
+        
+        Args:
+            key_word: 搜索关键词
+            projection: 字段投影（未使用，保持兼容性）
+            extract_full_content: 是否提取完整内容（md_text, reference, image）
+                                注意：这会很慢，建议在 paper_recaller 中批量提取
         """
         papers = []
         start_index = 0
@@ -566,6 +571,24 @@ class DataFetcherArxivAlternative:
             
             for paper in batch:
                 paper["from"] = "arxiv"
+                # 如果需要提取完整内容，在这里提取（但会很慢）
+                if extract_full_content and (not paper.get("md_text") or not paper["md_text"].strip()):
+                    try:
+                        import arxiv
+                        arxiv_id = paper.get("_id") or paper.get("detail_id")
+                        if arxiv_id:
+                            arxiv_id_clean = arxiv_id.split('v')[0] if 'v' in arxiv_id else arxiv_id
+                            result = next(arxiv.Search(id_list=[arxiv_id_clean]).results())
+                            full_paper = self._convert_arxiv_result_to_dict(result, extract_full_content=True)
+                            if full_paper.get("md_text"):
+                                paper["md_text"] = full_paper["md_text"]
+                            if full_paper.get("reference"):
+                                paper["reference"] = full_paper["reference"]
+                            if full_paper.get("image"):
+                                paper["image"] = full_paper["image"]
+                    except Exception as e:
+                        logger.debug(f"Failed to extract content for {paper.get('_id')}: {e}")
+            
             papers.extend(batch)
             start_index += len(batch)
             
@@ -581,17 +604,24 @@ class DataFetcherArxivAlternative:
         )
         return papers
     
-    def search_on_arxiv(self, key_words: str) -> List[Dict]:
+    def search_on_arxiv(self, key_words: str, extract_full_content: bool = False) -> List[Dict]:
         """
         搜索多个关键词，返回重叠的论文
         与原方法功能相同
+        
+        Args:
+            key_words: 逗号分隔的关键词
+            extract_full_content: 是否提取完整内容（默认 False，建议在 paper_recaller 中批量提取）
         """
         key_words = key_words.split(",")
         id_counter = Counter()
         id2paper = {}
         
         for key_word in key_words:
-            papers = self.search_on_arxiv_single_word(key_word.strip())
+            papers = self.search_on_arxiv_single_word(
+                key_word.strip(), 
+                extract_full_content=extract_full_content
+            )
             
             _ids = [paper["_id"] for paper in papers]
             id_counter.update(_ids)
@@ -607,11 +637,56 @@ class DataFetcherArxivAlternative:
         return overlaped_papers
 
 
+    def save_papers_for_cleaner(self, papers: List[Dict], task_id: str) -> None:
+        """
+        将论文保存到 data_cleaner 期望的位置和格式
+        
+        Args:
+            papers: 论文列表
+            task_id: 任务 ID
+        """
+        from src.configs.constants import OUTPUT_DIR
+        from src.modules.utils import save_result, sanitize_filename
+        import json
+        
+        # 创建输出目录
+        output_dir = Path(OUTPUT_DIR) / task_id / "jsons"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_count = 0
+        skipped_count = 0
+        
+        for paper in papers:
+            # 检查 md_text 是否存在且不为空
+            if "md_text" not in paper or not paper["md_text"] or not paper["md_text"].strip():
+                logger.warning(f"Paper {paper.get('_id', 'unknown')} has no md_text, skipping...")
+                skipped_count += 1
+                continue
+            
+            # 确保必要的字段存在
+            if "_id" not in paper:
+                paper["_id"] = paper.get("detail_id", f"paper_{saved_count}")
+            
+            # 保存为 JSON 文件
+            file_id = paper["_id"]
+            filename = f"{file_id}.json"
+            filename = sanitize_filename(filename)
+            file_path = output_dir / filename
+            
+            save_result(json.dumps(paper, indent=4, ensure_ascii=False), file_path)
+            saved_count += 1
+        
+        logger.info(f"Saved {saved_count} papers to {output_dir}, skipped {skipped_count} papers without md_text")
+
+
 # 使用示例
 if __name__ == "__main__":
     fetcher = DataFetcherArxivAlternative()
     papers = fetcher.search_on_arxiv("machine learning,deep learning")
     print(f"Found {len(papers)} papers")
+    
+    # 如果需要保存供 data_cleaner 使用
+    # fetcher.save_papers_for_cleaner(papers, task_id="test_task")
 
     # show the first paper
     print(papers[0])

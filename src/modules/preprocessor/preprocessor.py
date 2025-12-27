@@ -37,8 +37,12 @@ def single_preprocessing(args: ArgsNamespace) -> str:
     time_monitor.start("retrieve paper")
 
     # 1. recall paper.
+    # 使用 arXiv only 模式（使用 data_fetcher_arxiv_alternative）
     recaller = PaperRecaller(
-        topic=topic, enable_cache=args.enable_cache, chat_agent=chat
+        topic=topic, 
+        enable_cache=args.enable_cache, 
+        chat_agent=chat,
+        use_arxiv_only=True  # 只使用 arXiv
     )
     recalled_papers = recaller.recall_papers_iterative(
         tmp_config["key_words"], args.page, args.time_s, args.time_e

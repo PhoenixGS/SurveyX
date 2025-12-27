@@ -16,6 +16,7 @@ from src.models.LLM import EmbedAgent
 from src.models.LLM.utils import load_prompt
 from src.modules.preprocessor.data_cleaner import DataCleaner
 from src.modules.preprocessor.data_fetcher import DataFetcher
+from src.modules.preprocessor.data_fetcher_arxiv_alternative import DataFetcherArxivAlternative
 from src.configs.config import DEFAULT_DATA_FETCHER_ENABLE_CACHE
 
 logger = get_logger("src.modules.preprocessor.PaperRecaller")
@@ -33,20 +34,33 @@ class PaperRecaller:
         paper_pool_limit: int = DEFAULT_PAPER_POOL_LIMIT,
         enable_cache: bool = DEFAULT_DATA_FETCHER_ENABLE_CACHE,
         chat_agent: ChatAgent = None,
+        use_arxiv_only: bool = True,  # 新增参数：是否只使用 arXiv
     ):
         """
         Initialize the PaperRecaller.
 
         Args:
-            key_word_pool (List[str]): initial key word pool.
+            topic: The research topic.
             iteration_limit (int): Maximum number of iterations.
             paper_pool_limit (int): Maximum number of papers to maintain in the pool.
+            enable_cache (bool): Whether to enable caching.
+            chat_agent (ChatAgent): Chat agent instance.
+            use_arxiv_only (bool): If True, only use arXiv (via data_fetcher_arxiv_alternative).
+                                  If False, use original DataFetcher (Google Scholar + arXiv).
         """
 
         self.iteration_limit = iteration_limit
         self.paper_pool_limit = paper_pool_limit
+        self.use_arxiv_only = use_arxiv_only
 
-        self.data_fetcher = DataFetcher(enable_cache=enable_cache)
+        # 根据 use_arxiv_only 选择使用哪个 fetcher
+        if use_arxiv_only:
+            self.data_fetcher = DataFetcherArxivAlternative()
+            logger.info("Using DataFetcherArxivAlternative (arXiv only)")
+        else:
+            self.data_fetcher = DataFetcher(enable_cache=enable_cache)
+            logger.info("Using DataFetcher (Google Scholar + arXiv)")
+        
         self.embed_agent = EmbedAgent()
         self.chat_agent = ChatAgent() if chat_agent is None else chat_agent
 
@@ -65,27 +79,91 @@ class PaperRecaller:
         self, keyword: str, page: str, time_s: str, time_e: str
     ) -> List[Dict]:
         """
-        Search for papers using Google Scholar and arXiv.
+        Search for papers using Google Scholar and arXiv, or arXiv only.
 
         Args:
             keyword (str): The keyword to search for.
+            page (str): Page number (for Google Scholar, not used for arXiv).
+            time_s (str): Start time (for Google Scholar, not used for arXiv).
+            time_e (str): End time (for Google Scholar, not used for arXiv).
 
         Returns:
             List[Dict]: A list of paper dictionaries.
         """
-        logger.debug(
-            f"Searching papers on google: key word={keyword}, page={page}, time_s={time_s}, time_e={time_e}."
-        )
-        google_papers = self.data_fetcher.search_on_google(
-            key_words=keyword, page=page, time_s=time_s, time_e=time_e
-        )
-        logger.debug(f"Searching papers on arxiv: key word={keyword}.")
-        arxiv_papers = self.data_fetcher.search_on_arxiv(key_words=keyword)
-        combined_papers = google_papers + arxiv_papers
-        logger.debug(
-            f"Total papers retrieved from google scholar & arxiv: {len(combined_papers)}"
-        )
-        return combined_papers
+        if self.use_arxiv_only:
+            # 只使用 arXiv
+            logger.debug(f"Searching papers on arxiv: key word={keyword}.")
+            papers = self.data_fetcher.search_on_arxiv(key_words=keyword)
+            logger.debug(
+                f"Total papers retrieved from arxiv: {len(papers)}"
+            )
+            
+            # 提取完整内容（md_text）- 只提取没有 md_text 的论文
+            papers_without_content = [
+                (i, paper) for i, paper in enumerate(papers) 
+                if not paper.get("md_text") or not paper["md_text"].strip()
+            ]
+            
+            if papers_without_content:
+                logger.debug(f"Extracting full content (md_text) for {len(papers_without_content)} papers...")
+                import arxiv
+                from tqdm import tqdm
+                
+                for idx, (i, paper) in enumerate(tqdm(papers_without_content, desc="Extracting content")):
+                    try:
+                        # 重新提取完整内容
+                        arxiv_id = paper.get("_id") or paper.get("detail_id")
+                        if arxiv_id:
+                            # 移除可能的版本号后缀（如 1234.5678v1 -> 1234.5678）
+                            arxiv_id_clean = arxiv_id.split('v')[0] if 'v' in arxiv_id else arxiv_id
+                            # 尝试搜索并提取
+                            search = arxiv.Search(id_list=[arxiv_id_clean])
+                            result = next(search.results())
+                            full_paper = self.data_fetcher._convert_arxiv_result_to_dict(
+                                result, extract_full_content=True
+                            )
+                            # 只更新 md_text, reference, image 字段
+                            if full_paper.get("md_text"):
+                                paper["md_text"] = full_paper["md_text"]
+                            if full_paper.get("reference"):
+                                paper["reference"] = full_paper["reference"]
+                            if full_paper.get("image"):
+                                paper["image"] = full_paper["image"]
+                        else:
+                            logger.warning(f"Paper {i+1} has no _id, skipping content extraction")
+                    except StopIteration:
+                        logger.warning(f"Paper {i+1} ({arxiv_id}) not found in arXiv")
+                    except Exception as e:
+                        logger.warning(f"Failed to extract content for paper {i+1}: {e}")
+            
+            # 过滤掉没有 md_text 的论文（data_cleaner 需要）
+            papers_with_content = [
+                paper for paper in papers 
+                if paper.get("md_text") and paper["md_text"].strip()
+            ]
+            
+            if len(papers_with_content) < len(papers):
+                logger.warning(
+                    f"Filtered out {len(papers) - len(papers_with_content)} papers without md_text"
+                )
+            
+            logger.debug(f"Returning {len(papers_with_content)} papers with content")
+            return papers_with_content
+        else:
+            # 使用原始方法（Google Scholar + arXiv）
+            logger.debug(
+                f"Searching papers on google: key word={keyword}, page={page}, time_s={time_s}, time_e={time_e}."
+            )
+            google_papers = self.data_fetcher.search_on_google(
+                key_words=keyword, page=page, time_s=time_s, time_e=time_e
+            )
+            logger.debug(f"Searching papers on arxiv: key word={keyword}.")
+            arxiv_papers = self.data_fetcher.search_on_arxiv(key_words=keyword)
+            combined_papers = google_papers + arxiv_papers
+            logger.debug(
+                f"Total papers retrieved from google scholar & arxiv: {len(combined_papers)}"
+            )
+            return combined_papers
 
     def _clean_paper_pool(self, new_papers: List[Dict]):
         """
