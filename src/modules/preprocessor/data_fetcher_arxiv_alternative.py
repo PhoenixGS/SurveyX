@@ -2,14 +2,43 @@
 使用 arxiv 包实现的替代方案示例
 这个文件展示了如何使用 pip 的 arxiv 包来替代内部 API
 """
+import sys
+from pathlib import Path
+
+# 添加项目根目录到 sys.path，以便可以直接运行此文件
+FILE_PATH = Path(__file__).absolute()
+# 向上查找包含 src 目录的项目根目录
+BASE_DIR = FILE_PATH.parent
+while BASE_DIR != BASE_DIR.parent and not (BASE_DIR / "src").exists():
+    BASE_DIR = BASE_DIR.parent
+sys.path.insert(0, str(BASE_DIR))
+
 import arxiv
 import time
-from typing import List, Dict
+import re
+import requests
+from typing import List, Dict, Optional
 from collections import Counter
+from pathlib import Path
+import json
 
 from src.configs.logger import get_logger
 
 logger = get_logger("src.modules.preprocessor.DataFetcherArxiv")
+
+# 可选依赖：用于 PDF 和 LaTeX 处理
+try:
+    import pymupdf  # PyMuPDF (fitz)
+    HAS_PYMUPDF = True
+except ImportError:
+    HAS_PYMUPDF = False
+    logger.warning("PyMuPDF not installed. PDF extraction will be limited.")
+
+try:
+    from markdownify import markdownify as md
+    HAS_MARKDOWNIFY = True
+except ImportError:
+    HAS_MARKDOWNIFY = False
 
 
 class DataFetcherArxivAlternative:
@@ -71,9 +100,14 @@ class DataFetcherArxivAlternative:
             logger.error(f"Failed to fetch papers batch from arxiv: {str(e)}")
             return []
     
-    def _convert_arxiv_result_to_dict(self, result: arxiv.Result) -> Dict:
+    def _convert_arxiv_result_to_dict(self, result: arxiv.Result, extract_full_content: bool = False) -> Dict:
         """
         将 arxiv.Result 转换为与原始格式兼容的字典
+        
+        Args:
+            result: arxiv.Result 对象
+            extract_full_content: 是否提取完整内容（md_text, reference, image）
+                                注意：这会下载 PDF，速度较慢
         """
         # 提取 arxiv ID（格式：arXiv:1234.5678v1）
         arxiv_id = result.entry_id.split('/')[-1] if '/' in result.entry_id else result.entry_id
@@ -86,11 +120,136 @@ class DataFetcherArxivAlternative:
             "detail_url": result.entry_id,
             "detail_id": arxiv_id,
             # 以下字段 arxiv 包不直接提供，需要额外处理
-            "md_text": "",  # 需要从 PDF 或 LaTeX 源码获取
-            "reference": [],  # 需要从 PDF 解析
-            "image": [],  # 需要从 PDF 提取
+            "md_text": "",  # Markdown 格式的论文全文
+            "reference": "",  # BibTeX 格式的参考文献条目（字符串）
+            "image": [],  # 图片 URL 列表
         }
+        
+        # 如果需要提取完整内容，下载并处理 PDF
+        if extract_full_content:
+            try:
+                md_text, reference, images = self._extract_full_content(result)
+                paper["md_text"] = md_text
+                paper["reference"] = reference
+                paper["image"] = images
+            except Exception as e:
+                logger.warning(f"Failed to extract full content for {arxiv_id}: {e}")
+        
         return paper
+    
+    def _extract_full_content(self, result: arxiv.Result) -> tuple[str, str, List[Dict]]:
+        """
+        从 arXiv 论文中提取完整内容
+        
+        Returns:
+            tuple: (md_text, reference, images)
+            - md_text: Markdown 格式的论文全文
+            - reference: BibTeX 格式的参考文献（字符串）
+            - images: 图片信息列表，每个元素是包含 figure_link, figure_desc 等的字典
+        """
+        md_text = ""
+        reference = ""
+        images = []
+        
+        # 方法1: 尝试从 LaTeX 源码获取（更准确）
+        try:
+            # arXiv 提供 LaTeX 源码访问
+            latex_url = result.entry_id.replace('/abs/', '/src/').replace('/pdf/', '/src/')
+            # 注意：arXiv 的 LaTeX 源码访问需要特殊权限，这里仅作示例
+            # 实际使用时可能需要使用 arXiv API 的其他端点
+        except:
+            pass
+        
+        # 方法2: 从 PDF 提取（更通用但可能不够准确）
+        if result.pdf_url and HAS_PYMUPDF:
+            try:
+                # 下载 PDF
+                pdf_response = requests.get(result.pdf_url, timeout=30)
+                pdf_response.raise_for_status()
+                
+                # 使用 PyMuPDF 提取文本和图片
+                import io
+                pdf_bytes = io.BytesIO(pdf_response.content)
+                doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+                
+                # 提取文本并转换为 Markdown
+                md_text_parts = []
+                md_text_parts.append(f"# {result.title}\n\n")
+                md_text_parts.append(f"**Authors:** {', '.join(str(a) for a in result.authors)}\n\n")
+                md_text_parts.append(f"**Abstract:**\n\n{result.summary}\n\n")
+                
+                # 提取正文
+                for page_num in range(len(doc)):
+                    page = doc[page_num]
+                    text = page.get_text()
+                    if text.strip():
+                        md_text_parts.append(f"## Page {page_num + 1}\n\n{text}\n\n")
+                
+                md_text = "\n".join(md_text_parts)
+                
+                # 提取图片
+                for page_num in range(len(doc)):
+                    page = doc[page_num]
+                    image_list = page.get_images()
+                    for img_index, img in enumerate(image_list):
+                        try:
+                            xref = img[0]
+                            base_image = doc.extract_image(xref)
+                            # 图片数据在 base_image["image"] 中
+                            # 可以保存到本地或上传到图床
+                            images.append({
+                                "figure_link": f"{result.entry_id}#page={page_num+1}&image={img_index}",
+                                "figure_desc": f"Figure from page {page_num + 1}",
+                                "figure_size": f"{base_image.get('width', 'unknown')}x{base_image.get('height', 'unknown')}"
+                            })
+                        except Exception as e:
+                            logger.debug(f"Failed to extract image {img_index} from page {page_num + 1}: {e}")
+                
+                doc.close()
+                
+            except Exception as e:
+                logger.warning(f"Failed to extract from PDF: {e}")
+        
+        # 生成 BibTeX 格式的参考文献
+        reference = self._generate_bibtex(result)
+        
+        return md_text, reference, images
+    
+    def _generate_bibtex(self, result: arxiv.Result) -> str:
+        """
+        生成 BibTeX 格式的参考文献条目
+        
+        格式示例：
+        @article{author2024title,
+            title={Title},
+            author={Author1 and Author2},
+            journal={arXiv preprint arXiv:1234.5678},
+            year={2024}
+        }
+        """
+        # 生成 bib_name（用于引用）
+        first_author = str(result.authors[0]) if result.authors else "unknown"
+        # 提取姓氏
+        author_lastname = first_author.split()[-1] if first_author.split() else "unknown"
+        year = result.published.year if result.published else "unknown"
+        bib_name = f"{author_lastname}{year}"
+        
+        # 清理标题中的特殊字符
+        title = result.title.replace("{", "").replace("}", "")
+        
+        # 格式化作者列表
+        authors_str = " and ".join(str(author) for author in result.authors)
+        
+        # 生成 BibTeX
+        bibtex = f"""@article{{{bib_name},
+    title={{{title}}},
+    author={{{authors_str}}},
+    journal={{arXiv preprint {result.entry_id.split('/')[-1]}}},
+    year={{{year}}},
+    url={{{result.entry_id}}}
+}}"""
+        
+        return bibtex
     
     def search_on_arxiv_single_word(
         self, key_word: str, projection: str = ""
@@ -163,3 +322,5 @@ if __name__ == "__main__":
     papers = fetcher.search_on_arxiv("machine learning,deep learning")
     print(f"Found {len(papers)} papers")
 
+    # show the first paper
+    print(papers[0])
