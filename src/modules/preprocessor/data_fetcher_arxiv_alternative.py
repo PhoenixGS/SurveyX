@@ -40,6 +40,19 @@ try:
 except ImportError:
     HAS_MARKDOWNIFY = False
 
+try:
+    from bs4 import BeautifulSoup
+    HAS_BS4 = True
+except ImportError:
+    HAS_BS4 = False
+    logger.warning("BeautifulSoup4 not installed. HTML extraction will be limited.")
+
+try:
+    import tarfile
+    HAS_TARFILE = True
+except ImportError:
+    HAS_TARFILE = False
+
 
 class DataFetcherArxivAlternative:
     """使用 arxiv 包实现的替代方案"""
@@ -151,16 +164,28 @@ class DataFetcherArxivAlternative:
         reference = ""
         images = []
         
-        # 方法1: 尝试从 LaTeX 源码获取（更准确）
-        try:
-            # arXiv 提供 LaTeX 源码访问
-            latex_url = result.entry_id.replace('/abs/', '/src/').replace('/pdf/', '/src/')
-            # 注意：arXiv 的 LaTeX 源码访问需要特殊权限，这里仅作示例
-            # 实际使用时可能需要使用 arXiv API 的其他端点
-        except:
-            pass
+        # 提取 arxiv ID
+        arxiv_id = result.entry_id.split('/')[-1] if '/' in result.entry_id else result.entry_id
         
-        # 方法2: 从 PDF 提取（更通用但可能不够准确）
+        # 方法1: 尝试从 LaTeX 源码获取（最准确）
+        try:
+            md_text, reference, images = self._extract_from_latex_source(result, arxiv_id)
+            if md_text:
+                logger.debug(f"Successfully extracted from LaTeX source for {arxiv_id}")
+                return md_text, reference, images
+        except Exception as e:
+            logger.debug(f"Failed to extract from LaTeX source: {e}")
+        
+        # 方法2: 从 HTML 页面提取（较准确）
+        try:
+            md_text, reference, images = self._extract_from_html(result, arxiv_id)
+            if md_text:
+                logger.debug(f"Successfully extracted from HTML for {arxiv_id}")
+                return md_text, reference, images
+        except Exception as e:
+            logger.debug(f"Failed to extract from HTML: {e}")
+        
+        # 方法3: 从 PDF 提取（备用方案，可能不够准确）
         if result.pdf_url and HAS_PYMUPDF:
             try:
                 # 下载 PDF
@@ -210,10 +235,276 @@ class DataFetcherArxivAlternative:
             except Exception as e:
                 logger.warning(f"Failed to extract from PDF: {e}")
         
-        # 生成 BibTeX 格式的参考文献
-        reference = self._generate_bibtex(result)
+        # 如果所有方法都失败，至少生成基本的 BibTeX
+        if not reference:
+            reference = self._generate_bibtex(result)
         
         return md_text, reference, images
+    
+    def _extract_from_latex_source(self, result: arxiv.Result, arxiv_id: str) -> tuple[str, str, List[Dict]]:
+        """
+        从 LaTeX 源码提取内容（最准确的方法）
+        
+        arXiv LaTeX 源码下载 URL: https://arxiv.org/src/{arxiv_id}
+        或: https://arxiv.org/e-print/{arxiv_id}
+        """
+        md_text = ""
+        reference = ""
+        images = []
+        
+        try:
+            # 尝试下载 LaTeX 源码（通常是 tar.gz 格式）
+            # 注意：不是所有论文都有源码，有些只有 PDF
+            latex_url = f"https://arxiv.org/src/{arxiv_id}"
+            response = requests.get(latex_url, timeout=30, allow_redirects=True)
+            
+            # 如果返回的是 tar.gz 文件
+            if response.headers.get('content-type', '').startswith('application/x-tar') or \
+               response.headers.get('content-type', '').startswith('application/gzip'):
+                import io
+                import tempfile
+                import os
+                
+                # 解压 tar.gz
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tar_path = os.path.join(tmpdir, f"{arxiv_id}.tar.gz")
+                    with open(tar_path, 'wb') as f:
+                        f.write(response.content)
+                    
+                    # 解压
+                    with tarfile.open(tar_path, 'r:gz') as tar:
+                        tar.extractall(tmpdir)
+                    
+                    # 查找主 .tex 文件
+                    tex_files = list(Path(tmpdir).rglob("*.tex"))
+                    if not tex_files:
+                        raise ValueError("No .tex files found in source")
+                    
+                    # 找到主文件（通常是最大的或包含 \documentclass 的）
+                    main_tex = None
+                    for tex_file in tex_files:
+                        content = tex_file.read_text(encoding='utf-8', errors='ignore')
+                        if '\\documentclass' in content:
+                            if main_tex is None or len(content) > len(main_tex.read_text(encoding='utf-8', errors='ignore')):
+                                main_tex = tex_file
+                    
+                    if main_tex is None:
+                        main_tex = max(tex_files, key=lambda f: f.stat().st_size)
+                    
+                    # 读取主文件内容
+                    tex_content = main_tex.read_text(encoding='utf-8', errors='ignore')
+                    
+                    # 转换为 Markdown
+                    md_text = self._latex_to_markdown(tex_content, result)
+                    
+                    # 提取参考文献
+                    reference = self._extract_references_from_latex(tex_content, result)
+                    
+                    # 提取图片引用
+                    images = self._extract_images_from_latex(tex_files, tmpdir, result)
+            
+            else:
+                # 可能是 HTML 页面，尝试解析
+                raise ValueError("Source is not a tar.gz file")
+                
+        except Exception as e:
+            logger.debug(f"LaTeX source extraction failed: {e}")
+            raise
+        
+        return md_text, reference, images
+    
+    def _extract_from_html(self, result: arxiv.Result, arxiv_id: str) -> tuple[str, str, List[Dict]]:
+        """
+        从 arXiv HTML 页面提取内容
+        """
+        md_text = ""
+        reference = ""
+        images = []
+        
+        if not HAS_BS4:
+            raise ImportError("BeautifulSoup4 is required for HTML extraction")
+        
+        try:
+            # 访问 HTML 页面
+            html_url = f"https://arxiv.org/abs/{arxiv_id}"
+            response = requests.get(html_url, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # 提取标题
+            title = result.title
+            if not title:
+                title_elem = soup.find('h1', class_='title')
+                if title_elem:
+                    title = title_elem.get_text().replace('Title:', '').strip()
+            
+            # 提取作者
+            authors = result.authors
+            if not authors:
+                authors_elem = soup.find('div', class_='authors')
+                if authors_elem:
+                    authors = [a.get_text().strip() for a in authors_elem.find_all('a')]
+            
+            # 提取摘要
+            abstract = result.summary
+            if not abstract:
+                abstract_elem = soup.find('blockquote', class_='abstract')
+                if abstract_elem:
+                    abstract = abstract_elem.get_text().replace('Abstract:', '').strip()
+            
+            # 构建 Markdown
+            md_parts = [f"# {title}\n\n"]
+            if authors:
+                authors_str = ', '.join(str(a) for a in authors)
+                md_parts.append(f"**Authors:** {authors_str}\n\n")
+            if abstract:
+                md_parts.append(f"**Abstract:**\n\n{abstract}\n\n")
+            
+            # 尝试提取正文（如果有的话）
+            # arXiv HTML 页面通常不包含完整正文，只有摘要
+            # 但我们可以尝试从其他部分提取信息
+            content_div = soup.find('div', class_='full-text')
+            if content_div:
+                # 如果有完整文本，转换为 Markdown
+                if HAS_MARKDOWNIFY:
+                    md_parts.append(md(str(content_div)))
+                else:
+                    md_parts.append(content_div.get_text())
+            
+            md_text = "\n".join(md_parts)
+            
+            # 提取参考文献（从 HTML 中查找）
+            ref_section = soup.find('div', id='bibtex')
+            if ref_section:
+                reference = ref_section.get_text().strip()
+            else:
+                # 生成基本的 BibTeX
+                reference = self._generate_bibtex(result)
+            
+            # 提取图片（从 HTML 中查找）
+            img_tags = soup.find_all('img')
+            for img in img_tags:
+                src = img.get('src', '')
+                if src and ('arxiv' in src or 'figure' in src.lower()):
+                    images.append({
+                        "figure_link": src if src.startswith('http') else f"https://arxiv.org{src}",
+                        "figure_desc": img.get('alt', 'Figure'),
+                        "figure_size": ""
+                    })
+        
+        except Exception as e:
+            logger.debug(f"HTML extraction failed: {e}")
+            raise
+        
+        return md_text, reference, images
+    
+    def _latex_to_markdown(self, tex_content: str, result: arxiv.Result) -> str:
+        """
+        将 LaTeX 内容转换为 Markdown
+        """
+        md_parts = []
+        
+        # 添加标题和作者
+        md_parts.append(f"# {result.title}\n\n")
+        authors_str = ', '.join(str(a) for a in result.authors)
+        md_parts.append(f"**Authors:** {authors_str}\n\n")
+        md_parts.append(f"**Abstract:**\n\n{result.summary}\n\n")
+        
+        # 移除 LaTeX 命令，保留文本内容
+        # 这是一个简化的转换，可以改进
+        text = tex_content
+        
+        # 移除注释
+        text = re.sub(r'%.*?$', '', text, flags=re.MULTILINE)
+        
+        # 移除常见的 LaTeX 命令，保留内容
+        text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', text)  # \command{content} -> content
+        text = re.sub(r'\\[a-zA-Z]+', '', text)  # 移除单独的 LaTeX 命令
+        
+        # 处理章节
+        text = re.sub(r'\\section\*?\{([^}]*)\}', r'## \1', text)
+        text = re.sub(r'\\subsection\*?\{([^}]*)\}', r'### \1', text)
+        text = re.sub(r'\\subsubsection\*?\{([^}]*)\}', r'#### \1', text)
+        
+        # 处理强调
+        text = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', text)
+        text = re.sub(r'\\textit\{([^}]*)\}', r'*\1*', text)
+        
+        # 处理数学公式（简化处理）
+        text = re.sub(r'\$([^$]*)\$', r'$\1$', text)  # 保留行内公式
+        text = re.sub(r'\\\[(.*?)\\\]', r'$$\1$$', text, flags=re.DOTALL)  # 块级公式
+        
+        # 清理多余的空行
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        md_parts.append(text)
+        
+        return "\n".join(md_parts)
+    
+    def _extract_references_from_latex(self, tex_content: str, result: arxiv.Result) -> str:
+        """
+        从 LaTeX 源码中提取参考文献
+        """
+        # 查找 \bibliography{} 命令
+        bib_match = re.search(r'\\bibliography\{([^}]+)\}', tex_content)
+        if bib_match:
+            bib_file = bib_match.group(1)
+            # 注意：需要读取对应的 .bib 文件
+            # 这里先返回生成的 BibTeX
+            pass
+        
+        # 查找 \begin{thebibliography} 环境
+        bib_match = re.search(r'\\begin\{thebibliography\}.*?\\end\{thebibliography\}', 
+                             tex_content, re.DOTALL)
+        if bib_match:
+            bib_content = bib_match.group(0)
+            # 可以进一步解析，但这里先返回生成的
+            pass
+        
+        # 如果找不到，生成基本的 BibTeX
+        return self._generate_bibtex(result)
+    
+    def _extract_images_from_latex(self, tex_files: List[Path], base_dir: str, result: arxiv.Result) -> List[Dict]:
+        """
+        从 LaTeX 源码中提取图片引用
+        """
+        images = []
+        
+        for tex_file in tex_files:
+            content = tex_file.read_text(encoding='utf-8', errors='ignore')
+            
+            # 查找 \includegraphics 命令
+            pattern = r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}'
+            matches = re.findall(pattern, content)
+            
+            for img_path in matches:
+                # 移除可能的扩展名（LaTeX 会自动添加）
+                img_path_clean = img_path.replace('.pdf', '').replace('.png', '').replace('.jpg', '')
+                
+                # 查找实际文件
+                possible_exts = ['.pdf', '.png', '.jpg', '.jpeg', '.eps']
+                actual_file = None
+                for ext in possible_exts:
+                    full_path = Path(base_dir) / img_path_clean
+                    if full_path.with_suffix(ext).exists():
+                        actual_file = full_path.with_suffix(ext)
+                        break
+                    # 也尝试相对路径
+                    for tex_dir in [tex_file.parent]:
+                        test_path = tex_dir / img_path_clean
+                        if test_path.with_suffix(ext).exists():
+                            actual_file = test_path.with_suffix(ext)
+                            break
+                
+                if actual_file:
+                    images.append({
+                        "figure_link": str(actual_file),
+                        "figure_desc": f"Figure: {img_path_clean}",
+                        "figure_size": ""
+                    })
+        
+        return images
     
     def _generate_bibtex(self, result: arxiv.Result) -> str:
         """
