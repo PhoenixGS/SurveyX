@@ -397,15 +397,50 @@ class DataFetcherArxivAlternative:
                 reference = ""
             
             # 提取图片（从 HTML 中查找）
-            img_tags = soup.find_all('img')
-            for img in img_tags:
-                src = img.get('src', '')
-                if src and ('arxiv' in src or 'figure' in src.lower()):
+            # 注意：arXiv HTML 页面（/abs/{arxiv_id}）通常不包含论文正文中的图片
+            # 只有页面装饰用的图片（logo、icon等），所以应该跳过提取
+            # 只有在有论文正文内容时才提取图片
+            if content_div:
+                # 如果有论文正文内容，只提取内容区域内的图片
+                img_tags = content_div.find_all('img')
+                
+                # 定义需要排除的路径模式（logo、icon等）
+                excluded_patterns = [
+                    'arxiv-logo',
+                    'logomark',
+                    'logo',
+                    '/icons/licenses/',
+                    '/static/browse/',
+                    'favicon',
+                    'icon',
+                ]
+                
+                for img in img_tags:
+                    src = img.get('src', '')
+                    if not src:
+                        continue
+                    
+                    # 检查是否是被排除的图片（logo/icon等）
+                    src_lower = src.lower()
+                    if any(pattern in src_lower for pattern in excluded_patterns):
+                        continue
+                    
+                    # 构建完整的URL
+                    if src.startswith('http'):
+                        full_url = src
+                    elif src.startswith('//'):
+                        full_url = f"https:{src}"
+                    elif src.startswith('/'):
+                        full_url = f"https://arxiv.org{src}"
+                    else:
+                        full_url = f"https://arxiv.org/{src}"
+                    
                     images.append({
-                        "figure_link": src if src.startswith('http') else f"https://arxiv.org{src}",
-                        "figure_desc": img.get('alt', 'Figure'),
+                        "figure_link": full_url,
+                        "figure_desc": img.get('alt', img.get('title', 'Figure')),
                         "figure_size": ""
                     })
+            # 如果没有 content_div，images 保持为空列表（arXiv HTML 页面通常只有页面装饰图片）
         
         except Exception as e:
             logger.debug(f"HTML extraction failed: {e}")
