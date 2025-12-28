@@ -62,24 +62,27 @@ class DataFetcherArxivAlternative:
     # arXiv API 速率限制：每秒最多 1 个请求
     RATE_LIMIT_DELAY = 1.1  # 稍微大于 1 秒，确保不超限
     
-    def __init__(self):
+    def __init__(self, max_papers_per_search: int = None):
+        """
+        Args:
+            max_papers_per_search: 每次搜索返回的最大论文数量（None 表示不限制）
+        """
         self.client = arxiv.Client(
             page_size=100,  # arXiv API 每页最多 100 条
             delay_seconds=self.RATE_LIMIT_DELAY,
             num_retries=3
         )
+        self.max_papers_per_search = max_papers_per_search or self.SINGLE_WORD_LIMIT
     
     def _get_data_arxiv(
         self,
         keyword: str,
         projection: str = "",
         last_id: str = "00000000000000000000000000000000",
-        start_index: int = 0,  # 使用索引而不是 last_id
+        start_index: int = 0,
     ) -> List[Dict]:
         """
         使用 arxiv 包获取论文数据
-        
-        注意：arxiv 包不支持基于 last_id 的分页，而是使用 start_index
         """
         try:
             # 构建查询字符串：在标题或摘要中搜索关键词
@@ -132,7 +135,7 @@ class DataFetcherArxivAlternative:
             "abstract": result.summary,
             "detail_url": result.entry_id,
             "detail_id": arxiv_id,
-            # 以下字段 arxiv 包不直接提供，需要额外处理
+            # will be processed later
             "md_text": "",  # Markdown 格式的论文全文
             "reference": "",  # BibTeX 格式的参考文献条目（字符串）
             "image": [],  # 图片 URL 列表
@@ -153,6 +156,7 @@ class DataFetcherArxivAlternative:
     def _extract_full_content(self, result: arxiv.Result) -> tuple[str, str, List[Dict]]:
         """
         从 arXiv 论文中提取完整内容
+        latex source -> html -> pdf
         
         Returns:
             tuple: (md_text, reference, images)
@@ -403,6 +407,7 @@ class DataFetcherArxivAlternative:
         """
         将 LaTeX 内容转换为 Markdown
         """
+        # TODO: need to be verified
         md_parts = []
         
         # 添加标题和作者
@@ -559,7 +564,7 @@ class DataFetcherArxivAlternative:
         
         logger.debug(f"Searching papers from arxiv which keyword is {key_word}")
         
-        while len(papers) < self.SINGLE_WORD_LIMIT:
+        while len(papers) < min(self.SINGLE_WORD_LIMIT, self.max_papers_per_search):
             batch = self._get_data_arxiv(
                 keyword=key_word,
                 projection=projection,
@@ -591,6 +596,11 @@ class DataFetcherArxivAlternative:
             
             papers.extend(batch)
             start_index += len(batch)
+            
+            # 如果达到上限，停止搜索
+            if len(papers) >= self.max_papers_per_search:
+                logger.debug(f"Reached max_papers_per_search limit: {self.max_papers_per_search}")
+                break
             
             # 如果返回的数量少于批次大小，说明没有更多结果了
             if len(batch) < self.BATCH_SIZE:

@@ -38,11 +38,13 @@ def single_preprocessing(args: ArgsNamespace) -> str:
 
     # 1. recall paper.
     # 使用 arXiv only 模式（使用 data_fetcher_arxiv_alternative）
+    max_papers = getattr(args, 'max_papers_per_keyword', 20) # TODO: need to be checked
     recaller = PaperRecaller(
         topic=topic, 
         enable_cache=args.enable_cache, 
         chat_agent=chat,
-        use_arxiv_only=True  # 只使用 arXiv
+        use_arxiv_only=True,
+        max_papers_per_keyword=max_papers
     )
     recalled_papers = recaller.recall_papers_iterative(
         tmp_config["key_words"], args.page, args.time_s, args.time_e

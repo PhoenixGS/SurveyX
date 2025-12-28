@@ -23,6 +23,7 @@ class ArgsNamespace(argparse.Namespace):
     time_s: str
     time_e: str
     enable_cache: bool
+    max_papers_per_keyword: int
 
 
 def parse_arguments_for_preprocessor() -> ArgsNamespace:
@@ -62,6 +63,13 @@ def parse_arguments_for_preprocessor() -> ArgsNamespace:
         type=bool,
         default=DEFAULT_DATA_FETCHER_ENABLE_CACHE,
         help="Whether import cache for preprocessing.",
+    )
+    parser.add_argument(
+        "--max_papers_per_keyword",
+        type=int,
+        default=20,
+        help="Maximum number of papers to search and extract per keyword (default: 20). "
+             "Lower this value to reduce extraction time.",
     )
     return parser.parse_args()
 

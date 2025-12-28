@@ -34,7 +34,8 @@ class PaperRecaller:
         paper_pool_limit: int = DEFAULT_PAPER_POOL_LIMIT,
         enable_cache: bool = DEFAULT_DATA_FETCHER_ENABLE_CACHE,
         chat_agent: ChatAgent = None,
-        use_arxiv_only: bool = True,  # 新增参数：是否只使用 arXiv
+        use_arxiv_only: bool = True,
+        max_papers_per_keyword: int = 20,
     ):
         """
         Initialize the PaperRecaller.
@@ -47,16 +48,21 @@ class PaperRecaller:
             chat_agent (ChatAgent): Chat agent instance.
             use_arxiv_only (bool): If True, only use arXiv (via data_fetcher_arxiv_alternative).
                                   If False, use original DataFetcher (Google Scholar + arXiv).
+            max_papers_per_keyword (int): Maximum number of papers to search per keyword.
+                                         Default 20 to avoid long extraction time.
         """
 
         self.iteration_limit = iteration_limit
         self.paper_pool_limit = paper_pool_limit
         self.use_arxiv_only = use_arxiv_only
+        self.max_papers_per_keyword = max_papers_per_keyword
 
         # 根据 use_arxiv_only 选择使用哪个 fetcher
         if use_arxiv_only:
-            self.data_fetcher = DataFetcherArxivAlternative()
-            logger.info("Using DataFetcherArxivAlternative (arXiv only)")
+            self.data_fetcher = DataFetcherArxivAlternative(
+                max_papers_per_search=max_papers_per_keyword
+            )
+            logger.info(f"Using DataFetcherArxivAlternative (arXiv only, max {max_papers_per_keyword} papers per keyword)")
         else:
             self.data_fetcher = DataFetcher(enable_cache=enable_cache)
             logger.info("Using DataFetcher (Google Scholar + arXiv)")
@@ -99,17 +105,22 @@ class PaperRecaller:
             )
             
             # 提取完整内容（md_text）- 只提取没有 md_text 的论文
+            # 限制提取数量，避免时间过长
             papers_without_content = [
                 (i, paper) for i, paper in enumerate(papers) 
                 if not paper.get("md_text") or not paper["md_text"].strip()
             ]
             
-            if papers_without_content:
-                logger.debug(f"Extracting full content (md_text) for {len(papers_without_content)} papers...")
+            # limit the number of papers to extract
+            max_extract = min(len(papers_without_content), self.max_papers_per_keyword)
+            papers_to_extract = papers_without_content[:max_extract]
+            
+            if papers_to_extract:
+                logger.debug(f"Extracting full content (md_text) for {len(papers_to_extract)} papers (limited from {len(papers_without_content)})...")
                 import arxiv
                 from tqdm import tqdm
                 
-                for idx, (i, paper) in enumerate(tqdm(papers_without_content, desc="Extracting content")):
+                for idx, (i, paper) in enumerate(tqdm(papers_to_extract, desc="Extracting content")):
                     try:
                         # 重新提取完整内容
                         arxiv_id = paper.get("_id") or paper.get("detail_id")
@@ -135,6 +146,9 @@ class PaperRecaller:
                         logger.warning(f"Paper {i+1} ({arxiv_id}) not found in arXiv")
                     except Exception as e:
                         logger.warning(f"Failed to extract content for paper {i+1}: {e}")
+                
+                if len(papers_without_content) > max_extract:
+                    logger.info(f"Skipped extracting content for {len(papers_without_content) - max_extract} papers to save time")
             
             # 过滤掉没有 md_text 的论文（data_cleaner 需要）
             papers_with_content = [
