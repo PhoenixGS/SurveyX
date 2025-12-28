@@ -1,7 +1,3 @@
-"""
-使用 arxiv 包实现的替代方案示例
-这个文件展示了如何使用 pip 的 arxiv 包来替代内部 API
-"""
 import sys
 from pathlib import Path
 
@@ -171,7 +167,16 @@ class DataFetcherArxivAlternative:
         # 提取 arxiv ID
         arxiv_id = result.entry_id.split('/')[-1] if '/' in result.entry_id else result.entry_id
         
-        # 方法1: 尝试从 LaTeX 源码获取（最准确）
+        # extract from /html/ page
+        try:
+            md_text, reference, images = self._extract_from_html(result, arxiv_id)
+            if md_text:
+                logger.debug(f"Successfully extracted from HTML for {arxiv_id}")
+                return md_text, reference, images
+        except Exception as e:
+            logger.debug(f"Failed to extract from HTML: {e}")
+
+        # extract from /src/ page
         try:
             md_text, reference, images = self._extract_from_latex_source(result, arxiv_id)
             if md_text:
@@ -180,16 +185,7 @@ class DataFetcherArxivAlternative:
         except Exception as e:
             logger.debug(f"Failed to extract from LaTeX source: {e}")
         
-        # 方法2: 从 HTML 页面提取（较准确）
-        try:
-            md_text, reference, images = self._extract_from_html(result, arxiv_id)
-            if md_text:
-                logger.debug(f"Successfully extracted from HTML for {arxiv_id}")
-                return md_text, reference, images
-        except Exception as e:
-            logger.debug(f"Failed to extract from HTML: {e}")
-        
-        # 方法3: 从 PDF 提取（备用方案，可能不够准确）
+        # extract from /pdf/ page
         if result.pdf_url and HAS_PYMUPDF:
             try:
                 # 下载 PDF
