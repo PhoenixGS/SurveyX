@@ -239,9 +239,9 @@ class DataFetcherArxivAlternative:
             except Exception as e:
                 logger.warning(f"Failed to extract from PDF: {e}")
         
-        # 如果所有方法都失败，至少生成基本的 BibTeX
-        if not reference:
-            reference = self._generate_bibtex(result)
+        # 注意：reference 应该是论文内部的参考文献列表，不是论文本身的引用
+        # 如果提取失败，返回空字符串
+        # 论文本身的引用信息可以通过其他方式获取（如果需要的话）
         
         return md_text, reference, images
     
@@ -301,8 +301,8 @@ class DataFetcherArxivAlternative:
                     # 转换为 Markdown
                     md_text = self._latex_to_markdown(tex_content, result)
                     
-                    # 提取参考文献
-                    reference = self._extract_references_from_latex(tex_content, result)
+                    # 提取参考文献（论文内部的参考文献列表）
+                    reference = self._extract_references_from_latex(tex_content, result, tmpdir)
                     
                     # 提取图片引用
                     images = self._extract_images_from_latex(tex_files, tmpdir, result)
@@ -379,12 +379,18 @@ class DataFetcherArxivAlternative:
             md_text = "\n".join(md_parts)
             
             # 提取参考文献（从 HTML 中查找）
+            # 注意：arXiv HTML 页面通常不包含完整的参考文献列表
+            # 只能尝试查找，如果找不到就返回空字符串
             ref_section = soup.find('div', id='bibtex')
             if ref_section:
                 reference = ref_section.get_text().strip()
+                # 检查是否是论文本身的引用（通常包含 arXiv ID）
+                if result.entry_id.split('/')[-1] in reference:
+                    # 这是论文本身的引用，不是参考文献列表
+                    reference = ""
             else:
-                # 生成基本的 BibTeX
-                reference = self._generate_bibtex(result)
+                # HTML 页面通常不包含参考文献列表
+                reference = ""
             
             # 提取图片（从 HTML 中查找）
             img_tags = soup.find_all('img')
@@ -447,28 +453,111 @@ class DataFetcherArxivAlternative:
         
         return "\n".join(md_parts)
     
-    def _extract_references_from_latex(self, tex_content: str, result: arxiv.Result) -> str:
+    def _extract_references_from_latex(self, tex_content: str, result: arxiv.Result, base_dir: str = None) -> str:
         """
-        从 LaTeX 源码中提取参考文献
-        """
-        # 查找 \bibliography{} 命令
-        bib_match = re.search(r'\\bibliography\{([^}]+)\}', tex_content)
-        if bib_match:
-            bib_file = bib_match.group(1)
-            # 注意：需要读取对应的 .bib 文件
-            # 这里先返回生成的 BibTeX
-            pass
+        从 LaTeX 源码中提取论文内部的参考文献列表（不是论文本身的引用）
         
-        # 查找 \begin{thebibliography} 环境
-        bib_match = re.search(r'\\begin\{thebibliography\}.*?\\end\{thebibliography\}', 
-                             tex_content, re.DOTALL)
+        Returns:
+            str: 参考文献的 BibTeX 字符串（多个条目，用换行分隔）
+        """
+        references = []
+        
+        # 方法1: 查找 \bibliography{filename} 命令，读取 .bib 文件
+        bib_match = re.search(r'\\bibliography\{([^}]+)\}', tex_content)
+        if bib_match and base_dir:
+            bib_file_name = bib_match.group(1)
+            # 尝试查找 .bib 文件（可能没有扩展名）
+            bib_paths = [
+                Path(base_dir) / f"{bib_file_name}.bib",
+                Path(base_dir) / bib_file_name,
+            ]
+            # 也尝试在子目录中查找
+            for bib_path in bib_paths:
+                if not bib_path.exists():
+                    # 尝试在子目录中查找
+                    for subdir in Path(base_dir).rglob("*"):
+                        if subdir.is_dir():
+                            test_path = subdir / bib_path.name
+                            if test_path.exists():
+                                bib_path = test_path
+                                break
+                
+                if bib_path.exists():
+                    try:
+                        bib_content = bib_path.read_text(encoding='utf-8', errors='ignore')
+                        # 解析 .bib 文件，提取所有条目
+                        references = self._parse_bib_file(bib_content)
+                        if references:
+                            logger.debug(f"Found {len(references)} references from .bib file: {bib_path}")
+                            return "\n\n".join(references)
+                    except Exception as e:
+                        logger.debug(f"Failed to read .bib file {bib_path}: {e}")
+        
+        # 方法2: 查找 \begin{thebibliography} 环境
+        bib_match = re.search(
+            r'\\begin\{thebibliography\}.*?\\end\{thebibliography\}', 
+            tex_content, 
+            re.DOTALL
+        )
         if bib_match:
             bib_content = bib_match.group(0)
-            # 可以进一步解析，但这里先返回生成的
-            pass
+            # 解析 thebibliography 环境中的参考文献
+            references = self._parse_thebibliography(bib_content)
+            if references:
+                logger.debug(f"Found {len(references)} references from thebibliography environment")
+                return "\n\n".join(references)
         
-        # 如果找不到，生成基本的 BibTeX
-        return self._generate_bibtex(result)
+        # 方法3: 如果找不到，返回空字符串（而不是论文本身的引用）
+        # 因为 reference 字段应该是论文内部的参考文献列表
+        logger.debug("No references found in LaTeX source")
+        return ""
+    
+    def _parse_bib_file(self, bib_content: str) -> List[str]:
+        """
+        解析 .bib 文件，提取所有 BibTeX 条目
+        
+        Returns:
+            List[str]: BibTeX 条目列表
+        """
+        entries = []
+        # 使用正则表达式匹配 BibTeX 条目
+        # 匹配 @type{key, ... } 格式
+        pattern = r'@(\w+)\{([^,]+),([^@]*?)(?=@|\Z))'
+        matches = re.finditer(pattern, bib_content, re.DOTALL)
+        
+        for match in matches:
+            entry_type = match.group(1)
+            entry_key = match.group(2).strip()
+            entry_content = match.group(3).strip()
+            
+            # 构建完整的 BibTeX 条目
+            entry = f"@{entry_type}{{{entry_key},\n{entry_content}\n}}"
+            entries.append(entry)
+        
+        return entries
+    
+    def _parse_thebibliography(self, bib_content: str) -> List[str]:
+        """
+        解析 thebibliography 环境中的参考文献
+        
+        Returns:
+            List[str]: BibTeX 条目列表（简化格式）
+        """
+        entries = []
+        # 提取 \bibitem 条目
+        bibitem_pattern = r'\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}(.*?)(?=\\bibitem|\\end\{thebibliography\})'
+        matches = re.finditer(bibitem_pattern, bib_content, re.DOTALL)
+        
+        for match in matches:
+            bib_key = match.group(1)
+            bib_text = match.group(2).strip()
+            
+            # 尝试从文本中提取信息，构建简化的 BibTeX 条目
+            # 这是一个简化的解析，可以改进
+            entry = f"@article{{{bib_key},\n    note={{{bib_text}}}\n}}"
+            entries.append(entry)
+        
+        return entries
     
     def _extract_images_from_latex(self, tex_files: List[Path], base_dir: str, result: arxiv.Result) -> List[Dict]:
         """
