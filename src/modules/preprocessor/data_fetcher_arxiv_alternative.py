@@ -324,6 +324,7 @@ class DataFetcherArxivAlternative:
     def _extract_from_html(self, result: arxiv.Result, arxiv_id: str) -> tuple[str, str, List[Dict]]:
         """
         从 arXiv HTML 页面提取内容
+        注意：这里使用的是 /html/ 页面（完整论文HTML），而不是 /abs/ 页面（摘要页面）
         """
         md_text = ""
         reference = ""
@@ -333,33 +334,74 @@ class DataFetcherArxivAlternative:
             raise ImportError("BeautifulSoup4 is required for HTML extraction")
         
         try:
-            # 访问 HTML 页面
-            html_url = f"https://arxiv.org/abs/{arxiv_id}"
+            # 访问 HTML 页面（/html/ 页面包含完整的论文内容）
+            # 移除版本号后缀（如果有的话），因为 /html/ 页面不需要版本号
+            arxiv_id_clean = arxiv_id.split('v')[0] if 'v' in arxiv_id else arxiv_id
+            html_url = f"https://arxiv.org/html/{arxiv_id_clean}"
             response = requests.get(html_url, timeout=30)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            # 获取 base URL（用于解析相对路径的图片）
+            # HTML 中的 base 标签通常是 /html/{arxiv_id}v1/ 这样的格式
+            base_tag = soup.find('base')
+            if base_tag:
+                base_url = base_tag.get('href', '')
+                # 构建完整的 base URL
+                if base_url.startswith('/'):
+                    base_url_full = f"https://arxiv.org{base_url}"
+                elif base_url.startswith('http'):
+                    base_url_full = base_url
+                else:
+                    base_url_full = f"https://arxiv.org/html/{arxiv_id_clean}/{base_url}"
+                # 确保以 / 结尾
+                if not base_url_full.endswith('/'):
+                    base_url_full += '/'
+            else:
+                # 如果没有 base 标签，使用默认路径
+                base_url_full = f"https://arxiv.org/html/{arxiv_id_clean}/"
+            
+            # 提取论文主内容区域（article标签包含完整的论文内容）
+            article = soup.find('article', class_='ltx_document')
+            if not article:
+                # 如果找不到 article，尝试查找其他可能的内容容器
+                article = soup.find('article') or soup.find('div', class_='ltx_page_content')
+            
+            if not article:
+                logger.warning(f"Could not find article content in HTML page for {arxiv_id}")
+                # 如果没有找到内容，返回基本信息
+                title = result.title or ""
+                authors = result.authors or []
+                abstract = result.summary or ""
+                md_text = f"# {title}\n\n**Authors:** {', '.join(str(a) for a in authors)}\n\n**Abstract:**\n\n{abstract}\n\n"
+                return md_text, reference, images
+            
             # 提取标题
             title = result.title
             if not title:
-                title_elem = soup.find('h1', class_='title')
+                title_elem = article.find('h1', class_='ltx_title')
                 if title_elem:
-                    title = title_elem.get_text().replace('Title:', '').strip()
+                    title = title_elem.get_text().strip()
             
             # 提取作者
             authors = result.authors
             if not authors:
-                authors_elem = soup.find('div', class_='authors')
+                authors_elem = article.find('div', class_='ltx_authors')
                 if authors_elem:
-                    authors = [a.get_text().strip() for a in authors_elem.find_all('a')]
+                    # 提取作者姓名（可能有复杂的结构，尝试提取文本）
+                    authors_text = authors_elem.get_text()
+                    # 简化处理：如果无法提取结构化作者，使用摘要页面的作者
+                    pass
             
             # 提取摘要
             abstract = result.summary
             if not abstract:
-                abstract_elem = soup.find('blockquote', class_='abstract')
+                abstract_elem = article.find('div', class_='ltx_abstract')
                 if abstract_elem:
-                    abstract = abstract_elem.get_text().replace('Abstract:', '').strip()
+                    # 移除 "Abstract" 标题
+                    abstract_text = abstract_elem.get_text()
+                    abstract = abstract_text.replace('Abstract', '').strip()
             
             # 构建 Markdown
             md_parts = [f"# {title}\n\n"]
@@ -369,78 +411,101 @@ class DataFetcherArxivAlternative:
             if abstract:
                 md_parts.append(f"**Abstract:**\n\n{abstract}\n\n")
             
-            # 尝试提取正文（如果有的话）
-            # arXiv HTML 页面通常不包含完整正文，只有摘要
-            # 但我们可以尝试从其他部分提取信息
-            content_div = soup.find('div', class_='full-text')
-            if content_div:
-                # 如果有完整文本，转换为 Markdown
-                if HAS_MARKDOWNIFY:
-                    md_parts.append(md(str(content_div)))
-                else:
-                    md_parts.append(content_div.get_text())
+            # 提取正文内容（转换为 Markdown）
+            if HAS_MARKDOWNIFY:
+                # 使用 markdownify 将 HTML 转换为 Markdown
+                content_html = str(article)
+                md_content = md(content_html, heading_style="ATX")
+                # 移除标题和作者部分（已经在上面添加了）
+                md_parts.append(md_content)
+            else:
+                # 如果没有 markdownify，使用纯文本
+                md_parts.append(article.get_text())
             
             md_text = "\n".join(md_parts)
             
             # 提取参考文献（从 HTML 中查找）
-            # 注意：arXiv HTML 页面通常不包含完整的参考文献列表
-            # 只能尝试查找，如果找不到就返回空字符串
-            ref_section = soup.find('div', id='bibtex')
+            # arXiv HTML 页面可能包含参考文献列表，通常在最后的 section 或单独的 div 中
+            ref_section = article.find('div', id='bibtex') or article.find('section', class_='ltx_bibliography')
             if ref_section:
                 reference = ref_section.get_text().strip()
                 # 检查是否是论文本身的引用（通常包含 arXiv ID）
-                if result.entry_id.split('/')[-1] in reference:
-                    # 这是论文本身的引用，不是参考文献列表
-                    reference = ""
+                if arxiv_id_clean in reference or arxiv_id in reference:
+                    # 这可能是论文本身的引用，不是参考文献列表，尝试查找真正的参考文献
+                    # 查找 bibliography 环境或类似的内容
+                    bib_items = ref_section.find_all('div', class_='ltx_bibitem')
+                    if not bib_items:
+                        bib_items = ref_section.find_all('li', class_='ltx_bibitem')
+                    if bib_items:
+                        # 构建参考文献列表
+                        ref_list = []
+                        for item in bib_items:
+                            ref_list.append(item.get_text().strip())
+                        reference = "\n\n".join(ref_list)
+                    else:
+                        reference = ""
             else:
-                # HTML 页面通常不包含参考文献列表
+                # 如果找不到参考文献区域，返回空字符串
                 reference = ""
             
-            # 提取图片（从 HTML 中查找）
-            # 注意：arXiv HTML 页面（/abs/{arxiv_id}）通常不包含论文正文中的图片
-            # 只有页面装饰用的图片（logo、icon等），所以应该跳过提取
-            # 只有在有论文正文内容时才提取图片
-            if content_div:
-                # 如果有论文正文内容，只提取内容区域内的图片
-                img_tags = content_div.find_all('img')
+            # 提取图片（从 article 内容区域中查找）
+            # /html/ 页面包含论文中的实际图片
+            img_tags = article.find_all('img')
+            
+            # 定义需要排除的路径模式（logo、icon等，虽然这些通常不在 article 内）
+            excluded_patterns = [
+                'arxiv-logo',
+                'logomark',
+                'logo',
+                '/icons/licenses/',
+                '/static/browse/',
+                'favicon',
+                'icon',
+            ]
+            
+            for img in img_tags:
+                src = img.get('src', '')
+                if not src:
+                    continue
                 
-                # 定义需要排除的路径模式（logo、icon等）
-                excluded_patterns = [
-                    'arxiv-logo',
-                    'logomark',
-                    'logo',
-                    '/icons/licenses/',
-                    '/static/browse/',
-                    'favicon',
-                    'icon',
-                ]
+                # 检查是否是被排除的图片（logo/icon等）
+                src_lower = src.lower()
+                if any(pattern in src_lower for pattern in excluded_patterns):
+                    continue
                 
-                for img in img_tags:
-                    src = img.get('src', '')
-                    if not src:
-                        continue
-                    
-                    # 检查是否是被排除的图片（logo/icon等）
-                    src_lower = src.lower()
-                    if any(pattern in src_lower for pattern in excluded_patterns):
-                        continue
-                    
-                    # 构建完整的URL
-                    if src.startswith('http'):
-                        full_url = src
-                    elif src.startswith('//'):
-                        full_url = f"https:{src}"
-                    elif src.startswith('/'):
-                        full_url = f"https://arxiv.org{src}"
-                    else:
-                        full_url = f"https://arxiv.org/{src}"
-                    
-                    images.append({
-                        "figure_link": full_url,
-                        "figure_desc": img.get('alt', img.get('title', 'Figure')),
-                        "figure_size": ""
-                    })
-            # 如果没有 content_div，images 保持为空列表（arXiv HTML 页面通常只有页面装饰图片）
+                # 构建完整的URL（处理相对路径）
+                if src.startswith('http'):
+                    full_url = src
+                elif src.startswith('//'):
+                    full_url = f"https:{src}"
+                elif src.startswith('/'):
+                    full_url = f"https://arxiv.org{src}"
+                else:
+                    # 相对路径，使用 base URL
+                    full_url = f"{base_url_full}{src}"
+                
+                # 提取图片描述（从 figcaption 或 alt 属性）
+                figure_desc = img.get('alt', '')
+                if not figure_desc:
+                    # 尝试从父 figure 元素获取 caption
+                    parent_figure = img.find_parent('figure')
+                    if parent_figure:
+                        figcaption = parent_figure.find('figcaption')
+                        if figcaption:
+                            figure_desc = figcaption.get_text().strip()
+                    if not figure_desc:
+                        figure_desc = 'Figure'
+                
+                # 提取图片尺寸
+                width = img.get('width', '')
+                height = img.get('height', '')
+                figure_size = f"{width}x{height}" if width and height else ""
+                
+                images.append({
+                    "figure_link": full_url,
+                    "figure_desc": figure_desc,
+                    "figure_size": figure_size
+                })
         
         except Exception as e:
             logger.debug(f"HTML extraction failed: {e}")
