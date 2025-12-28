@@ -4,6 +4,13 @@ import re
 from pathlib import Path
 from typing import Union
 
+import base64
+from PIL import Image
+import io
+
+# 如果使用 PyMuPDF 处理 PDF
+import fitz  # PyMuPDF
+
 from tqdm import tqdm
 
 from src.configs.config import BASE_DIR, CHAT_AGENT_WORKERS, MD_TEXT_LENGTH
@@ -192,6 +199,7 @@ class DataCleaner:
             "mount_outline",
             "similarity_score",
             "image",
+            "images_info"
         ]
         for paper in self.papers:
             try:
@@ -216,11 +224,34 @@ class DataCleaner:
 
     def offline_proc(self, task_id: str, ref_path: str) -> None:
         ref_data_path = Path(ref_path)
-        md_texts = [p.read_text() for p in ref_data_path.glob("*.md") if p.is_file()]
-        self.papers = [{"md_text": md_text} for md_text in md_texts]
+        
+        # 1. 支持 PDF 和 MD
+        pdf_files = list(ref_data_path.glob("*.pdf"))
+        md_files = list(ref_data_path.glob("*.md"))
+        
+        self.papers = []
+        
+        # 处理现有 MD（传统流程）
+        for p in md_files:
+            self.papers.append({"md_text": p.read_text(), "file_path": str(p)})
+            
+        # 2. 处理 PDF（新增多模态解析逻辑）
+        if pdf_files:
+            logger.info(f"Found {len(pdf_files)} PDF files. Starting multimodal parsing...")
+            for pdf_p in pdf_files:
+                # 这里建议调用一个专门的解析函数，例如解析为 MD 并提取图片
+                paper_data = self._parse_pdf_multimodal(pdf_p, task_id)
+                self.papers.append(paper_data)
+        
+        # md_texts = [p.read_text() for p in ref_data_path.glob("*.md") if p.is_file()]
+        # self.papers = [{"md_text": md_text} for md_text in md_texts]
 
         self.complete_title()
         self.complete_abstract()
+        
+        chat_agent = ChatAgent()
+        self.get_image_descriptions(chat_agent) # 需要新定义该方法
+        
         bib_file_path = Path(OUTPUT_DIR) / task_id / "latex" / "references.bib"
         self.complete_bib(bib_file_path)
 
@@ -232,6 +263,65 @@ class DataCleaner:
         save_path = Path(f"{OUTPUT_DIR}/{task_id}/papers")
         self.save_papers(save_dir=save_path)
         logger.info(f"========== {len(self.papers)} remain after cleaning. ==========")
+    
+    def _parse_pdf_multimodal(self, pdf_path: Path, task_id: str) -> dict:
+        """解析PDF并保存图片到 outputs/<task_id>/images/"""
+        img_save_dir = Path(OUTPUT_DIR) / task_id / "images" / pdf_path.stem
+        img_save_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 这里以简单的 PyMuPDF 为例，进阶推荐使用 MinerU 或 Marker
+        doc = fitz.open(pdf_path)
+        md_text = ""
+        images_info = []
+        
+        for page_index in range(len(doc)):
+            page = doc[page_index]
+            md_text += page.get_text() # 获取文本
+            
+            # 提取图片
+            for img_index, img in enumerate(page.get_images(full=True)):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                
+                img_name = f"page{page_index}_img{img_index}.png"
+                img_path = img_save_dir / img_name
+                with open(img_path, "wb") as f:
+                    f.write(image_bytes)
+                
+                images_info.append({
+                    "path": str(img_path),
+                    "local_id": f"FIG_{page_index}_{img_index}",
+                    "caption": "" # 待填写
+                })
+        
+        return {
+            "md_text": md_text,
+            "images_info": images_info, # 存储图片路径和元数据
+            "title": pdf_path.stem
+        }
+    
+    def get_image_descriptions(self, chat_agent: ChatAgent):
+        """调用多模态模型为每张图片生成描述"""
+        for paper in tqdm(self.papers, desc="describing images..."):
+            if "images_info" not in paper: continue
+            
+            for img_node in paper["images_info"]:
+                # 将图片转为 Base64（如果 ChatAgent 支持多模态 API）
+                # 这里假设你的 ChatAgent.remote_chat 可以处理带有图像的 prompt
+                prompt = "Please describe this figure from an academic paper in detail. Focus on the data, trends, and key findings."
+                
+                # 注意：你需要修改 ChatAgent 以支持输入图像路径
+                from pathlib import Path
+
+                # 注意：ChatAgent 的 local_images 参数接收的是 list[Path]
+                description = chat_agent.remote_chat(
+                    text_content=prompt,
+                    local_images=[Path(img_node["path"])],  # 包装成 Path 列表
+                    model="Qwen2.5-VL-3B-Instruct"  # 或者使用你在 config 中定义的 ADVANCED_CHATAGENT_MODEL
+                )
+                # description = chat_agent.vision_chat(prompt, img_node["path"]) 
+                img_node["description"] = description
 
     def run(self, task_id: str, chat_agent: ChatAgent = None):
         time_monitor = TimeMonitor(task_id)

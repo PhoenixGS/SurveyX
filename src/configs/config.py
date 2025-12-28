@@ -1,27 +1,31 @@
 import json
 from pathlib import Path
 import os
+from zai import ZhipuAiClient
 
 FILE_PATH = Path(__file__).absolute()
 BASE_DIR = FILE_PATH.parent.parent.parent
 
 # huggingface mirror
-# os.environ["HF_ENDPOINT"] = "https://hf-mirror.com" # Uncomment this line if you want to use a specific Hugging Face mirror
-# os.environ["HF_HOME"] = os.path.expanduser("~/hf_cache/")
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com" # Uncomment this line if you want to use a specific Hugging Face mirror
+os.environ["HF_HOME"] = os.path.expanduser("~/hf_cache/")
 
-REMOTE_URL = "https://openai.com/v1/chat/completions"
-TOKEN = "your token here"
-DEFAULT_CHATAGENT_MODEL = "gpt-4o-mini"
-ADVANCED_CHATAGENT_MODEL = "gpt-4o"
+# REMOTE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+REMOTE_URL = "https://llmapi.paratera.com/v1/chat/completions"
+TOKEN = "sk-Gu92tzt7fkKMYls1gwk2Hg"
+# TOKEN = "54ff878e35184e3fb5dd5779b7997131.QePWYwiESCFZJKS9"
+# DEFAULT_CHATAGENT_MODEL = "glm-4.5-flash"
+DEFAULT_CHATAGENT_MODEL = "GLM-4.5"
+ADVANCED_CHATAGENT_MODEL = "GLM-4.5"
 
 LOCAL_URL = "LOCAL_URL"
-LOCAL_LLM = "LOCAL_LLM"
-DEFAULT_EMBED_LOCAL_MODEL = "DEFAULT_EMBED_LOCAL_MODEL"
+LOCAL_LLM = " "
+DEFAULT_EMBED_LOCAL_MODEL = "glm-4.5-flash"
 
 ## for embedding model
 DEFAULT_EMBED_ONLINE_MODEL = "BAAI/bge-base-en-v1.5"
 EMBED_REMOTE_URL = "https://api.siliconflow.cn/v1/embeddings"
-EMBED_TOKEN = "your embed token here"
+EMBED_TOKEN = "sk-vzjuwtcnqpszzdpftljbutreqmbqhckixmoshijzsaiocxjd"
 SPLITTER_WINDOW_SIZE = 6
 SPLITTER_CHUNK_SIZE = 2048
 

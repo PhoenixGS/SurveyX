@@ -142,6 +142,13 @@ class ContentGenerator(Base):
             dic = json.loads(load_file_as_string(p))
             if not "mount_outline" in dic:
                 continue
+            
+            # 提取该论文的图片信息
+            img_descriptions = ""
+            if "images_info" in dic and dic["images_info"]:
+                img_descriptions = "\nAvailable Figures from this paper:"
+                for img in dic["images_info"]:
+                    img_descriptions += f"\n- [FIG_ID: {img['local_id']}] Description: {img.get('description', 'N/A')}. Caption: {img.get('caption', 'N/A')}"
 
             try:
                 for mount in dic["mount_outline"]:
@@ -150,7 +157,8 @@ class ContentGenerator(Base):
                     single_outline = outlines.serial_no_to_single_outline(serial_no)
                     if single_outline:
                         sec2info[single_outline.title].append(
-                            f"bib_name: {dic['bib_name']}\ninfo: {key_info}"
+                            # f"bib_name: {dic['bib_name']}\ninfo: {key_info}"
+                            f"bib_name: {dic['bib_name']}\ninfo: {key_info}{img_descriptions}"
                         )
             except Exception as e:
                 tb_str = traceback.format_exc()
@@ -403,6 +411,20 @@ class ContentGenerator(Base):
         extract_braced_content = lambda s: (
             m.group(1) if (m := re.search(r"\{(.*?)\}", s)) else None
         )
+        
+        # 1. 首先构建一个全局的图片查找表
+        image_lookup = {}
+        for f in os.listdir(papers_dir):
+            if not f.endswith(".json"): continue
+            paper_data = json.loads(load_file_as_string(papers_dir / f))
+            if "images_info" in paper_data:
+                for img in paper_data["images_info"]:
+                    image_lookup[img["local_id"]] = {
+                        "path": img["path"],
+                        "caption": img.get("caption", "Figure from reference."),
+                        "bib_name": paper_data["bib_name"]
+                    }
+        
         main_body_raw = load_file_as_string(main_body_raw_path)
         filter = set(["in conclusion", "in summary", "in essence"])
         legal_cite = [
@@ -434,6 +456,26 @@ class ContentGenerator(Base):
                 lambda m: "\\textit{" + m.group(1).replace("_", "") + "}",
                 line,
             )
+            
+            # 2. 识别并替换图片占位符 [INSERT_FIG: ID]
+            if "[INSERT_FIG:" in line:
+                fig_ids = re.findall(r"\[INSERT_FIG:\s*(.*?)\]", line)
+                for fid in fig_ids:
+                    if fid in image_lookup:
+                        fig_info = image_lookup[fid]
+                        # 将相对路径转换为 LaTeX 可用的路径（注意：可能需要根据编译目录调整）
+                        rel_path = fig_info["path"] 
+                        latex_fig = (
+                            f"\\begin{{figure}}[htbp]\n"
+                            f"  \\centering\n"
+                            f"  \\includegraphics[width=0.8\\textwidth]{{{rel_path}}}\n"
+                            f"  \\caption{{{fig_info['caption']} (Adapted from \\cite{{{fig_info['bib_name']}}})}}\n"
+                            f"  \\label{{fig:{fid}}}\n"
+                            f"\\end{{figure}}\n"
+                        )
+                        line = line.replace(f"[INSERT_FIG: {fid}]", latex_fig)
+                    else:
+                        line = line.replace(f"[INSERT_FIG: {fid}]", "") # 没找到则删除
 
             main_body.append(line)
 

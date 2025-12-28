@@ -9,6 +9,10 @@ gpt-4o-mini:
     input: 0.15
     output: 0.6
 
+GLM-4.5:
+  input: 0.0  # 如果是本地模型，设为0即可
+  output: 0.0
+
 default:
     input: 0.15
     output: 0.6
