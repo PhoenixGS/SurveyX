@@ -239,9 +239,13 @@ class DataFetcherArxivAlternative:
             except Exception as e:
                 logger.warning(f"Failed to extract from PDF: {e}")
         
-        # 注意：reference 应该是论文内部的参考文献列表，不是论文本身的引用
-        # 如果提取失败，返回空字符串
-        # 论文本身的引用信息可以通过其他方式获取（如果需要的话）
+
+        # TODO: need to be verified
+        # reference is the internal references of the paper, not the reference of the paper itself
+        # or return reference of the paper itself
+        
+        if not reference:
+            reference = self._generate_bibtex(result)
         
         return md_text, reference, images
     
@@ -484,14 +488,27 @@ class DataFetcherArxivAlternative:
                 
                 if bib_path.exists():
                     try:
-                        bib_content = bib_path.read_text(encoding='utf-8', errors='ignore')
+                        # 尝试多种编码
+                        bib_content = None
+                        for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+                            try:
+                                bib_content = bib_path.read_text(encoding=encoding, errors='ignore')
+                                break
+                            except (UnicodeDecodeError, Exception):
+                                continue
+                        
+                        if bib_content is None:
+                            logger.warning(f"Failed to read .bib file with any encoding: {bib_path}")
+                            continue
+                        
                         # 解析 .bib 文件，提取所有条目
                         references = self._parse_bib_file(bib_content)
                         if references:
                             logger.debug(f"Found {len(references)} references from .bib file: {bib_path}")
                             return "\n\n".join(references)
                     except Exception as e:
-                        logger.debug(f"Failed to read .bib file {bib_path}: {e}")
+                        logger.debug(f"Failed to parse .bib file {bib_path}: {e}")
+                        # 继续尝试其他方法
         
         # 方法2: 查找 \begin{thebibliography} 环境
         bib_match = re.search(
@@ -515,24 +532,81 @@ class DataFetcherArxivAlternative:
     def _parse_bib_file(self, bib_content: str) -> List[str]:
         """
         解析 .bib 文件，提取所有 BibTeX 条目
+        使用更健壮的方法处理嵌套大括号
         
         Returns:
             List[str]: BibTeX 条目列表
         """
         entries = []
-        # 使用正则表达式匹配 BibTeX 条目
-        # 匹配 @type{key, ... } 格式
-        pattern = r'@(\w+)\{([^,]+),([^@]*?)(?=@|\Z))'
-        matches = re.finditer(pattern, bib_content, re.DOTALL)
+        i = 0
+        content_len = len(bib_content)
         
-        for match in matches:
-            entry_type = match.group(1)
-            entry_key = match.group(2).strip()
-            entry_content = match.group(3).strip()
+        while i < content_len:
+            # 查找下一个 @ 符号（BibTeX 条目的开始）
+            if bib_content[i] != '@':
+                i += 1
+                continue
             
-            # 构建完整的 BibTeX 条目
-            entry = f"@{entry_type}{{{entry_key},\n{entry_content}\n}}"
-            entries.append(entry)
+            # 找到 @，开始解析条目
+            start_pos = i
+            i += 1  # 跳过 @
+            
+            # 提取条目类型（@article, @inproceedings 等）
+            entry_type = ""
+            while i < content_len and (bib_content[i].isalnum() or bib_content[i] == '_'):
+                entry_type += bib_content[i]
+                i += 1
+            
+            if not entry_type:
+                i += 1
+                continue
+            
+            # 跳过空白字符
+            while i < content_len and bib_content[i].isspace():
+                i += 1
+            
+            # 应该遇到 {
+            if i >= content_len or bib_content[i] != '{':
+                i += 1
+                continue
+            
+            i += 1  # 跳过 {
+            
+            # 提取条目 key（直到第一个逗号）
+            entry_key = ""
+            while i < content_len and bib_content[i] != ',':
+                entry_key += bib_content[i]
+                i += 1
+            
+            if i >= content_len:
+                break
+            
+            i += 1  # 跳过逗号
+            
+            # 提取条目内容（需要匹配嵌套的大括号）
+            entry_content = ""
+            brace_count = 1  # 已经有一个开括号
+            content_start = i
+            
+            while i < content_len and brace_count > 0:
+                if bib_content[i] == '{':
+                    brace_count += 1
+                elif bib_content[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        # 找到了匹配的闭括号，但不包括它
+                        entry_content = bib_content[content_start:i].strip()
+                        break
+                i += 1
+            
+            if entry_content:
+                # 构建完整的 BibTeX 条目
+                entry = f"@{entry_type}{{{entry_key.strip()},\n{entry_content}\n}}"
+                entries.append(entry)
+            
+            # 跳过闭括号
+            if i < content_len and bib_content[i] == '}':
+                i += 1
         
         return entries
     
