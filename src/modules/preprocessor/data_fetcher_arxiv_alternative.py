@@ -1,14 +1,6 @@
 import sys
 from pathlib import Path
 
-# 添加项目根目录到 sys.path，以便可以直接运行此文件
-FILE_PATH = Path(__file__).absolute()
-# 向上查找包含 src 目录的项目根目录
-BASE_DIR = FILE_PATH.parent
-while BASE_DIR != BASE_DIR.parent and not (BASE_DIR / "src").exists():
-    BASE_DIR = BASE_DIR.parent
-sys.path.insert(0, str(BASE_DIR))
-
 import arxiv
 import time
 import re
@@ -56,7 +48,7 @@ class DataFetcherArxivAlternative:
     BATCH_SIZE = 200
     SINGLE_WORD_LIMIT = 1000
     # arXiv API 速率限制：每秒最多 1 个请求
-    RATE_LIMIT_DELAY = 1.1  # 稍微大于 1 秒，确保不超限
+    RATE_LIMIT_DELAY = 1.5  # 稍微大于 1 秒，确保不超限
     
     def __init__(self, max_papers_per_search: int = None):
         """
