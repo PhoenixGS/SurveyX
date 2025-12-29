@@ -1,0 +1,857 @@
+# NICEST: Noisy Label Correction and Training for Robust Scene Graph Generation
+Lin Li, Jun Xiao, Hanrong Shi, Hanwang Zhang, Yi Yang, Wei Liu, and Long Chen∗
+Abstract—Nearly all existing scene graph generation (SGG) models have overlooked the ground-truth annotation qualities of mainstream SGG datasets, i.e., they assume: 1) all the manually annotated positive samples are equally correct; 2) all the un-annotated negative samples are absolutely background. In this paper, we argue that neither of the assumptions applies to SGG: there are numerous “noisy” ground-truth predicate labels that break these two assumptions and harm the training of unbiased SGG models. To this end, we propose a novel NoIsy label CorrEction and Sample Training strategy for SGG: NICEST, which rules out these noisy label issues by generating high-quality samples and designing an effective training strategy. Specifically, it consists of: 1) NICE: it detects noisy samples and then reassigns higher-quality soft predicate labels to them. To achieve this goal, NICE contains three main steps: negative Noisy Sample Detection (Neg-NSD), positive NSD (Pos-NSD), and Noisy Sample Correction (NSC). Firstly, in Neg-NSD, it is treated as an out-of-distribution detection problem, and the pseudo labels are assigned to all detected noisy negative samples. Then, in Pos-NSD, we use a density-based clustering algorithm to detect noisy positive samples. Lastly, in NSC, we use weighted KNN to reassign more robust soft predicate labels rather than hard labels to all noisy positive samples. 2) NIST: it is a multi-teacher knowledge distillation based training strategy, which enables the model to learn unbiased fusion knowledge. A dynamic trade-off weighting strategy in NIST is designed to penalize the bias of different teachers. Due to the model-agnostic nature of both NICE and NIST, NICEST can be seamlessly incorporated into any SGG architecture to boost its performance on different predicate categories. In addition, to better assess the generalization ability of SGG models, we propose a new benchmark, VG-OOD, by reorganizing the prevalent VG dataset. This reorganization deliberately makes the predicate distributions between the training and test sets as different as possible for each subject-object category pair. This new benchmark helps disentangle the influence of subject-object category biases. Extensive ablations and results on different backbones and tasks have attested to the effectiveness and generalization ability of each component of NICEST.
+# 1 INTRODUCTION
+S CENE Graph Generation (SGG) [1], [2] is a visual task that involves detecting object instances and classifying their pairwise visual relations in an image, which plays a vital role in comprehensive scene understanding [3], [4]. SGG typically represents scene graphs as visually-grounded graphs, where nodes represent objects and edges represent visual relations. Alternatively, it can be formulated as a set of <subject-predicate-object> triplets. With its structured representation, SGG has contributed to various downstream tasks, such as image retrieval [5], [6], [7], visual question answering [8], [9], [10], and image captioning [11], [12], [13]. In recent years, SGG has gained considerable attention [14], [15], [16], [17], [18] due to the release of large-scale SGG benchmarks (e.g., Visual Genome (VG) [19] and GQA [20]) and advancements in object detection techniques [21], [22], [23]. Nevertheless, existing SGG benchmarks [19], such as VG, suffer from highly skewed long-tailed ground-truth predicate annotations. For example in VG, the number of annotated ground-
+• ∗Long Chen is the corresponding author. • Lin Li, Jun Xiao, Hanrong Shi, and Yi Yang are with the College of Computer Science, Zhejiang University, Hangzhou, 310027, China. Emails: {mukti, junx, hanrong, yangyics}@zju.edu.cn. • Hanwang Zhang is with the School of Computer Science and Engineering, Nanyang Technological University, 639798, Singapore. E-mails: hanwangzhang@ntu.edu.sg. • Wei Liu is with the Data Platform, Tencent, Shenzhen, 518000, China. Email: wl2223@columbia.edu. • Long Chen is with the Department of Computer Science and Engineering, The Hong Kong University of Science and Technology, Hong Kong SAR 999077. E-mail: longchen@ust.hk. • Codes are available: https://github.com/HKUST-LongGroup/NICEST.
+truth visual relations for the head category “on” is 38 times larger than the tail category “sitting on”. To address this issue, current approaches in SGG [24], [25], [26], [27], [28] can be broadly categorized into two strategies. 1) Re-balancing strategy, which involves class-aware re-sampling or loss re-weighting to balance the proportions of different predicate categories during training. 2) Biased-model-based strategy, which separates unbiased predictions from pretrained biased SGG models [29], [30], [31]. Although these models have dominated on the debiasing SGG metrics (e.g., mean Recall@K), it is worth noting that nearly all existing SGG work has taken two plausible assumptions about the ground-truth annotations for granted: Assumption 1: All the manually annotated positive samples are equally correct. Assumption 2: All the un-annotated negative samples are absolutely background.
+For the first assumption, by “equally”, we mean that the confidence (or quality) of an annotated ground-truth predicate label for each positive sample1 is exactly the same, i.e., all the manually annotated positive predicate labels are of high quality. Different from other closed-set classification tasks, where each sample corresponds to a unique ground-truth, some specific subject-object pairs in SGG may have multiple reasonable predicates, i.e., the semantics of different predicate categories are interdependent to some extent. Inevitably, this phenomenon has resulted in two annotation characteristics in SGG datasets: 1) Common-prone:
+1We use “sample” to represent the triplet instance interchangeably, and we use “instance” to denote an instance of visual relation triplet.
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5fc6/5fc6261d-412b-4778-be9f-b15adadd843c.png" style="width: 50%;"></div>
+Fig. 1: An illustration of three types of noisy annotations in SGG datasets, taking VG as an example. (a) Common-prone: For some triplets, the annotators tend to select less informative coarse-grained predicates (brown) instead of the fine-grained ones (green). The subject and object for each triplet are denoted by blue and pink boxes, respectively. (b) Synonym-random: For some triplets, annotators usually randomly choose one predicate from the several synonyms (e.g., has and with are synonyms for ⟨man/woman-shirt⟩). Original: The t-SNE visualization of original triplets ⟨man-has/with-shirt⟩features. For brevity, we randomly sample parts of triplets for each type. New: The t-SNE visualization of same triplets after NICE. (c) Negative: Some negative triplets may not be background (the green dash arrows).
+When the semantic granularities of these reasonable visual relations are different, the annotators tend to choose the commonest (or coarse-grained) predicate as the ground-truth label. As shown in Fig. 1(a), both riding and on are “reasonable” for the relation between man and bike, but the annotated ground-truth predicate is the less informative on instead of more convincing riding. And this characteristic occurs frequently in the SGG datasets (cf., more examples in Fig. 1(a)). 2) Synonym-random: When these reasonable visual relations are synonymous for the subject-object pair, the annotators usually randomly select one predicate as the ground-truth label, i.e., the annotations of some similar visual patterns are inconsistent. For example in Fig. 1(b), both has and with denote meaning “be dressed in” for man/woman and shirt, but the ground-truth annotations are inconsistent even in the same image. We further visualize thousands of sampled instances1 of ⟨man-has/with-shirt⟩in VG, and these instances are all randomly distributed in the feature space (cf., Fig. 1(b)). Thus, we argue that all the positive samples are NOT equally correct, i.e., a part of positive samples are not high-quality — their ground-truth labels can be more fine-grained (cf., commonprone) or more consistent (cf., synonym-random). For the second assumption, although almost all the prior SGG work has noticed that ground-truth visual relations in existing datasets are always sparsely identified and annotated [32] (cf., Fig. 1(c)), they still train their models by treating all the unannotated pairs as background, i.e., there is no visual relation between the subject and object pair. By contrast, we contend that all negative samples are NOT absolutely background, i.e., a part of negative samples are not high-quality, that is, they are actually the foreground with missing annotations. In this paper, we try to get rid of these two questionable assumptions and propose to reformulate SGG as a noisy label learning problem. Specifically, we propose a novel model-agnostic NoIsy label CorrEction and Sample Training strategy for SGG, dubbed NICEST. NICEST mitigates the noisy label learning problem from two aspects: generating more high-quality training samples and training models with a more effective mechanism. To achieve this goal, NICEST consists of two parts: NoIsy label
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/eb58/eb58358a-76c0-43a9-a3b4-89d789752d2f.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 2: The triplets wrongly changed by NICE. The original predicates are in brown and the changed predicates are in red.</div>
+CorrEction (NICE) and NoIsy Sample Training (NIST). NICE. For high-quality training data, NICE can not only detect numerous noisy samples, but also reassign more highquality predicate labels to them. By “noisy”, we mean that these samples break the two assumptions. After the NICE training, we can obtain a cleaner version of the SGG dataset. Specifically, we can: 1) increase the number of fine-grained predicates (commonprone); 2) decrease annotation inconsistency among similar visual patterns (synonym-random); 3) increase the number of positive samples (assumption 2). To be more specific, NICE consists of three steps: 1) negative noisy sample detection (Neg-NSD): We reformulate the negative NSD as an out-of-distribution (OOD) detection problem, i.e., regarding all the positive samples as in-distribution (ID) training data, and all un-annotated negative samples as OOD test data. In this way, we can detect the missing annotated (ID) samples with pseudo labels. 2) positive noisy sample detection (Pos-NSD): We use a clustering-based algorithm to divide all the positive samples (including the outputs of Neg-NSD) into multiple sets, and regard samples in the noisiest set as noisy positive samples. The clustering results are based on the local density of each sample. 3) noisy sample correction (NSC): We utilize the weighted KNN (wKNN) to generate a new pseudo label for each sample. To alleviate the impact of the original noisy label with full probabilities, and give a certain fault tolerance space to the pseudo labels, we reassign soft predicate labels to all noisy positive samples.
+NIST. Unfortunately, there is no free lunch, sometimes newly assigned pseudo labels from NICE are not right (e.g., ⟨boy-nearpizza⟩is mistakenly changed to ⟨boy-eating-pizza⟩in Fig. 2). Like other debiasing methods, NICE may over-weight tail categories by increasing the sample percentage of tail categories. For further effective unbiased SGG training, we propose a new knowledge distillation based NoIsy Sample Training strategy: NIST. NIST is a multi-teacher knowledge distillation method that can integrate the unbiased knowledge of multi-teachers to improve the robustness of distillation. Typically, we can use two different teachers, one is trained on the original dataset (i.e., more in favor of head predicates), and the other is trained on the NICE refined dataset (i.e., more in favor of tail predicates). A novel dynamic weighting strategy is devised to punish both biases to obtain unbiased fusion knowledge. Specifically, we first measure the degree of bias of each teacher model by calculating the cross entropy between the predictions of each teacher and the original ground-truth. Then, we fuse the predictions of the low-biased teacher model with the ground-truth. In this way, the biases on different predicates can be eliminated through dynamic weighting. As original ground-truth predicates are proven to be noisy [33], NIST can make the model more robust by smoothing noisy targets to supervise the training. NIST is also a general trade-off training strategy, which can relieve the bias of different predicates for unbiased SGG. More detailed ablations about its generalization ability will be discussed in Sec. 6.4. New Benchmark VG-OOD. In addition, for the widely-used SGG benchmarks (e.g., VG [19]), their predicate distributions of the training set and test set for each subject-object category pair are similar. As displayed in Fig. 8, the predicate distributions of woman-shirt in the original VG dataset are extremely similar (e.g., wearing is the most common predicate in both training and test sets.). Due to this property, a naive baseline that simply uses the frequency priors of the predicates of each subject-object category pair (without considering visual appearance) can achieve satisfactory results [24]. For a deeper disentanglement of this prior knowledge and to benchmark the OOD performance of debiasing SGG models, we propose a new dataset for OOD evaluation: VGOOD. Specifically, we re-split the VG dataset and try to make the predicate distribution of each subject-object category pair in the training and test sets as inconsistent as possible. In this way, the performance of the test set on VG-OOD can better measure the OOD generalization ability of SGG models. NICEST was evaluated on the widely recognized scene graph generation (SGG) benchmarks, including VG [19], GQA [20], and the newly introduced VG-OOD dataset. Within NICEST, NICE plays a crucial role in enhancing the quality of annotations in original datasets, while NIST focuses on absorbing unbiased knowledge from two teachers. Notably, both NICE and NIST are model-agnostic, allowing for seamless integration into various SGG architectures to enhance their performance. The effectiveness and generalization capabilities of each component within NICEST have been extensively validated through meticulous ablation studies and comprehensive experimental results. This paper is a substantial and systematic extension of previous CVPR oral work [33] with several significant improvements: 1) In previous NICE-v12, we merely assign a hard label to noisy samples in NSC, which may introduce new noise. Thus, in this
+1) In previous NICE-v12, we merely assign a hard label to noisy samples in NSC, which may introduce new noise. Thus, in this
+2For the sake of distinction, we use NICE-v1 to denote NICE in [33].
+2For the sake of distinction, we use NICE-v1 to denote NICE in [33].
+paper, we propose a more robust method to generate soft labels based on the weights in wKNN. 2) Beyond NICE, we propose a noisy label training strategy NIST. It comprehensively considers the unbiased fusion knowledge from multi-teachers and ground-truth labels, which helps achieve robust model training. 3) We propose a new SGG benchmark for OOD evaluation: VG-OOD. It is designed to supplement the evaluation of the debiasing and generalization ability of SGG models. 4) We conduct more qualitative and quantitative analyses to demonstrate the effectiveness of NICEST.
+# 2 RELATED WORK
+Scene Graph Generation. SGG helps machines understand visual relationships between objects, which aims to transform the raw visual input into semantic graph structures. Early SGG work [32], [34] usually regards each object as an individual and directly predicts their pairwise relations without considering the visual context. Subsequent SGG methods [1], [25], [35] begin to exploit this overlooked visual context by regarding each image as a whole and adopting the fully connected graph [36], [37], or the treestructured graph [26] to model the contexts among objects. Due to the long-tailed distribution and other language bias issues [38], unbiased SGG has recently drawn remarkable attention. In general, existing unbiased SGG models can be roughly divided into: re-balancing strategy [27], [39], [40], [41], [42], [43] and biasedmodel-based strategy [29], [30], [31], [44]. Different from existing work [45], [46], we are the first to explicitly refine the original noisy ground-truth annotations on SGG datasets, and address the problem in terms of both label quality and training strategy. Although some previous work also has discussed the issue of sparse annotations [31], [47] or semantic imbalance [44], they still heavily rely on these original noisy annotations in the training. Learning with Noisy Labels. Existing noisy label learning methods can be roughly grouped into two categories: 1) Utilizing an explicit or implicit noisy model to estimate the distributions of noisy and clean labels, and then deleting or correcting these noisy samples. These models can be in different formats, such as neural networks [48], [49], [50], [51], conditional random field [52], or knowledge graphs [53]. However, they always need abundant clean training samples, which is inapplicable for many noisy label learning datasets. 2) Constructing a more balanced loss function to reduce the influence of noisy training samples [54], [55], [56], [57], [58]. In this paper, we are the first to formulate SGG as a noisy label learning problem, and propose a novel noisy sample correction strategy and an effective training strategy. Knowledge Distillation (KD). Early KD was proposed to effectively learn lightweight student models from pretrained cumbersome teacher models [59], [60], [61]. Benefiting from the soft targets generated by teacher models, KD has shown potentials in numerous vision tasks, i.e., object detection [62], [63], [64], longtailed learning [65], [66], [67], scene graph generation [68], and visual question answering (VQA) [69]. However, most traditional KD methods only consider one teacher model. To overcome the limitation of the data diversity and single-teacher knowledge, multi-teacher knowledge distillation [70], [71], [72], [73] integrates comprehensive knowledge of multiple teachers. In this paper, we propose a new multi-teacher KD-based training strategy, which can incorporate the unbiased fusion knowledge of multiteachers for robust SGG training under noisy labels.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ea5e/ea5ec3a6-fede-4bf1-8cbc-4b77d231879d.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 3: The pipeline of NICE (taking an image from VG as an example). (a) Neg-NSD: Given all negative triplets (blue dash arrows), the OOD detection model detects missing annotated triplets (T − noisy) and assigns pseudo labels to them (green predicates). (b) Pos-NSD: Given the newly composed positive triplet set ( �T +), Pos-NSD detects all noisy positive samples ( �T + noisy). (c) NSC: NSC reassigns more high-quality sof predicate labels to all noisy positive samples, and the black and red predicates are the scores of the original and raw predicate categories in soft labels. Finally, we obtain a new cleaner version of ground-truth annotations.</div>
+OOD Benchmarks for Visual Scene Understanding. Recently, several scene understanding tasks, such as VQA [10], [69], [74], [75] and video grounding [76], [77], try to deliberately make the ground-truth distributions different in the training and test splits. For example, Agrawal et al. [78] reorganized splits of previous VQA datasets by designing different answer distributions for each question type in the training and test sets. Similarly, another video grounding dataset for OOD evaluation was proposed in a similar manner [76]. Inspired by them, we introduce VG-OOD to better measure the OOD generalization abilities of SGG models.
+# 3 NICE: NOISY LABEL CORRECTION
+Given an image dataset I, the SGG task aims to convert each image Ii ∈I into a graph Gi = {Ni, Ei}, where Ni and Ei denote the node set (i.e., objects) and edge set (i.e., visual relations) of image Ii, respectively. Generally, each graph Gi can also be viewed as a set of visual relation triplets (i.e., ⟨subjectpredicate-object⟩), denoted as Ti. For each triplet set Ti, we can further divide it into two subsets: T + i and T − i , where T + i denotes all the annotated positive triplets (or samples) in image Ii, and T − i denotes all the un-annotated negative triplets in image Ii. Similarly, we use T + = {T + i } and T −= {T − i } to represent all positive and negative triplets in the whole dataset I. Fig. 3 illustrates the overall pipeline of NICE3. In this section, we successively introduce each part of NICE, including negative noisy sample detection (Neg-NSD), positive NSD (Pos-NSD), and noisy sample correction (NSC). To be specific, given an image and its corresponding ground-truth triplet annotations (i.e., T + �T −)4, we first use the Neg-NSD to detect all possible noisy negative samples, i.e., missing annotated foreground triplets. T − can be further divided into T − clean and T − noisy. Meanwhile, NegNSD assigns pseudo positive predicate labels for all samples in T − noisy (e.g., painted on for ⟨letter-window⟩in Fig. 3). T − noisy with pseudo positive labels and original T + compose a new
+3In Fig. 3, we use a single image as input for a clear illustration. In our experiments, we directly process the whole dataset in each module. 4For brevity, we omit the subscripts i for image Ii.
+positive set �T +. Next, we use Pos-NSD to detect all possible noisy positive samples in �T +, i.e., the positive samples which suffer from either common-prone or synonym-random characteristics (e.g., at for ⟨women-laptop⟩in Fig. 3). Similarly, �T + can be divided into �T + clean and �T + noisy. Then, we use NSC to reassign more high-quality soft predicate labels to all samples in �T + noisy, denoted as �T + noisy→clean. Lastly, after processing the ground-truth triplet annotations of all images, we can obtain a cleaner version of the dataset ( �T + clean ��T + noisy→clean �T − clean) for SGG training.
+# 3.1 Negative Noisy Sample Detection (Neg-NSD)
+In this module, our goal is to discover all possible noisy negative samples, i.e., missing annotated visual relation triplets. Meanwhile, Neg-NSD assigns a pseudo positive predicate label for each detected noisy negative sample. It is difficult to directly train and evaluate a binary classifier based on these noisy samples, due to the nature of missing annotations in existing negative samples. To this end, we propose formulating the negative noisy sample detection as an out-of-distribution (OOD) detection problem [79]. Specifically, we regard all annotated positive samples as in-distribution (ID) training data, and all unannotated negative samples as OOD test data. Neg-NSD is constructed on top of a plain SGG model (denoted as Fn sgg), but it is trained exclusively with the annotated positive samples T +. During the inference stage, Neg-NSD predicts a score of being foreground and assigns a pseudo positive predicate category to each triplet t− i ∈T −. Following existing OOD detection methods [80], we also utilize a confidence-based model, i.e., Neg-NSD consists of two network output branches: 1) a classification branch to predict a probability distribution p over all positive predicate categories, and 2) a confidence branch to predict a confidence score c ∈[0, 1], which indicates the confidence of being an ID category (foreground). During the inference phase, for each sample t− i , if its confidence score ci surpasses a threshold θ, we then regard this negative sample as a noisy negative sample, i.e., the detection
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6d46/6d462b77-3576-4339-839a-2110e3a6f308.png" style="width: 50%;"></div>
+Fig. 4: Left: Multidimensional scaling visualization of features of randomly sampled triplets with predicate in. Right: Detected clean samples and noisy samples by Pos-NSD.
+<div style="text-align: center;">Fig. 4: Left: Multidimensional scaling visualization of features of randomly sampled triplets with predicate in. Right: Detected clean samples and noisy samples by Pos-NSD.</div>
+function g(·) is defined as follows:
+(1)
+When g(t− i ) = 1, the pseudo label of t− i is directly derived from the classification branch, i.e., arg max(pi). Due to significant variations in the predicted average confidence scores for different predicate categories, we set different thresholds for head, body, and tail categories. (More details are in Sec. 6.) Training of Neg-NSD. To train the classification branch and confidence branch, we combine predicted probabilities pi and corresponding target probability distribution yi, i.e.,
+(2)
+where p′ i is the adjusted probabilities by confidence ci. The motivation of Eq. (2) is that, given the opportunity to request a hint of the ground-truth probability with some penalty, the model will definitely choose to seek the hint if it lacks confidence in its output (i.e., ci is small). And the training objective for Neg-NSD consists of a weighted cross-entropy loss and a regularization penalty loss:
+� where p′ ij and yij are the j-th elements of p′ i and yi, respectively. wj is the reciprocal of the frequency of the j-th predicate category, which mitigates the impact of the long-tailed issues on confidence. The penalty loss is used to prevent the network from always choosing c = 0 and using a ground-truth probability distribution to minimize the task loss.
+# 3.2 Positive Noisy Sample Detection (Pos-NSD)  
+As shown in Fig. 33, the original positive set T + and outputs of the Neg-NSD (i.e., T − noisy) compose a new positive sample set
+ T  �T +. The Pos-NSD module aims to detect all noisy samples in �T +. In general, we utilize a clustering-based solution to divide all these positive samples into multiple subsets with different degrees of noise, and treat all samples in the noisiest subset as noisy positive samples. Intuitively, if a predicate label is consistent with other visually-similar samples of the same predicate category (i.e., visual features of these samples are close to each other). In that case, this predicate is more likely to be a clean sample since these annotations are consistent with each other. Otherwise, it is likely to be a noisy sample. As shown in Fig. 4, the two clean triplets ⟨window-in-room⟩have more visually-similar neighbors than the noisy triplets (e.g., ⟨plant-in-window⟩). Based on these observations, we propose a local density based solution for positive noisy sample detection. To be specific, we utilize an off-the-shelf pretrained SGG model (denoted as Fp sgg)
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d22e/d22e4ffb-06c2-4d33-aaf8-d46209404b99.png" style="width: 50%;"></div>
+Fig. 5: Above: The multidimensional scaling visualization of features of randomly sampled triplets with predicate in with cutoff distance ranked at 50% (left) and 1% (right). Below: The triplet categories of the randomly sampled visual relation triplets from the corresponding red circle and green circle.
+to extract all visual relation triplet features, and utilize hk i to represent the visual feature of the i-th sample of predicate category k (this sample is denoted as tk i ). Then, we use a distance matrix Dk = (dk ij)N×N ∈RN×N to measure the similarity between all positive samples of the same predicate k, and dk ij is calculated by:
+��� ��� where ∥· ∥is the Euclidean distance. Thus, a smaller distance dk ij means a relatively higher similarity between sample tk i and sample tk j . Then following [81], we define the local density ρk i of each sample tk i as the number of samples (within the same predicate category) whose distances to sample tk i are closer than a threshold dk c, i.e.,
+(5)
+ � where 1(·) is the indicator function and dk c is the cutoff distance for predicate k, which is ranked at α% of sorted N ×N distances in DK from small to large. Thus, a sample with higher local density ρ means that this sample is more similar to the samples of the same predicate category. Analogously, samples with low local density ρ are considered as noisy samples. Finally, we use an unsupervised K-means algorithm [82] to divide all data samples into multiple subsets with respect to different ρ values, i.e., different degrees of noise [83]. All samples in the subset with the lowest ρ are regarded as noisy positive samples (i.e., �T + noisy), and passed into the subsequent NSC module for label correction. Influence of the Cutoff Distance dk c. From Eq. (5), we can observe that the distribution of local density ρ is directly decided by the selection of the cutoff distance dc (or the hyperparameter α%). As shown in Fig. 5, when the cutoff distance is ranked at 50% and 1%, local densities of samples diffuse outwards from large to small with one and two centers, respectively, i.e., a smaller cutoff distance (e.g., 1% for α%) may divide the whole feature space into more clusters. Meanwhile, different predicate categories may contain various types of semantic meanings. For example, in Fig. 5, the predicate in of samples inside the red circle represents “inside” (e.g., ⟨plant-in-vase⟩), while predicate in of the samples inside the green circle represents “wearing” (e.g., ⟨man-in-shirt⟩). Therefore, we set different cutoff distances for different categories. In addition, more detailed discussions about the influence of dk c on the clustering results are left in the appendix.
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3e4c/3e4c06b8-21eb-40b5-9c96-00e6a97bc630.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 6: The illustration of NSC. Dashed lines indicate the distances between the noisy sample and other samples in a clean subset with girl-chair. wKNN replaces the noisy predicate in with a soft label, assigning a score of 0.25 to the new label sitting on and a score of 0.75 to the old label in.</div>
+# 3.3 Noisy Sample Correction (NSC)
+Given all the detected noisy positive samples from Pos-NSD, the NSC module aims to correct and assign more robust soft labels to these noisy positive predicate labels. There are two nonzero (positive) categories in the newly assigned soft label rs: the original predicate category and a raw predicate category. The raw predicates serve as relatively clean labels assigned by wKNN, following the approach in NICE-v1 [33]. The subsequent sections elaborate on the raw predicate categories and the calculation of ground-truth values for the two predicates in the soft labels. Selection of Raw Predicates. The motivation of our NSC is that the predicate label of a sample should be consistent with other visually-similar training samples, especially for those samples with the same subject and object categories. For example, in Fig. 6, consider the noisy sample ⟨girl-in-chair⟩. By retrieving all other samples with the same ⟨girl-chair⟩, we observe that most visually-similar samples are annotated as ⟨girl-sitting on-chair⟩. Thus, we employ the simple yet effective weighted K-Nearest Neighbor (wKNN) algorithm to derive the most probable labels for noisy positive samples. wKNN assigns larger weights to the closest samples and smaller weights to those that are far away. Specifically, let N(i) be the set of K neighbors of sample ti, then the raw predicate label rraw i for ti is:
+(6)
+� where v is a predicate category, rj is predicate label of tj, and 1(·) is an indicator function. The weight wij is assigned to each neighbor, defined as a · exp(−(dij−b)2 2c2 ). dij is the Euclidean distance between hi and hj (Eq. (4)), and a, b, c are hyperparameters. Calculation of Predicate Score. However, the raw predicate labels are not always “perfect”. For example, in Fig. 2, ⟨boynear-pizza⟩is mistakenly changed to ⟨boy-eating-pizza⟩. To ensure the robustness of training, we propose a scoring function that considers the distances of triplets in weighted KNN as the confidence of the labels and fuses the raw predicate label rraw with the original predicate label rori to obtain a new soft label. The scores of the raw predicate label sraw and the original predicate label sori in soft labels are calculated as follows: �
+(7)
+(7) (8)
+(8)
+where wraw and wori represent the weights of the raw predicate and the original predicate in KNN, respectively. Training Objectives. We apply the binary cross entropy objective for training with soft labels, which is written as:
+� where rs i is the value of the i-th category in the soft label, pi is the prediction probability of the i-th category, and N is the total number of predicate categories. Highlights. In the original NSC of NICE-v1 [33], we directly assign hard labels (i.e., raw predicate labels) with full probability to noisy samples. If the newly assigned labels were unreasonable, new noise might be introduced. In the new NSC of this paper, we assign soft labels to noisy samples, which takes into account both the raw predicate labels by wKNN and the original ground-truth labels. It not only increases the error tolerance rate of noisy sample correction, but also is more conducive to robust training.
+# 4 NIST: NOISY SAMPLE TRAINING
+As mentioned above, the labels corrected by NICE [33] are not always accurate. Since most of them are corrected from the head to tail predicates, it may lead to a somewhat overweighting of tail predicates. We propose a novel multi-teacher knowledge distillation strategy for effective model training that enables the model to learn from the unbiased trade-off fusion of two teachers. The structures of both the two teacher models and the student model are the same as the backbone (i.e., Motifs [24] and VCTree [26]). In this way, we generate a relatively smooth target label that mitigates the performance degradation caused by absolute confidence in the noisy ground-truth with full probability by assigning values to other categories. The pipeline of the multi-teacher knowledge distillation training paradigm is illustrated in Fig. 7. Specifically, we initially select two models, where one excels in head predicates (i.e., can achieve good performance in Recall) and the other excels in tail predicates (i.e., can achieve good performance in mean Recall). For the sake of simplification, these models are denoted as T Head and T T ail, respectively. We aim to obtain an unbiased trade-off teacher that can strike a balance between Recall and mean Recall (i.e., penalize excessive bias against both head and tail predicates). Therefore, we measure the bias of the model towards head and tail predicates, and define the degrees of biases for head and tail predicates as sHead and sT ail, respectively. The calculation process is as follows:
+(10)
+(11)
+� where XE denotes the cross-entropy function, and pGT , pHead, pT ail denote the ground-truth labels, the output of T Head, and the output of T T ail, respectively. We then adopt a dynamic weighting strategy to fuse the biased knowledge of the two teachers fairly, using weights wHead and wT ail. The final trade-off knowledge pT to supervise the training is determined by:
+(12) (13)
+(12)
+(13)
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/bed0/bed028b5-c0bd-4caf-823b-67ccf7d956da.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 7: The pipeline of the multi-teacher KD paradigm.</div>
+TABLE 1: Comparison of VG and VG-OOD datasets. “KL” measures KL divergence differences in the predicate distributions of all samples between two splits, and “KL-mean” measures the mean of KL divergence differences in the predicate distributions between two splits over all subject-object category pairs.
+<div style="text-align: center;">TABLE 1: Comparison of VG and VG-OOD datasets. “KL” measures KL divergence differences in the predicate distributions of all samples between two splits, and “KL-mean” measures the mean of KL divergence differences in the predicate distributions between two splits over all subject-object category pairs.</div>
+Dataset
+Split
+#Image
+#Triplets
+KL
+KL-Mean
+VG
+Train
+62,723
+439,063
+0.02
+0.82
+Test
+26,446
+183,642
+VG-OOD
+Train
+64,694
+521,868
+0.20
+7.55
+Test
+24,475
+100,837
+Group Dynamic Weighting. Acknowledging that the groundtruth (GT) predicate label is more accurate than T Head for head predicates. Similarly, the GT predicate label is more accurate than T T ail for tail predicates. Therefore, we employ a dynamic weighting mechanism for the head, body, and tail groups to obtain more accurate knowledge for distillation: • For head predicates, pHead is the GT label, and pT ail is the output probability distribution of pT ail. • For body predicates, since the GT labels are more accurate than both two models, we directly adopt the GT label as pHead and pT ail. • For tail predicates, pHead is the output probability distribution of pHead, and pT ail is the GT label. Training Objectives. Since the outputs of the student model and the unbiased teacher model are probability distributions, we adopt KL divergence [84] as the loss function for multi-teacher KD, denoted as:
+(14)
+where pS is the output probability distribution of student model. Highlights. In NICE-v1 [33], the original dataset is corrected directly. This correction is not always correct and will exaggerate the proportion of tail predicates. In this paper, we propose a training strategy based on multi-teacher knowledge distillation, which integrates different biased knowledge of teacher models to supervise student model training, allowing the student model to account for the performance of both head and tail predicates.
+# 5 BENCHMARK: VG-OOD
+Visual Genome [19], the most widely utilized SGG dataset at present, has a consistent predicate distribution for each subjectobject category pair in both the training and test sets. Some studies [24] have found that good performance can be obtained just through the frequency prior bias of the commonest predicate category for each subject-object category pair (i.e., 62.2% on R@100 in Predcls). To reduce the influence of frequency bias
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7b77/7b77318a-2973-4f13-9534-34807f899d31.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 8: Left: The predicate statistical distribution of woman-shirt. Right: The predicate statistical distribution of tree-snow. The predicate categories in the legend are sorted by the number of occurrences in the dataset.</div>
+and supplement the evaluation of the generalization ability of the model, we propose a new benchmark called VG-OOD by re-splitting the VG dataset. The statistical distributions of all predicates per subject-object category pair (e.g., man-shirt) in VG-OOD are different in the test set compared to the training set. Dataset Construction. We first count the number of all possible predicates for each subject-object category pair, and arrange the predicates based on their frequency in ascending order. Secondly, we add triplets whose total number is less than 20% of the overall subject-object category pairs in the test triplet list. For example, in Fig. 8, for the woman-shirt pair, we sort the number of predicates and include those with a cumulative number of 20%, along with their subject-object category pairs, into the list of test triplets (e.g., woman-holding-shirt and woman-holdingshirt). Finally, we split the image into the test set when 70% of its triplets are in the test triplet list. Dataset Statistics. The statistics of the number of images, the number of triplets, and the difference in distribution (i.e., KL and KL-mean) between the VG and VG-OOD training and test sets are shown in TABLE 1. Among them, KL divergence computes the disparity in predicate distributions between the training and test sets for all samples. KL-mean is calculated by averaging the KL divergences of the predicate distributions between the two splits across all possible subject-object category pairs. The greater the KL divergence, the more different the two distributions are. Therefore, we can see that the re-splitting process in VGOOD results in significant difference in predicate distributions for each subject-object category pair between the training and test sets. Furthermore, we visualize the distribution of predicates under woman-shirt and tree-snow in Fig. 8. Notably, there is a marked contrast in the number of predicates with a large proportion between the training and test sets (e.g., wearing vs.
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE TABLE 2: Performance (%) comparison with and without frequency priors on VG and VG-OOD datasets under the Predcls setting. The baseline model is Motifs [24].
+Dataset
+freq prior mR@50 mR@100 R@50 R@100 Mean
+VG
+�
+16.5
+17.8
+65.5
+67.2
+41.8
+�
+15.3
+16.5
+65.0
+66.9
+40.9
+VG-OOD
+�
+11.3
+11.9
+57.8
+58.4
+34.9
+�
+12.5
+13.0
+59.8
+60.5
+36.5
+wears, and in vs. near). Consequently, relying solely on the frequency statistical prior of triplets does not yield satisfactory performance in the test set. Moreover, for some triplets only appearing in the test set, the generalization ability of models can be better verified (e.g., woman-holding-shirt). VG-OOD vs. VG. As mentioned earlier, since the predicate distributions under each subject-object category pair in the training and test sets are consistent in the original VG dataset, a simple frequency bias baseline can achieve decent results. To verify the generalization ability of SGG models to be independent of the frequency bias, we report the performance of models with and without frequency priors in VG and VG-OOD datasets in TABLE 2. It can be observed from TABLE 2 that the model can achieve significant gains on VG (e.g., 41.8% vs. 40.9% on Mean) by using the frequency prior. However, for the VG-OOD dataset, the model cannot obtain desired results with the frequency prior (e.g., 34.9% vs. 36.5% on Mean). Thus, training the model on the VG-OOD dataset can better measure the ability to classify predicates using visual information rather than the frequency bias.
+# 6 EXPERIMENTS
+# 6 EXPERIMENTS 6.1 Experimental Settings and Implementation Details
+# 6.1 Experimental Settings and Implementation Details
+Datasets. To ensure a comprehensive evaluation of our proposed method, we conducted all experiments on three datasets: the challenging VG [19], our newly split VG-OOD and GQA [20]. 1) VG: VG is the most widely utilized benchmark for SGG with over 108k images. We selected VG to thoroughly evaluate NICEST and ensure a fair comparison with SOTA methods. We followed widely-used splits [1], dividing images into training (70%), testing (30%), and a validation set (5,000 images sampled from the training set [24]). Besides, we followed [89] to divide all predicate categories into three parts based on the number of samples in the training set: head (>10k), body (0.5k∼10k), and tail (<0.5k). 2) VG-OOD: VG-OOD, our newly proposed dataset, has been deliberately structured by re-splitting the original VG dataset to make the predicate distribution of each subject-object category pair in the training and test sets as inconsistent as possible. To verify the ability to generalize independently of frequency bias, we conducted experiments on VG-OOD and adopted the same predicate grouping as VG. 3) GQA: A large-scale SGG dataset, which consists of more than 110k images. To validate the effectiveness and generalizability of NICEST, we conducted experiments on GQA. We used the same split provided by [90], which includes 200 object categories and 100 predicate categories. Evaluation Tasks. We evaluated NICEST on three SGG tasks [1]: 1) Predicate Classification (PredCls): Given the groundtruth objects with labels, we need to only predict pairwise predicate categories. 2) Scene Graph Classification (SGCls): Given the ground-truth object bounding boxes, we need to predict both the object categories and predicate categories. 3) Scene Graph
+Generation (SGGen): Given an image, we need to detect all object bounding boxes, and predict both the object categories and predicate categories. Evaluation Metrics. We evaluated all results on three metrics: 1) Recall@K (R@K): It calculates the proportion of topK confident predicted relation triplets that are in the groundtruth. Following prior work, we used K = {50, 100}. 2) mean Recall@K (mR@K): It calculates the recall for each predicate category separately, and then averages R@K over all predicates, i.e., it puts relatively more emphasis on the tail categories. 3) Mean: It is the mean of all mR@K and R@K scores [33]. R@K favors head predicates, while mR@K favors tail ones. Therefore, it is a comprehensive metric that can better reflect model performance on different predicates. NICE Training Details. In Neg-NSD, we used the Motifs [24] as OOD detection model Fn sgg. The training settings (e.g., learning rate and batch size) followed the configurations of [29] under the PredCls task, except that it was trained with only foreground samples. In Pos-NSD, we used a pretrained Motifs [24] provided by [29] as Fp sgg to extract triplet features (cf., hk i in Eq. (4)) under PredCls task. The number of divided subsets was set to 4. In NSC, the a, b, and c were set to 1, 0, and 10, respectively. Note that though we used two Motifs models (one is an off-the-shelf model [24], [29]) in NICE, we only needed to train NICE once, and we could use the obtained cleaner annotations for any model. NIST Training Details. In the experiment, the models with the bias of head predicates were the widely used baseline models (i.e., Motifs [24] and VCTree [26]). The models with the bias of tail predicates were trained after NICE cleaning (i.e., Moitfs+NICE and VCTree+NICE). The models obtained by NIST strategy training were denoted as Motifs+NICEST and VCtree+NICEST, respectively. With the implementation of multi-teacher knowledge distillation, our proposed method incurs twice the time and GPU space during the training stage compared to the baseline. However, there is no additional overhead during the inference stage. SGG Training Details. Our NICEST is a model-agnostic strategy, and thus, for different baselines (e.g., Motifs and VCTree), we followed their respective configurations. We adopted the Faster R-CNN [85] with the ResNeXt-101-FPN [87] backbone to detect objects in the image. The parameters of the detector were frozen during training. Besides, we utilized the SGG benchmark provided by [29] for all baselines.
+# 6.2 Comparisons with State-of-the-Arts 6.2.1 Performance on VG
+Settings. Since NICE and NIST are model-agnostic strategies, they can be seamlessly incorporated into any advanced SGG model. In this section, we equipped NICE and NIST into two baselines: Motifs [24] and VCTree [26], and compared them with the state-of-the-art SGG methods. According to the generalization of these methods, we group them into two categories: 1) TDE [29], PCPL [41], CogTree [30], DLFE [31], BPL-SA [44] and our previous work NICE-v1 [33]. These methods are all modelagnostic SGG debiasing strategies. For fair comparisons, we also reported their performance on the Motifs and VCTree baselines. 2) KERN [37], G-RCNN [36], MSDN [88], BGNN [39], and DT2ACBS [43]. These methods are specifically designed for SGG models. All results are reported in TABLE 3. Besides, we reported the R@100 metric of each predicate category group under the PredCls setting in TABLE 7 and presented the R@100 across all
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;">TABLE 3: Performance (%) of state-of-the-art SGG models on three SGG tasks on the VG dataset. “B” denotes the backbone of object detector (Faster R-CNN [85]) in each SGG model: i.e., VGG-16 [86] and ResNeXt-101-FPN [87]. “Mean” is the average of mR@50/100 and R@50/100. The best and second best methods under each setting are marked according to formats.</div>
+R@50/100. The best and second best methods under each setting are marked according to formats.
+PredCls
+SGCls
+SGGen
+B
+Models
+mR@50/100 R@50/100 Mean mR@50/100 R@50/100 Mean mR@50/100 R@50/100 Mean
+VGG-16
+Motifs [24]CVPR’18
+14.0 / 15.3
+65.2 / 67.1
+40.4
+7.7 / 8.2
+35.8 / 36.5
+22.1
+5.7 / 6.6
+27.2 / 30.3
+17.5
+VCTree [26]CVPR’19
+17.9 / 19.4
+66.4 / 68.1
+43.0
+10.1 / 10.8
+38.1 / 38.8
+24.5
+6.9 / 8.0
+27.9 / 31.3
+18.5
+KERN [37]CVPR’19
+17.7 / 19.2
+65.8 / 67.6
+42.6
+9.4 / 10.0
+36.7 / 37.4
+23.4
+6.4 / 7.3
+29.8 / 27.1
+17.7
+PCPL [41]MM’20
+35.2 / 37.8
+50.8 / 52.6
+44.1
+18.6 / 19.6
+27.6 / 28.4
+23.6
+9.5 / 11.7
+14.6 / 18.6
+13.6
+X-101-FPN
+MSDN [88]ICCV’17
+15.9 / 17.5
+64.6 / 66.6
+41.2
+9.3 / 9.7
+38.4 / 39.8
+24.3
+6.1 / 7.2
+31.9 / 36.6
+20.5
+G-RCNN [36]ECCV’18
+16.4 / 17.2
+64.8 / 66.7
+41.3
+9.0 / 9.5
+38.5 / 37.0
+23.5
+5.8 / 6.6
+29.7 / 32.8
+18.7
+BGNN [39]CVPR’21
+30.4 / 32.9
+59.2 / 61.3
+45.9
+14.3 / 16.5
+37.4 / 38.5
+26.7
+10.7 / 12.6
+31.0 / 35.8
+22.5
+DT2-ACBS [43]ICCV’21
+35.9 / 39.7
+23.3 / 25.6
+31.1
+24.8 / 27.5
+16.2 / 17.6
+21.5
+22.0 / 24.4
+15.0 / 16.3
+19.4
+Motifs [24]CVPR’18
+16.5 / 17.8
+65.5 / 67.2
+41.8
+8.7 / 9.3
+39.0 / 39.7
+24.2
+5.5 / 6.8
+32.1 / 36.9
+20.3
+Motifs+TDE [29]CVPR’20
+24.2 / 27.9
+45.0 / 50.6
+36.9
+13.1 / 14.9
+27.1 / 29.5
+21.2
+9.2 / 11.1
+17.3 / 20.8
+14.6
+Motifs+PCPL [41]MM’20
+24.3 / 26.1
+54.7 / 56.5
+40.4
+12.0 / 12.7
+35.3 / 36.1
+24.0
+10.7 / 12.6
+27.8 / 31.7
+20.7
+Motifs+CogTree [30]IJCAI’21
+26.4 / 29.0
+35.6 / 36.8
+32.0
+14.9 / 16.1
+21.6 / 22.2
+18.7
+10.4 / 11.8
+20.0 / 22.1
+16.1
+Motifs+DLFE [31]MM’21
+26.9 / 28.8
+52.5 / 54.2
+40.6
+15.2 / 15.9
+32.3 / 33.1
+24.1
+11.7 / 13.8
+25.4 / 29.4
+20.1
+Motifs+BPL-SA [44]ICCV’21
+29.7 / 31.7
+50.7 / 52.5
+41.2
+16.5 / 17.5
+30.1 / 31.0
+23.8
+13.5 / 15.6
+23.0 / 26.9
+19.8
+Motifs+NICE-v1 [33]CVPR’22
+29.9 / 32.3
+55.1 / 57.2
+43.6
+16.6 / 17.9
+33.1 / 34.0
+25.4
+12.2 / 14.4
+27.8 / 31.8
+21.6
+Motifs+NICE (Ours)
+30.0 / 32.1
+56.6 / 58.6
+44.3
+16.4 / 17.5
+33.8 / 34.7
+25.6
+10.4 / 12.7
+27.8 / 32.0
+20.7
+Motifs+NICEST (Ours)
+29.5 / 31.6
+59.1 / 61.0
+45.3
+15.7 / 16.5
+34.4 / 35.2
+25.5
+10.4 / 12.4
+28.0 / 32.4
+20.8
+VCTree [26]CVPR’19
+17.1 / 18.4
+65.9 / 67.5
+42.2
+10.8 / 11.5
+45.6 / 46.5
+28.6
+7.2 / 8.4
+32.0 / 36.2
+20.9
+VCTree+TDE [29]CVPR’20
+26.2 / 29.6
+44.8 / 49.2
+37.5
+15.2 / 17.5
+28.8 / 32.0
+23.4
+9.5 / 11.4
+17.3 / 20.9
+14.8
+VCTree+PCPL [41]MM’20
+22.8 / 24.5
+56.9 / 58.7
+40.7
+15.2 / 16.1
+40.6 / 41.7
+28.4
+10.8 / 12.6
+26.6 / 30.3
+20.1
+VCTree+CogTree [30]IJCAI’21
+27.6 / 29.7
+44.0 / 45.4
+36.7
+18.8 / 19.9
+30.9 / 31.7
+25.3
+10.4 / 12.1
+18.2 / 20.4
+15.3
+VCTree+DLFE [31]MM’21
+25.3 / 27.1
+51.8 / 53.5
+39.4
+18.9 / 20.0
+33.5 / 34.6
+26.8
+11.8 / 13.8
+22.7 / 26.3
+18.7
+VCTree+BPL-SA [44]ICCV’21
+30.6 / 32.6
+50.0 / 51.8
+41.3
+20.1 / 21.2
+34.0 / 35.0
+27.6
+13.5 / 15.7
+21.7 / 25.5
+19.1
+VCTree+NICE-v1 [33]CVPR’22
+30.7 / 33.0
+55.0 / 56.9
+43.9
+19.9 / 21.3
+37.8 / 39.0
+29.5
+11.9 / 14.1
+27.0 / 30.8
+21.0
+VCTree+NICE (Ours)
+30.9 / 33.1
+56.4 / 58.3
+44.7
+20.0 / 21.2
+38.7 / 39.8
+29.9
+10.1 / 12.1
+28.4 / 32.6
+20.8
+VCTree+NICEST (Ours)
+30.6 / 32.9
+59.1 / 60.9
+45.9
+18.9 / 20.0
+38.4 / 39.4
+29.2
+10.2 / 11.9
+29.0 / 32.7
+21.0
+<div style="text-align: center;">TABLE 4: Performance (%) of state-of-the-art SGG models on three SGG tasks on the VG-OOD dataset. “Mean” is the average of mR@50/100 and R@50/100. The best and second best methods under each setting are marked according to formats.</div>
+and R@50/100. The best and second best methods under each setting are marked according to formats.
+PredCls
+SGCls
+SGGen
+Models
+mR@50/100
+R@50/100
+Mean
+mR@50/100
+R@50/100
+Mean
+mR@50/100
+R@50/100
+Mean
+Motifs [24]CVPR’18
+11.3 / 11.9
+57.8 / 58.4
+34.9
+8.0 / 8.5
+39.1 / 39.9
+23.9
+5.5 / 6.8
+32.1 / 36.9
+20.3
+Motifs+TDE [29]CVPR’20
+25.1 / 27.1
+47.9 / 50.8
+37.7
+12.9 / 13.5
+32.0 / 33.2
+22.9
+9.2 / 10.8
+18.7 / 22.3
+15.3
+Motifs+NICE-v1 [33]CVPR’22
+28.4 / 29.2
+47.9 / 48.6
+38.5
+16.9 / 18.1
+32.9 / 33.9
+25.5
+12.5 / 14.6
+27.0 / 30.4
+21.1
+Motifs+NICE (Ours)
+28.0 / 28.9
+50.5 / 51.3
+39.7
+15.4 / 15.9
+34.5 / 34.9
+25.2
+9.6 / 11.2
+28.8 / 33.0
+20.7
+Motifs+NICEST (Ours)
+26.4 / 27.1
+54.8 / 55.5
+41.0
+17.0 / 18.8
+34.7 / 35.0
+26.4
+12.2 / 14.4
+27.8 / 31.8
+21.6
+VCTree [26]CVPR’19
+12.1 / 12.5
+58.2 / 58.8
+35.4
+8.2 / 8.4
+43.2 / 43.6
+25.9
+5.8 / 6.6
+31.9 / 35.5
+20.0
+VCTree+TDE [29]CVPR’20
+24.6 / 26.0
+48.7 / 50.9
+37.6
+13.3 / 14.7
+33.4 / 35.1
+24.1
+9.6 / 11.4
+19.4 / 23.1
+15.9
+VCTree+NICE-v1 [33]CVPR’22
+28.6 / 29.4
+47.7 / 48.4
+38.5
+18.8 / 19.2
+35.3 / 35.8
+27.3
+12.3 / 14.1
+26.0 / 29.2
+20.4
+VCTree+NICE (Ours)
+28.6 / 29.5
+50.0 / 50.8
+39.7
+17.7 / 18.1
+38.2 / 38.6
+28.2
+9.6 / 11.3
+28.2 / 32.3
+20.4
+VCTree+NICEST (Ours)
+26.6 / 27.4
+54.3 / 55.0
+40.8
+18.9 / 20.0
+38.4 / 39.4
+29.2
+10.2 / 11.8
+29.0 / 32.7
+20.9
+predicates in appendix. Additionally, a comparison of parameters and computational costs is provided in the appendix. Results. From the results in TABLE 3 and TABLE 7, we have the following observations: 1) Compared to the two strong baselines (i.e., Motifs and VCTree), our NICE can consistently improve model performance on metric mR@K over all three tasks (e.g., 5.9% ∼14.3% and 3.7% ∼14.7% absolute gains on metric mR@100 over Motifs and VCTree, respectively). 2) Compared to the state-of-the-art model-agnostic debiasing strategies (i.e., NICE-v1 [33]), NICE can achieve comparable performance with NICE-v1 on m@K and better performance on Mean (e.g., 44.3% vs. 43.6% on metric Mean under PredCls over Motifs). This proves that our improvements to the NSC module do make the model more robust to all predicates compared to the original NICE-v1. 3) NICEST achieves the highest performance on the Mean metric across the three tasks (e.g., 45.3% on Mean under PredCls over Motifs). It proves that NIST can realize a better
+trade-off between accuracy among different predicate categories. 4) NICEST is capable of achieving a better trade-off between head and tail predicates (e.g., 44.7% vs. 41.7% on Avg).
+# 6.2.2 Performance on VG-OOD
+Settings. Similarly, for the VG-OOD dataset, we also conducted NICE and NIST on the widely utilized baselines: Motifs [24] and VCTree [26]. At the same time, we compared the most classic method (i.e., TDE [29]) and current the state-of-the-art method (i.e., NICE-v1 [33]) of model-agnostic unbiased SGG to this dataset in TABLE 4. In addition, we visualized the performance comparison of R@100 across all predicates and the distribution of R@100 and mR@100 in the appendix. Results. From the results in TABLE 4, we can observe that: 1) Compared with the two common baselines (i.e., Motifs and VCTree), the mR@K of our NICE has been significantly improved in all three tasks (e.g., 4.4% ∼17.0% and 4.7% ∼17.0% absolute
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;">IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE TABLE 5: Performance (%) on GQA dataset.</div>
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE TABLE 5: Performance (%) on GQA dataset.
+TABLE 5: Performance (%) on GQA dataset.
+PredCls
+Models
+mR@50/100
+R@50/100
+Mean
+Motifs [24]CVPR’18
+13.9 / 14.7
+65.1 / 66.8
+40.1
+Motifs+NICE-v1 [33]CVPR’22
+24.8 / 27.4
+55.8 / 58.5
+41.6
+Motifs+NICE (Ours)
+24.5 / 27.3
+57.1 / 59.1
+42.0
+Motifs+NICEST (Ours)
+24.0 / 26.4
+57.7 / 60.6
+42.2
+VCTree [26]CVPR’19
+14.4 / 15.3
+65.7 / 67.3
+40.7
+VCTree+NICE-v1 [33]CVPR’22
+24.8 / 27.2
+56.3 / 59.2
+41.9
+VCTree+NICE (Ours)
+25.4 / 27.9
+56.0 / 58.8
+42.0
+VCTree+NICEST (Ours)
+24.2 / 26.8
+58.1 / 61.0
+42.5
+gains on metric mR@100 over Motifs and VCTree, respectively). 2) The NICE with an improved NSC module can outperform the original NICE-v1 [33] in the comprehensive performance of the Mean metric over three tasks, which proves that the improved NSC module is indeed more robust to all predicates. 3) NICEST is designed to be independent of the frequency bias in the dataset. In terms of the VG-OOD dataset, NIST can still achieve the best performance in the Mean metric, showcasing its robust generalization capabilities and its capacity to maintain balanced performance across various predicates.
+# 6.2.3 Performance on GQA
+Settings. For the GQA [20] dataset, we assessed the performance of the following models: Motifs [24], VCTree [26], and their combinations with NICE-v1 [33], NICE, and NICEST. The evaluation was conducted on the PredCls task. Moreover, we conducted statistical tests for comparisons on three datasets in the appendix. Results. The results on the GQA dataset are summarized in TABLE 5. From the table, we have the following observations: 1) The incorporation of NICE and NICEST can significantly improve the mR@K scores of the two strong baselines (e.g., 12.6% and 12.6% absolute gains on metric mR@100 over Motifs and VCTree, respectively). 2) Our NICE and NICEST are able to maintain a high and comparable R@K on the large GQA dataset. 3) NICEST achieves the highest performance on the metric Mean (e.g., 42.2% vs. 40.1% on metric Mean over Motifs). This demonstrates the universality and effectiveness of our method in enhancing the performance of these models.
+# 6.2.4 Comparisons with Label Correction and Smoothing
+Settings. We compared our methods (NICE and NICEST) with label correction [91] and smoothing [92] methods on the PredCls task using the Motifs [24] model as the baseline. Results. As shown in TABLE 6, it is evident that both NICE and NICEST achieve the highest performance in terms of the Mean metric (e.g., 44.3% and 45.3% under PredCls over Motifs, respectively). This far exceeds the performance of using only label correction or label smoothing methods (e.g., 3.9% ∼4.7% absolute gains on metric Mean). The effectiveness of our proposed methods may be attributed to the ability to identify noisy samples for each predicate, as they operate on the entire sample set and exhibit increased sensitivity towards long-tailed datasets.
+# 6.3 Ablation Studies on NICE
+# 6.3.1 Ablation Studies on Neg-NSD
+Hyperparameter Settings of Neg-NSD. The hyperparameter in Neg-NSD is the threshold θ for the confidence score (cf., Eq. (1)). Particularly, when the threshold θ for one category is set to
+<div style="text-align: center;">TABLE 6: Comparison with label correction and smoothing methods. The baseline model is Motifs [24].</div>
+<div style="text-align: center;">The baseline model is Motifs [24].</div>
+The baseline model is Motifs [24].
+PredCls
+Models
+mR@50/100 R@50/100 Mean
+Motifs [24]CVPR’18
+16.5 / 17.8 65.5 / 67.2 41.8
+Motifs+Label Correction [91]CVPR’21
+15.6 / 16.9 65.7 / 67.5 41.4
+Motifs+Label Smoothing [92]NIPS’19
+17.3 / 19.2 61.7 / 64.1 40.6
+Motifs+NICE-v1 [33]CVPR’22
+29.9 / 32.3 55.1 / 57.2 43.6
+Motifs+NICE (Ours)
+30.0 / 32.1 56.6 / 58.6 44.3
+Motifs+NICEST (Ours)
+29.5 / 31.6 59.1 / 61.0 45.3
+<div style="text-align: center;">TABLE 7: Recall@100 of each group,i.e., head, body, and tail, under PredCls setting. Avg is the average of the three groups.</div>
+PredCls setting. Avg is the average of the three groups.
+PredCls
+Models
+Head
+Body
+Tail
+Avg
+Motifs [24]CVPR’18
+80.5
+29.3
+5.7
+38.5
+Motifs+NICE-v1 [33]CVPR’22
+67.9
+33.1
+24.2
+41.7
+Motifs+NICE (Ours)
+69.6
+36.9
+26.0
+44.2
+Motifs+NICEST (Ours)
+72.9
+35.7
+25.4
+44.7
+100%, which means we never assign this category as pseudo labels. Without loss of generality, we choose three representative hyperparameter settings, i.e., we mine missing annotated triplets on 1) all predicate categories, or 2) only body and tail categories, or 3) only tail categories. The thresholds θ for the corresponding head, body, and tail categories were set as 95%, 90%, and 60%, respectively. To disentangle the influence of the other two modules (i.e., Pos-NSD and NSC), we directly use the outputs of Neg-NSD and pristine positive samples for SGG training. Results. From the results in TABLE 9c, we can observe: 1) Different threshold settings have a slight influence on the mR@K metrics, but a relatively more pronounced effect on the R@K metrics. 2) The model gains the best performance when only mining the missing tail predicates in Neg-NSD. Effectiveness of Neg-NSD. We evaluated the effectiveness of the Neg-NSD by using the same refined samples by Neg-NSD and pristine positive samples for SGG training. Results. All results are reported in TABLE 9a. Compared to the baseline model (# 1), the Neg-PSD module (# 2) can significantly improve model performance on mR@K metrics (e.g., 25.2% vs. 17.8% in mR@100), which proves that these harvested “positive” samples (noisy negative samples with pseudo labels) are indeed beneficial for SGG training.
+# 6.3.2 Ablation Studies on Pos-NSD
+Hyperparameter Settings of Pos-NSD. The hyperparameter in Pos-NSD is the cutoff distance dc ranked at α% for different categories (cf., Eq. (5)). As mentioned in Sec. 3.2, different dc directly impacts the clustering results of each predicate category, and smaller dc is more suitable for predicates with multiple semantic meanings. Therefore, without loss of generality, we choose five typical settings for different categories, including (L, L, L), (M, M, M), and so on. In our experiments, L, M, S denote that dc is large, medium, and small, respectively. Their corresponding α% values were set to 50.0%, 25.0% and 12.5%. Similarly, we disentangle the influence of Neg-NSD and use pristine negative and refined positive samples (outputs of NSC) for SGG training. The results are shown in TABLE 9b. Results. When the cutoff distance dc for all predicate categories is set to large or small or from large to small, the model achieves relatively worse results. These results are also consistent
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE
+<div style="text-align: center;">IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE TABLE 8: Ablation studies on the influence of different hyperparameters of each compone are used in all experiments.</div>
+Categories
+PredCls
+head body tail mR@50/100 R@50/100 Mean
+�
+�
+�
+22.2 / 25.8
+58.5 / 62.5 42.3
+�
+�
+�
+23.7 / 26.2
+59.5 / 62.3 42.9
+�
+�
+�
+23.3 / 25.2
+62.3 / 64.5 43.8
+PredCls
+K
+mR@50/100 R@50/100 Mean
+1
+23.3 / 25.0
+59.3 / 60.9
+42.1
+3
+23.3 / 25.2
+59.6 / 61.3
+42.4
+5
+22.9 / 24.7
+59.8 / 61.5
+42.2
+are used in all experiments.
+Components
+PredCls
+# N-NSD P-NSD NSC
+mR@50/100 R@50/100 Mean
+1
+�
+�
+�
+16.5 / 17.8
+65.5 / 67.2 41.8
+2
+�
+�
+�
+23.3 / 25.2
+62.3 / 64.5 43.8
+3
+�
+�
+�
+20.3 / 22.0
+57.6 / 59.2 39.8
+4
+�
+�
+�
+20.4 / 23.4
+56.7 / 61.4 40.5
+5
+�
+�
+�
+23.3 / 25.2
+59.6 / 61.3 42.4
+6
+�
+�
+�
+30.0 / 32.1
+56.6 / 58.6 44.3
+<div style="text-align: center;">(c) Ablation studies (%) on mining missing annotated triplets in different categories in Neg-NSD. (d) Ablation stud in wKNN. <man - ? - skateboard></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ed7a/ed7ad2e9-3682-4831-aa90-86263f5db0ab.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Ablation studies (%) on each component of NICE. “#” is the line number.</div>
+Size of dc
+PredCls
+head
+body
+tail
+mR@50/100
+R@50/100
+Mean
+L
+L
+L
+19.9 / 21.5
+64.0 / 65.7
+42.8
+M
+M
+M
+21.0 / 22.8
+62.2 / 64.0
+42.5
+S
+S
+S
+21.6 / 23.4
+61.1 / 62.8
+42.2
+S
+M
+L
+23.3 / 25.2
+59.6 / 61.3
+42.4
+L
+M
+S
+18.6 / 20.1
+64.4 / 66.1
+42.3
+<div style="text-align: center;">Fig. 9: The t-SNE visualization of randomly sampled instances of man-on/ridingskateboard triplet categories on feature space before and after NSC.</div>
+<div style="text-align: center;">L M S (b) Ablation studies (%) on different cutoff distances dc in Pos-NSD for head, body and tail predicates, respectively.</div>
+b) Ablation studies (%) on different cutoff distances dc in Pos-NSD for head, body and tail predicates, respectively.
+<div style="text-align: center;"> (%) on the combination of different teacher models in NIST.</div>
+<div style="text-align: center;">TABLE 9: Ablation studies (%) on the combination of different teacher models in NIST.</div>
+TABLE 9: Ablation studies (%) on the combination of different teacher models in NIST.
+Teacher
+PredCls
+PredCls
+T Head
+T T ail
+Dataset
+mR@50/100
+R@50/100
+Mean
+Dataset
+mR@50/100
+R@50/100
+Mean
+Motifs
+-
+VG
+14.0 / 15.3
+65.2 / 67.1
+40.4
+VG-OOD
+11.3 / 11.9
+57.8 / 58.4
+34.9
+Motifs-TDE
+25.7 / 29.7
+45.7 / 51.3
+38.1
+20.4 / 22.5
+56.8 / 60.0
+39.9
+Motifs-NICE
+29.5 / 31.6
+59.1 / 61.0
+45.3
+26.4 / 27.1
+54.8 / 55.5
+41.0
+VCTree
+-
+17.1 / 18.4
+65.9 / 67.6
+42.3
+12.1 / 12.5
+58.2 / 58.8
+35.4
+VCTree-TDE
+26.9 / 30.5
+45.6 / 49.7
+38.2
+22.4 / 25.7
+54.2/ 57.8
+40.0
+VCTree-NICE
+30.6 / 32.9
+59.1 / 60.9
+45.9
+26.6 / 27.4
+54.3 / 55.0
+40.8
+with our expectation, i.e., for the predicate categories with multiple semantic meanings (head categories), small dc is better for noisy sample detection. Instead, for predicate categories with a unique semantic meaning (tail categories), a larger dc is better. Thus, we utilize the (S, M, L) setting for all experiments. Effectiveness of Pos-NSD. We evaluated the effectiveness of Pos-NSD by using either clean positive samples detected from T + with pristine negative samples or from the new positive samples set �T + for SGG training. Results. As shown in TABLE 9a (# 3), the single Pos-NSD component can still improve mR@K metrics using much fewer positive samples. Besides, the baseline can also be exceeded on mR@K (# 4) after Neg-NSD and Pos-NSD alone with fewer training samples. It proves that the clean subset divided by PosNSD is better for SGG training, and numerous noisy positive samples actually hurt performance.
+# 6.3.3 Ablation Studies on NSC
+Hyperparameter of NSC. The hyperparameter of NSC is the K in wKNN. We investigated K = {1, 3, 5}. All results are reported in TABLE 9d. From the results, we can observe that the SGG performance is robust to different K. To better make a trade-off of different metrics, we set K to 3. Effectiveness of NSC. Based on Pos-NSD, NSC replaces the original labels of the noisy positive samples with cleaner and more robust soft labels. As shown in TABLE 9a, NSC markedly improves SGG performance on both mR@K and R@K (# 5 vs. # 3), i.e., NSC reassigns better labels to noisy samples. Results. Compared with the NSC in NICE-v1 [33], both mR@K and R@K of PredCls are improved by our refined NSC
+<div style="text-align: center;">TABLE 10: Ablation studies (%) on different weighting methods of different teacher models in NIST.</div>
+different teacher models in NIST.
+Weighting Type
+PredCls
+Fixed
+Adapt
+Group
+mR@50/100
+R@50/100
+Mean
+�
+28.9 / 31.1
+57.9 / 59.8
+44.4
+�
+30.4 / 32.6
+57.4 / 59.4
+45.0
+�
+29.5 / 31.6
+59.1 / 61.0
+45.3
+method (33.1% vs. 33.0% in mR@100 and 58.3% vs. 56.9% in R@100, based on VCTree). It proves that our approach is relatively improved across all predicate categories. T-SNE Visualizations. We visualized the t-SNE distributions of features of ⟨man-on/riding-skateboard⟩on the VG and GQA datasets, comparing the feature space before and after the NSC in Fig. 9. The former is a pair of predicates of different granularity (common-prone), while the latter is a pair of predicates of the same granularity (synonym-random). As shown in Fig. 9, NSC can help to alleviate the inconsistency of ground-truths, i.e., similar visual patterns always have more consistent ground-truth predicate annotations, which is beneficial for SGG training.
+# 6.4 Ablation Studies on NIST
+Hyperparameter of NIST. The hyperparameter of NIST is the weight of two teachers. We evaluated the performance of the three weighted methods in NIST. Among them, “fixed” means that the weights of two teacher models are constant 0.5, “adapt” means that two teacher models adopt adaptive trade-off strategies (cf. Eq. 12), and “group” means that two teacher models adopt different adaptive weighting strategies for the head, body, and tail category groups respectively. All results are reported in TABLE 10.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/174a/174a5237-8a81-4976-a2fe-39d74370fabf.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 10: The examples of the triplets detected by Negative Noisy Sample Dete</div>
+<div style="text-align: center;">detected by Negative Noisy Sample Detection that do not appear in the training </div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6a4a/6a4a0121-5a70-4150-b1fe-944e5f4316a5.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 11: Scene graphs generated by Motifs (left) and Motifs+NICE (Middle), Motifs+NICEST (right) on PredCls. Red predicates are error (i.e., not GT and unreasonable), Green predicates are correct (i.e., GT), and Brown predicates are reasonable (not in GT but reasonable). Only detected boxes overlapping with GT are shown.</div>
+<div style="text-align: center;">Fig. 11: Scene graphs generated by Motifs (left) and Motifs+NICE (Middle), Motifs+NIC (i.e., not GT and unreasonable), Green predicates are correct (i.e., GT), and Brown predica detected boxes overlapping with GT are shown.</div>
+Results. As displayed in TABLE 10, our proposed group weighting strategy achieves the best performance on the Mean metric, proving the effectiveness of the grouping weighting. Effectiveness of NIST. To prove the generality of NIST, we used the two most common baseline models (i.e., Motifs [24] and VCTree [26]) as teachers biased towards head predicates (i.e., high Recall), and two models trained using unbiased methods (i.e., Motifs-TDE [29] and Motifs-NICE) as teachers biased towards the tail (i.e., high mean Recall). The results of the combination of different teacher models in NIST are reported in TABLE 9. Results. In TABLE 3, TABLE 4, and Tabel 9, we can find that the model trained by NIST can effectively improve the Mean performance across all the baseline models and datasets (e.g., 36.9% vs. 38.1% and 37.7% vs. 39.9% based on Motifs for TDE on VG and VG-OOD, respectively). Consistent improvement across all models and datasets demonstrates the universality of NIST.
+# 6.5 Visualization
+# 6.5.1 Qualitative Results of Neg-NSD
+In Fig. 10, we visualized some “unseen” visual relation triplet categories mined by Neg-NSD that never appear in the original VG dataset. Some of these triplets are easily overlooked by the annotators, such as the relation against between bike and bike, or the relation along between rock and street. These harvested new visual relation triplet categories increase both the number and diversity of samples in tail categories.
+# 6.5.2 Qualitative Results of NICE
+Fig. 11 demonstrates some qualitative results generated by Motifs, Motifs+NICE, and Motifs+NICEST. From Fig. 11, we can observe
+that Motifs tends to predict coarse-grained (i.e., head) predicates, such as near, while Motifs+NICE tends to predict fine-grained (i.e., tail) predicates, such as sitting on and covering. The Motifs+NICEST can obtain trade-off predicates that bring predictions closer to the ground-truth.
+# 7 CONCLUSIONS AND LIMITATIONS
+In this paper, we argued that two plausible assumptions about the ground-truth annotations are inapplicable to existing SGG datasets. To this end, we reformulated SGG as a noisy label learning problem and proposed a novel model-agnostic noisy label correction and sample training strategy: NICEST. It is composed of NICE and NIST, which solves the problem of noisy label learning by generating high-quality samples and efficient training, respectively. NICE can not only detect the noisy samples, but also reassign robust soft predicate labels to them. NIST compensates for the tail-biased training defect of NICE by adopting a multiteacher distillation strategy to enable the model to learn unbiased fusion knowledge. We re-organized the VG dataset to create VGOOD for a better evaluation of the model generalization capability. Extensive experiments on VG, VG-OOD and GQA datasets prove the effectiveness of each component of NICEST. Limitations The use of Multi-Teacher Knowledge Distillation in NICEST may introduce minor computational overhead. In the case of online training, it requires twice the GPU space compared to the baseline. However, with offline

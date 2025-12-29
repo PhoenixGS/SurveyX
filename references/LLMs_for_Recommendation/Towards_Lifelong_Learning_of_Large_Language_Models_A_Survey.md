@@ -1,0 +1,1021 @@
+# Towards Lifelong Learning of Large Language Models: A Survey
+JUNHAO ZHENG∗, South China University of Technology, China SHENGJIE QIU∗, South China University of Technology, China CHENGMING SHI∗, South China University of Technology, China QIANLI MA†, South China University of Technology, China
+As the applications of large language models (LLMs) expand across diverse fields, their ability to adapt to ongoing changes in data, tasks, and user preferences becomes crucial. Traditional training methods with static datasets are inadequate for coping with the dynamic nature of real-world information. Lifelong learning, or continual learning, addresses this by enabling LLMs to learn continuously and adapt over their operational lifetime, integrating new knowledge while retaining previously learned information and preventing catastrophic forgetting. Our survey explores the landscape of lifelong learning, categorizing strategies into two groups based on how new knowledge is integrated: Internal Knowledge, where LLMs absorb new knowledge into their parameters through full or partial training, and External Knowledge, which incorporates new knowledge as external resources like Wikipedia or APIs without updating model parameters. The key contributions of our survey include: (1) Introducing a novel taxonomy to categorize the extensive literature of lifelong learning into 12 scenarios; (2) Identifying common techniques across all lifelong learning scenarios and classifying existing literature into various technique groups; (3) Highlighting emerging techniques such as model expansion and data selection, which were less explored in the pre-LLM era. Resources are available at https://github.com/qianlima-lab/awesome-lifelong-learningmethods-for-llm. CCS Concepts: • Computing methodologies →Natural language processing. Additional Key Words and Phrases: Lifelong Learning, Large Language Models, Catastrophic Forgetting ACM Reference Format: Junhao Zheng, Shengjie Qiu, Chengming Shi, and Qianli Ma. 2024. Towards Lifelong Learning of Large Language Models: A Survey. 1, 1 (June 2024), 37 pages. https://doi.org/XXXXXXX.XXXXXXX
+arXiv:2406.06391v1
+# 1 INTRODUCTION
+As the applications of large language models (LLMs) [1, 29, 163, 190, 242] expand across diverse fields, the ability of these models to adapt to ongoing changes in data, tasks, and user preferences becomes crucial. Traditional training methods, which rely on static datasets to train LLMs, are increasingly inadequate for coping with the dynamic nature of real-world information [259]. Lifelong learning [201] (a.k.a., continual learning, incremental learning), or the capability of LLMs to learn continuously and adaptively over their operational lifetime [176], addresses this challenge by integrating new ∗The first three authors contributed equally to this research. †Corresponding author
+Authors’ addresses: Junhao Zheng, South China University of Technology, Guangzhou, Guangdong, China, junhaozheng47@outlook.com; Shengjie Qiu, South China University of Technology, Guangzhou, Guangdong, China, shengjieqiu6@gmail.com; Chengming Shi, South China University of Technology, Guangzhou, Guangdong, China, secmshi@mail.scut.edu.cn; Qianli Ma, South China University of Technology, Guangzhou, Guangdong, China, qianlima@scut.edu.cn.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. © 2024 Copyright held by the owner/author(s). Publication rights licensed to ACM. Manuscript submitted to ACM
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/0607/06070f4d-b35f-4be0-82c4-e6dc0301dcd4.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 1. An illustration of lifelong learning: humans can incrementally learn new skills such as walking, riding a bike, and driving a c Similarly, lifelong learning aims to equip LLMs with new languages, domain knowledge, and information.</div>
+<div style="text-align: center;">illustration of lifelong learning: humans can incrementally learn new skills such as walking, riding a bike, and driving a car ifelong learning aims to equip LLMs with new languages, domain knowledge, and information.</div>
+knowledge while retaining previously learned information, thereby preventing the problem of catastrophic forgetting [130]. An illustration of lifelong learning is provided in Figure 1. This survey delves into the sophisticated landscape of lifelong learning, categorizing strategies into two primary groups based on how new knowledge is integrated: Internal Knowledge and External Knowledge. Each category encompasses distinct approaches that collectively aim to enhance the adaptability and effectiveness of LLMs in various scenarios. We provide the taxonomy of lifelong learning methods for LLMs in Figure 2. The Internal Knowledge group, where LLMs absorb new knowledge into their parameters through full or partial training, includes strategies such as continual pretraining [20, 45, 78, 121, 158] and continual finetuning [69, 110, 142, 184, 199, 207, 270]. For example, in industry applications, continual vertical domain pretraining [47, 178] is commonly adopted, where companies frequently retrain their LLMs using domain-specific data from sectors like finance [231]. Although this enhances performance in specialized areas, it risks diminishing the model’s broader knowledge base, illustrating the challenges of maintaining a balance between specialized adaptation and general knowledge retention. Continual finetuning covers methods tailored to specific scenarios—such as text classification [69], named entity recognition [142], relation extraction [199], and machine translation [14]—as well as task-agnostic methods like instruction tuning [184], alignment [110], and knowledge editing [207]. Additionally, reinforcement learning with human feedback [183] is employed in continual alignment to ensure that LLMs adhere to human values like safety and politeness [98, 150], highlighting the trade-off known as the “alignment tax” [110], where focusing too narrowly on specific values can lead to a degradation of the model’s general capabilities. External Knowledge, which incorporates new knowledge as external resources like Wikipedia or APIs without updating model parameters, includes retrieval-based [81] and tool-based lifelong learning [155], which leverage external data sources and computational tools to extend the model’s capabilities. Retrieval-based strategies, such as retrievalaugmented generation [5, 76, 81, 90, 191], enhance text generation by providing contextually relevant, accurate, and latest information from external databases such as Wikipedia, ensuring the model’s outputs remain relevant over time. Meanwhile, tool-based learning draws parallels to human tool use [4], where models learn to utilize external computational tools, thus broadening their problem-solving capabilities without direct modifications to their core knowledge base. Manuscript submitted to ACM
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/733a/733abb61-5a3d-41cd-93fb-850f09ec8cd8.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 2. Taxonomy of lifelong learning methods for LLMs.</div>
+Through a detailed examination of these groups and their respective categories, this paper aims to highlight the integration of lifelong learning capabilities into LLMs, thereby enhancing their adaptability, reliability, and overall performance in real-world applications. By addressing the challenges associated with lifelong learning and exploring the innovations in this field, this survey seeks to contribute to the ongoing development of more robust and versatile LLMs capable of thriving in an ever-evolving digital landscape. Differences between this survey and existing ones. Lifelong learning has become an increasingly popular research topic in recent years. Massive surveys have explored the lifelong learning of neural networks [10, 35, 39, 82, 132, 146, 169, 176, 189, 201, 222, 232, 239, 240, 259, 272]. Most of the existing surveys primarily focus on the lifelong learning of Convolutional Neural Networks (CNNs) [10, 35, 132, 146, 201, 239, 272]. They examined various scenarios of lifelong learning of CNNs, including image classification [10, 35, 146, 201, 272], segmentation [239], objection detection [132], autonomous systems [169], robotics [99], and the smart city [232]. Besides, several surveys explored the lifelong learning of Graph Neural Network [39, 189, 240, 244]. However, only a small amount of literature focuses on lifelong learning of language models [10, 79, 82, 176, 222, 259]. Biesialska et al. [10] is an early survey about lifelong learning in Natural Language Processing (NLP). However, they only focus on lifelong learning of word and sentence representations, language modeling, question and answering, text classification, and machine translation. Ke et al. [82] focus on lifelong learning scenarios, including sentiment classification, named entity recognition, and summarization. They also discuss the techniques for knowledge transfer and inter-task class separation for lifelong learning. [79, 176, 222, 259] are four recent surveys closely related to this research. Zhang et al. [259] provide a comprehensive review of techniques in aligning LLMs with the ever-changing world knowledge, including continual pretraining, knowledge editing, and retrieval augmented generation. Wu et al. [222] revisit lifelong learning from three aspects, including continual pretraining, continual instruction tuning, and continual alignment. Shi et al. [176] examine the lifelong learning of LLMs from two directions including vertical direction (or vertical continual learning), i.e., a continual adaptation from general to specific capabilities, and horizontal direction (or horizontal continual learning), i.e., continual adaptation across time and domains. Jovanovic et al. [79] review several real-time learning paradigms, Manuscript submitted to ACM
+including continual learning, meta-learning, parameter-efficient learning, and mixture-of-experts learning. Although recent surveys [79, 176, 222, 259] collects the latest literature for lifelong learning, none of them covers the scenarios including continual text classification, continual named entity recognition, continual relation extraction, and continual machine translation, and have little discussion about continual alignment, continual knowledge editing, tool-based lifelong learning and retrieval-based lifelong learning. To our best knowledge, we are the first survey to provide a thorough and systematic examination of lifelong learning methods for LLMs from 12 scenarios. Contributions of this survey. The key contributions of our survey are:
+including continual text classification, continual named entity recognition, continual relation extraction, and continual machine translation, and have little discussion about continual alignment, continual knowledge editing, tool-based lifelong learning and retrieval-based lifelong learning. To our best knowledge, we are the first survey to provide a thorough and systematic examination of lifelong learning methods for LLMs from 12 scenarios. Contributions of this survey. The key contributions of our survey are: • Novel Taxonomy: We introduce a detailed and structured framework for categorizing the extensive literature of lifelong learning into 12 scenarios (shown in Figure 2). • Common Techniques: We identify common techniques across all lifelong learning scenarios in Section 2.3 and classify existing literature into various technique groups within each scenario (e.g., Table 1, 2, 3). • Future Directions: We highlight several emerging techniques, such as model expansion (section 3.1.2) and data selection (section 3.1.4), that were less explored in the pre-LLM era.
+• Novel Taxonomy: We introduce a detailed and structured framework for categorizing the extensive literature of lifelong learning into 12 scenarios (shown in Figure 2). • Common Techniques: We identify common techniques across all lifelong learning scenarios in Section 2.3 and classify existing literature into various technique groups within each scenario (e.g., Table 1, 2, 3). • Future Directions: We highlight several emerging techniques, such as model expansion (section 3.1.2) and data selection (section 3.1.4), that were less explored in the pre-LLM era.
+Organization of this survey. The remainder of this paper is organized as follows. Section 2 introduces the problem formulation, evaluation metrics, common techniques, benchmarks, and datasets for lifelong learning. Section 3 Section 4, and Section 5 examine the existing techniques for continual pretraining, continual finetuning, and externalknowledge-based lifelong learning. Section 6 discusses the existing challenges, current trends, and future directions for lifelong learning with LLMs and concludes this survey.
+# 2 OVERVIEW OF LIFELONG LEARNING
+# 2.1 Problem Formulation
+Formally, lifelong learning aims to learn a language model 𝑓𝜃: x →y from the sequence of tasks {D (1), D (2), · · · , D (𝑇)}, where the 𝑡-th task D (𝑡) = {(x(𝑡), y(𝑡))} contains input x(𝑡) and target output y(𝑡). The input x and y are both natural languages. For generation tasks such as question and answering, x and y represent questions and answers. In machine translation, x and y represent the source and target language. In text classification, x and y represent the input text and the class label name. In pretraining tasks for autoregressive language models, x represents a sequence of tokens [𝑥1,𝑥2, · · · ,𝑥𝑛−1], and y represents the corresponding sequence where each token is the next token in the original input, [𝑥2,𝑥3, · · · ,𝑥𝑛].
+# 2.2 Evaluation Metrics
+The assessment of continual learning’s effectiveness can be approached from three angles: the overall performance of all tasks learned so far, the stability of previously learned tasks, and the plasticity to new tasks.
+• Overall Measurement: (1) average accuracy (AA, higher is better) is computed as the average performance on all tasks learned so far. Formally, the average accuracy when the model has learned 𝑡tasks is defined as follows:
+where 𝑎𝑡,𝑖is the performance score on task𝑖when the model has learned 𝑡tasks. We suppose that the performance score is higher when the performance is better. (2) average incremental accuracy (AIA, higher is better) is computed
+where 𝑎𝑡,𝑖is the performance score on task𝑖when the model has learned 𝑡tasks. We suppose that the performance score is higher when the performance is better. (2) average incremental accuracy (AIA, higher is better) is computed anuscript submitted to ACM
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/af0a/af0a799f-6a60-4817-91c6-26e1f9ec1972.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/94c0/94c03e73-f13f-4dc9-961b-b07b243ab724.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 3. Four categories of common techniques for lifelong learning with LLMs.</div>
+as the average of the average accuracy after learning each task. Suppose there are a total of 𝑇tasks, we have
+Compared to AA, AIA captures the historical variation when learning each task. • Stability Measurement: (1) forgetting measure (FGT, lower is better) evaluates the average performance drop of each old task. The performance drop is defined as the difference between its maximum performance obtained previously and its current performance. Formally, the forgetting measure after learning 𝑡tasks is defined as follows:
+−    where 𝑚𝑎𝑥𝑗∈{𝑖,𝑖+1,··· ,𝑡} ({𝑎𝑗,𝑖}𝑗) represents the maximum performance of task 𝑖after task 𝑖has been learned, and 𝑎𝑡,𝑖represents the performance of task 𝑖after learning 𝑡tasks. (2) backward transfer (BWT, higher is better) evaluates the average performance change of each old task. The performance change is defined as the difference between its current performance and its performance at the time the task was initially learned. Formally, the backward transfer after learning 𝑡tasks is defined as follows:
+− • Plasticity Measurement: forward transfer (FWD, higher is better) evaluates the average enhancement in performance on each newly acquired task. This metric calculates the improvement as the difference between the task’s initial performance when first learned and the performance of a model that starts with no prior knowledge and is trained only in this task. Formally, the forward transfer after learning 𝑡tasks is defined as follows:
+− where ˜𝑎𝑖is the performance of a randomly-initialized model trained on D (𝑖) on
+# 2.3 Common Techniques
+The existing techniques for lifelong learning can be roughly divided into four categories: replay-based methods, regularization-based methods, architecture-based methods, and distillation-based methods. An illustration of four categories of lifelong learning methods is provided in Figure 3.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4ac1/4ac1fb18-8b5e-47bd-aaa3-fcf31e0e5e6c.png" style="width: 50%;"></div>
+<div style="text-align: center;">(d) Distillation-Based</div>
+(4)
+(5)
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ec30/ec30249b-2d46-4f91-b23a-9f6f58b2471b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 4. Six categories of architecture-based lifelong methods for LLMs.</div>
+lay, based on how the replay data is obtained. • Experience Replay: This approach involves retaining a subset of previously encountered data or simpler representations of that data, which are periodically reintegrated during the training of new tasks. This technique helps sustain the model’s performance on prior tasks by re-exposing it to old data, reinforcing the existing knowledge. For example, in the context of continual pretraining, [47, 78, 117, 158] systematically reintroduces domain-specific datasets during training phases to refresh the model’s memory and stabilize its learning across various domains. • Generative Replay: Instead of storing actual data, this method generates new data samples that emulate old data, using either the model itself or a separate generative model. This approach facilitates continuous learning without the need to retain large volumes of actual data, optimizing memory use and potentially protecting privacy. Within the scope of continual instruction tuning, several innovative methods exemplify generative replay: LAMOL [184], LFPT5 [153], PCLL [265] and SSR [65] generates pseudo instances that are conditioned on natural language cues.
+# 2.3.2 Regularization-Based Methods. Based on the component they regularize, methods employing regularization can be broadly categorized into weight regularization and feature regularization:
+• Weight Regularization: This technique penalizes changes to the weights that were important for previous tasks, thus preserving the performance on those tasks. Common strategies include L2 Regularization, which imposes a penalty on the square of the weights to deter large changes; Elastic Weight Consolidation (EWC) [91], selectively penalizing changes to weights that are critical for past tasks based on their calculated importance; Memory Aware Synapses (MAS) [3], which dynamically adjusts the penalty according to the parameter’s sensitivity to changes in task performance. Additionally, RecAdam [21] incorporates ideas from EWC, introducing a regularization to the pretrained weights with an annealing coefficient to gradually integrate the importance of past knowledge. • Feature Regularization: This method involves constraining the features extracted by the model so that new learning does not significantly interfere with the features learned from previous tasks. Techniques such as IDBR [69] and CPFD [245] apply constraints directly on the features to ensure that the activation patterns remain stable across tasks, maintaining a consistent representation space.
+2.3.3 Architecture-Based Methods. Architecture-based methods in lifelong learning focus on adapting the structure of models to seamlessly integrate new tasks while minimizing disruption to previously acquired knowledge. These Manuscript submitted to ACM
+<div style="text-align: center;">(e) Mixture of Experts (f) Model Expansion</div>
+techniques are particularly vital for existing large language models, such as LLaMA-65B [190], GLM-130B [242], PaLM540B [29], and GPT-4 [1], as fully fine-tuning such large-scale models demands extensive computational resources. Given these constraints, it is both practical and necessary to pursue efficient and cost-effective lifelong learning strategies. Below is a concise overview of six prominent architecture-based methods for lifelong learning and an illustration is provided in Figure 4:
+B [29], and GPT-4 [1], as fully fine-tuning such large-scale models demands extensive computational resources. Given se constraints, it is both practical and necessary to pursue efficient and cost-effective lifelong learning strategies. ow is a concise overview of six prominent architecture-based methods for lifelong learning and an illustration is vided in Figure 4: • Prompt Tuning [100]: In Prompt Tuning, trainable task-specific prompts are inserted at the model’s input layer to steer its responses towards desired outcomes. This method operates by embedding these prompts directly into the input sequence, affecting only the initial processing of input data. Examples include L2P [214], CODA-Prompt [180], SAPT [140], ConvPrompt [167], Q-Tuning [48], and Fwd-Prompt [267]. • Prefix Tuning [105]: This method involves prepending a set of trainable parameters, known as prefixes, to each layer of the transformer model. These prefixes act as contextual modifications that adjust the model’s behavior for specific tasks. Prefix Tuning influences multiple layers of the model, in contrast to Prompt Tuning. Notable implementations include EPI [213] and MoCL [202]. • LoRA (Low-Rank Adaptation) [63]: LoRA integrates low-rank matrices within certain layers of a pre-trained model to adapt its functionality without comprehensive retraining. It allows for targeted adjustments to specific model components. Methods utilizing LoRA include Lee et al. [96], C-LoRA [179], ConPET [181], GLRL [262], O-LoRA [209], CoLoR [218], InfLoRA [108], SAPT [140], MoRAL [234], EKFAC [19], and I-LoRA [164]. • Adapters [59]: These are small, two-layer feed-forward neural networks with a bottleneck structure, inserted between the layers of the existing model architecture. They allow the model to acquire new capabilities while preserving the original pre-trained parameters intact. Examples include CPT [82], LAFT-URIEL [6], DMEA [152], TSS [84], HOP [137], and SEMA [197]. • Mixture of Experts (MoE) [172]: MoE approaches utilize a gating mechanism to dynamically select from a set of expert feed-forward neural networks during inference, based on the task at hand. This allows the model to specialize certain parts of its architecture to specific types of tasks, enhancing performance and scalability. Examples include DEMix [50] and ModuleFormer [175]. • Model Expansion [22]: This category includes techniques that either reuse existing model components or expand the model architecture to accommodate new information and tasks. This can involve adding new layers or modules, or scaling existing ones to increase the model’s capacity and flexibility. Notable methods include bert2BERT [17], Wang et al. [203], LLaMA Pro [219], and SOLAR [89].
+2.3.4 Distillation-Based Methods. Based on the source of the distilled targets, distillation-based methods can be categorized into three groups: new data, old data, and pseudo-old data:
+• Distillation from New Data: These techniques involve the student model learning directly from new tasks under the guidance of a teacher model with new data. Representative methods include Learning without Forgetting (LwF) [106], where the model adapts to new classes without forgetting older ones. In continual named entity recognition, the overlap between new and old entities is addressed by methods like ExtendNER [142] and CFNER [266], which use the old model to generate pseudo soft labels for “Other” tokens, aiding the learning of new entities while maintaining old knowledge. Additionally, in continual machine translation, methods such as Cao et al. [14], COKD [170], LFR [46], and CKD [245] employ distillation strategies focusing on new data.
+Manuscript submitted to ACM
+• Distillation from Old Data: This category uses old data, which is typically stored in memory, to guide the student model through the outputs of a teacher model. Examples include CRN [7], CRL [263], SCKD [210], and CEAR [264]. • Distillation from Pseudo Old Data: When retaining old training data is impractical, methods like L&R [226], Wang et al. [206], DnR [185], PCLL [265], and LFPT5 [153] generate synthetic old data. These methods create pseudo-samples that simulate old data distribution. This category is often utilized in generation tasks and named entity recognition.
+# 2.4 Benchmarks and Datasets
+We summarize the commonly used benchmarks and datasets as follows: (1) Continual Text Classification: CLINC150 [94], BANKING77 [15], AGNews, Yelp, Amazon, DBPedia, Yahoo [254], HWU64 [120], (HL5Domains, Liu3Domains, Ding9Domains, SemEval14) [87], GLUE [196]; (2) Continual Named Entity Recognition: OntoNotes5 [60], I2B2 [143], Few-NERD [36]; (3) Continual Relation Extraction: FewRel [54], TRACRED [258]; (4) Continual Machine Translation: WMT 1, TED Talks 2; (5) Continual Knowledge Editing: zsRE [34], FEVER [188], CounterFact [133]; (6) Continual Instruction Tuning: (MNLI, QQP, RTE, SST2) GLUE [196], (WiC, CB, COPA, MultiRC, BoolQ) SuperGLUE [195], NaturalInstruction[138], SuperNI[212]; (7) Continual Alignment: HH-RLHF [183], Reddit TL;DR [194];
+# 3 METHODOLOGY: CONTINUAL PRETRAINING
+Continual pretraining [31, 49, 51, 52, 78, 86, 102, 127, 158, 227, 228, 235, 241] enhances the internal knowledge of LLMs and is particularly valuable given the high costs associated with full pretraining. Although research on continual pretraining is less developed compared to continual finetuning, it is crucial for enhancing the general capabilities of existing LLMs. There are three types of continual pretraining: Continual Vertical Domain Pretraining [31, 47, 49, 78, 102, 127, 157, 158, 227, 228, 235, 241], targeting domain-specific continuous learning without forgetting previously acquired expertise; Continual Language Domain Pretraining [6, 23, 45, 71, 217, 229, 230], focusing on adapting to evolving language usage; and Continual Temporal Domain Pretraining [52, 74, 95, 121, 124, 252, 260], which updates models with time-sensitive data and enables model to grasp the latest knowledge.
+# 3.1 Continual Vertical Domain Pretraining
+Continual Vertical Domain Pretraining [31, 47, 49, 78, 102, 127, 157, 158, 227, 228, 235, 241] involves continuously training a language model on a series of domain-specific datasets. This method ensures the model performs efficiently across multiple vertical domains or tasks while retaining previously acquired knowledge. For instance, continual pretraining on financial domain data enables LLMs to provide a better analysis of financial texts and data [231]. Experimental investigations in continual vertical domain pretraining primarily focus on addressing catastrophic forgetting [24, 58, 235]. As a pioneering work, Jin et al. [78] revealed that distillation-based approaches are most effective in retaining downstream performance in earlier domains. Building on this, Mehta et al. [131] found that models pretrained on a diverse set of tasks tend to experience less forgetting compared to those trained from scratch, highlighting the benefits of task diversity. Similarly, Cossu et al. [31] demonstrated that continual pretraining can help mitigate forgetting, supporting the notion that sustained exposure to various tasks can enhance model robustness. However, Li et al. [102] emphasized that catastrophic forgetting remains a significant challenge and cannot be fully resolved through 1https://www.statmt.org/ 2http://www.cs.jhu.edu/ kevinduh/a/multitarget-tedtalks/ Manuscript submitted to ACM
+straightforward methods such as freezing layers, modules, LoRA, and (IA)3 [113]. These findings collectively underscore the complexity of addressing catastrophic forgetting and the need for innovative approaches in continual vertical domain pretraining. Research on continual vertical domain pretraining has been evolving with various techniques, including but not limited to experience replay [47, 78, 117, 158], parameter-efficient finetuning [47, 78, 112, 178], mixture of experts [50, 73], knowledge distillation [78, 157], model expansion [17, 89, 158, 219], re-warming [49], and data selection [2, 112, 127]. 3.1.1 Parameter-Efficient Fine-Tuning. Parameter Efficient Fine-Tuning is a technique designed to optimize models for specific tasks without requiring extensive computational resources. CorpusBrain++ [47] addresses the dynamic nature of real-world knowledge-intensive language tasks by employing a backbone-adapter architecture and an experience replay strategy. In a similar vein, Med-PaLM [178] introduces instruction prompt tuning to the medical domain using a few exemplars. These methods underscore the importance of efficient fine-tuning strategies in adapting LLMs to specialized domains while addressing the challenges of maintaining performance across diverse tasks. 3.1.2 Model Expansion. Model expansion involves enhancing the architecture of pre-trained language models by increasing their width and depth to improve efficiency in knowledge acquisition and integration from continuous data streams across multiple domains. ELLE [158] employs a function-preserved model expansion strategy to achieve this, flexibly expanding the width and depth of existing pre-trained language models. Similarly, bert2BERT [17] enhances a base BERT model by expanding its architecture, enabling it to better handle new and more complex data while retaining knowledge from earlier training phases. In line with these approaches, LLaMA Pro [219] expands Transformer blocks and fine-tunes them using a new corpus, achieving superior performance in tasks related to general use, programming, and mathematics. Additionally, SOLAR [89] utilizes depth up-scaling, which involves depthwise scaling and continued pretraining, to efficiently boost LLM performance across various NLP tasks without necessitating complex changes for training and inference.
+straightforward methods such as freezing layers, modules, LoRA, and (IA)3 [113]. These findings collectively underscore the complexity of addressing catastrophic forgetting and the need for innovative approaches in continual vertical domain pretraining. Research on continual vertical domain pretraining has been evolving with various techniques, including but not limited to experience replay [47, 78, 117, 158], parameter-efficient finetuning [47, 78, 112, 178], mixture of experts [50, 73], knowledge distillation [78, 157], model expansion [17, 89, 158, 219], re-warming [49], and data selection [2, 112, 127].
+3.1.3 Re-warming. Re-warming involves adjusting the learning rate upwards when introducing new datasets for continual training. Gupta et al. [49] propose this strategy to prevent the learning rate from diminishing too much over extended training periods, which can otherwise stall the learning process when new data is introduced. Experimental results show that re-warming the model not only helps in adapting to new datasets more effectively but also enhances overall downstream task performance.
+3.1.4 Data Selection. Data Selection plays a crucial role in pretraining, where various lightweight filters are employed to ensure data quality [2, 112]. These filters include heuristic-based methods (e.g., language and item count filtering), classifier-based methods [12], and perplexity-based techniques [216]. For instance, the RedPajama-Data-v2 dataset [30] employs over 40 quality indicators for data filtering and reweighting to enhance data selection. Recently, Lin et al. [112] introduced RHO-1, which is trained with Selective Language Modeling (SLM). SLM identifies and prioritizes the most impactful tokens during the training process by assessing the gradient impact of each token, thus giving priority to those that cause higher changes in the loss function. In another approach, LESS [225] proposes a low-rank gradient similarity search algorithm to efficiently select the most relevant data for targeted instruction tuning, significantly boosting model performance by training on a carefully chosen subset of the data. Additionally, Ma et al. [127] propose EcomGPT-CT, which leverages semi-structured e-commerce data to enhance the model’s performance on domain-specific tasks. EcomGPT-CT utilizes a data mixing strategy, integrating general pretraining data with domain-specific semi-structured data, thereby improving its effectiveness in specific domains.
+# 3.2 Continual Language Domain Pretraining
+Continual Language Domain Pretraining [6, 23, 45, 71, 217, 229, 230] extends the concept of pretraining language models to continuously integrate new data and adapt to evolving language domains without forgetting previous knowledge. The studies on continual language domain pretraining focus on natural language [6, 217, 230] and code language [20, 229]. Studies on continual language domain pretraining mainly focus on techniques such as experience replay [45, 71], architecture-based methods [6, 23, 175, 229], and re-warming [71].
+3.2.1 Architecture-Based Methods. Architecture-Based Methods offer innovative solutions for enhancing the adaptability and efficiency of LLMs in continual language domain pretraining. Yadav et al. [229] improve prompt tuning by incorporating a teacher forcing mechanism, creating a pool of prompts that guide model finetuning on new tasks and compelling the model to follow specific pathways during training. Yang et al. [230] introduce the CLL-CLIP model, which extends the language understanding of CLIP [160] for continual learning of new languages. They employ Token Embedding Initialization and Regularization to mitigate catastrophic forgetting. CLL-CLIP includes an expandable token embedding layer that dynamically adjusts to accommodate linguistic differences, enabling seamless integration of new tokens. ModuleFormer [175] and Lifelong-MoE [23] are both architecture-based methods that utilize MoE to enhance LLM efficiency and adaptability. ModuleFormer leverages modularity by activating specific modules based on input tokens, ensuring targeted processing. Lifelong-MoE dynamically adds model capacity by incorporating new experts with regularized pretraining, achieving superior performance in few-shot and multi-task learning scenarios. These methods collectively demonstrate the potential of architectural innovations in addressing the challenges of continual learning.
+3.2.2 Re-warming. Re-warming, a strategy involving the temporary increase of the learning rate at the start of training on new data, allows the model to adapt more rapidly to new language. Ibrahim et al. [71] present a continual pretraining approach that combines learning rate (LR) re-warming, LR re-decaying, and data replay. In their method, LR re-warming is followed by LR re-decaying, a systematic reduction of the learning rate according to a specific schedule. This re-decaying phase helps the model stabilize after learning new language, preventing it from overfitting to recent data. This approach aligns with other methods in the field, such as those proposed by Gupta et al. [49], who emphasize the importance of adjusting learning rates to maintain model efficacy during continual vertical domain pretraining.
+# 3.3 Continual Temporal Domain Pretraining
+Continual Temporal Domain Pretraining [52, 74, 95, 121, 124, 252, 260] involves continually updating language models with temporally relevant data to maintain their accuracy and relevance as new information becomes available. Existing studies [95, 124, 166] highlight that the performance of LLMs degrades over time because they cannot learn new knowledge that is sensitive to temporal changes. For example, an LLM pretrained on 2023 data cannot answer questions about events that happened in 2024. Empirical findings highlight several challenges in the realm of temporal adaptation for language models. Lazaridou et al. [95] demonstrate significant performance degradation when models trained on past data are tested on future data, underscoring the struggle of LLMs with temporal generalization. Similarly, Röttger et al. [166] reveal that while temporal adaptation offers slight improvements in masked language model tasks, it does not significantly enhance performance on downstream tasks when compared to domain adaptation alone. Moreover, Luu et al. [124] find that although continual pretraining aids temporal adaptation, it is less effective than task-specific fine-tuning on temporally Manuscript submitted to ACM
+relevant data, with performance degrading substantially over time. These studies collectively underscore the persistent challenges in achieving robust temporal generalization and the need for more sophisticated adaptation techniques. Most existing methods utilize experience replay to alleviate forgetting. In addition to experience replay, Han et al. [52] propose the Effective CONtinual pretraining framework for Event Temporal reasoning (ECONET), which integrates targeted masking and contrastive loss to emphasize event and temporal indicators during training. Specifically, ECONET employs a mask prediction strategy, where specific tokens related to events and times are masked, and a discriminator model is used to distinguish correct from corrupted sentences, thus enhancing temporal reasoning. Zhao et al. [260] introduce temporal-adaptive finetuning, which synchronizes the internal knowledge of the model with a target time without altering the explicit contextual information provided to the model. Complementing these approaches, TimeLMs [121] are continually updated language models trained on diachronic Twitter data to capture temporal changes in language and maintain relevance over time. Together, these methods demonstrate innovative strategies for addressing the challenges of continual learning and temporal adaptation in language models.
+# 3.4 Summary
+Continual pretraining enhances LLMs by updating their internal knowledge without incurring the high costs of full pretraining. Current research spans vertical, language, and temporal domains, addressing challenges like catastrophic forgetting and temporal adaptation. Techniques such as experience replay, knowledge distillation, parameter-efficient finetuning, model expansion, and re-warming have shown promise. Despite these advances, significant challenges remain, particularly in maintaining performance over time and across diverse tasks. Future research should focus on innovative approaches to mitigate forgetting, improve temporal generalization, and develop efficient, adaptive architectures for sustained model performance.
+# 4 METHODOLOGY: CONTINUAL FINETUNING
+Continual finetuning [69, 110, 142, 184, 199, 207] enhances the internal knowledge of LLMs and adapts LLMs to specific tasks such as text classification [69], named entity recognition [142], relation extraction [199], machine translation [14] or general generation tasks such as instruction tuning [184], knowledge editing [207], and alignment with human preference [110]. We provide an illustration of the 7 continual finetuning scenarios in Figure 5.
+# 4.1 Continual Text Classification
+Text classification includes different directions, such as intent detection, sentiment classification, topic classification, and domain classification. However, past text classification methods can only detect predefined categories. In the real world, new categories may constantly challenge the deployed models. For example, the COVID-19 pandemic brought many new topic categories such as “nucleic acid detection” and “group immunity”. Thus, the emergence of Continual Text Classification allows models to continuously learn new data and recognize new emerging categories. The methods can be broadly divided into the following main categories: distillation-based [85, 119], replay-based [7, 103, 118, 182, 192, 193], regularization-based [19, 64, 69, 151, 274], architecture-based, and others [16, 87, 147, 217, 223]. A detailed comparison between these methods is provided in Table 1.
+Manuscript submitted to ACM
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f8b2/f8b29ef6-0d79-4cba-a716-f9107ed52e39.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f458/f458f688-6586-4bda-88a3-e7215e6cb528.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Continual Text Classification</div>
+<div style="text-align: center;">(e) Continual Machine Translation</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2c53/2c534094-f449-473f-807e-6ffb2d44be39.png" style="width: 50%;"></div>
+<div style="text-align: center;">(g) Continual Alignment</div>
+<div style="text-align: center;">g. 5. An illustration of continual finetuning scenarios. In each continual finetuning scenario, a model learns task 𝑡−1, 𝑡, and 𝑡+ 1 quentially (left to right). The PURPLE and the GREEN boxes represent the input and the output respectively.</div>
+4.1.1 Distillation-Based. To enhance the discriminability between text categories, CLASSIC [85] employs contrastive ensemble distillation, enhancing knowledge transfer across tasks through contrastive losses. In addition this, multistrategy rebalancing, combining cosine normalization, hierarchical knowledge distillation, and interclass margin loss are introduced by MSR [119] to tackle class imbalance. 4.1.2 Replay-Based. Several approaches integrate contrastive learning techniques or structured learning methods to enhance the quality of replay samples and the stability of the learning process. SCN [118] and InfoCL [182] optimize sample selection and leverage contrastive learning for better representation recovery and to combat replay overfitting. These methods help maintain coherence and relevance of the learned representations, addressing issues like data imbalance and the presence of rare words in specific domains. Manuscript submitted to ACM
+4.1.1 Distillation-Based. To enhance the discriminability between text categories, CLASSIC [85] employs contrastive ensemble distillation, enhancing knowledge transfer across tasks through contrastive losses. In addition this, multistrategy rebalancing, combining cosine normalization, hierarchical knowledge distillation, and interclass margin loss are introduced by MSR [119] to tackle class imbalance.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/97eb/97eb1b67-e18e-4eb3-8262-ee09a28e11c4.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Continual Named Entity Recognition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/691d/691d844a-a2ac-467b-bd45-d66985d06041.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c8ff/c8ffeffd-64b4-4af8-8589-2cf8eeda4f03.png" style="width: 50%;"></div>
+<div style="text-align: center;">(f) Continual Instruction Tuning</div>
+Table 1. Comparison between representative methods for continual text classification and continual named entity recognition. PEFT represents whether utilize parameter-efficient finetuning methods for training models. Replay, Regularization, Distillation, Architecture refer to the common techniques summarized in Section 2.3.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/aa40/aa40dd61-890b-40c3-91fc-85aeb5138f8f.png" style="width: 50%;"></div>
+Each method incorporates adaptations tailored to specific domains or tasks, ensuring that the continual learning model effectively handles the unique challenges and characteristics of those domains. For example, DR-EMR [193] integrates social commonsense knowledge, and CRN [7] specifically targets the medical field’s challenges, showing a deep integration of domain-specific knowledge into the learning processes. Innovative memory management strategies such as DR-EMR [193], PAGeR [192] and the use of lightweight encoders PLE [103] with prefix guidance are employed to mitigate catastrophic forgetting and promote efficient knowledge Manuscript submitted to ACM
+retention. These strategies include selecting representative samples that best capture the essence of previous tasks an employing lightweight models that adapt more dynamically to new information without losing previous knowledge
+employing lightweight models that adapt more dynamically to new information without losing previous knowledge. 4.1.3 Regularization-Based. To improve the efficiency of parameter updates, techniques such as selectively updating a small subset of parameters, as seen in the PE [274], IDBR [69], and EKFAC [19] prioritize reducing the computational burden. These methods ensure that the learning process is both resource-efficient and effective at integrating new knowledge without overwriting valuable information from previous tasks. To automate the adjustment of regularization processes, several approches eliminate the need for manual hyperparameter tuning, allowing the model to adaptively balance retaining old knowledge with acquiring new information, as showcased in CCFI [64], Qian et al. [151].
+such as hierarchical overlay projections in the HOP [137] and dynamic routing mechanisms in B-CL [87] and CTR [83], and ADA [37]. These strategies optimize the transfer and sharing of knowledge across different tasks, improving the efficiency and effectiveness of the model when learning new tasks. To protect task-specific knowledge, several studies introduce mechanisms for parameter isolation, such as B-CL’s [87] continual learning adapter, selective activation/deactivation of transformer components, instance-wise relation distillation in SCCL [123] and private parameter isolation in EPI [213]. These approaches effectively minimize interference between new and old tasks, maintaining performance on previous tasks while integrating new ones, thus addressing catastrophic forgetting.
+4.1.5 Others. In addition to continual text classification tasks, there are also tasks focused on few-shot text classifica tion and multilingual text classification, such as Pasunuru et al. [147] and ENTAILMENT [223] focus on improving few-shot learning capabilities, which involve training models with very few examples per class, CL-KD [16] and LR ADJUST [217] continually integrate new languages into an existing model, alleviating catastrophic forgetting in multilingual settings.
+# 4.2 Continual Named Entity Recognition
+Continual Named Entity Recognition is designed to adaptively identify novel entity types, addressing the dynamic emergence of new entities in the real world. It involves incrementally training models on newly annotated datasets that contain only these novel entities, enabling the models to gradually expand their recognition capabilities to include these new classes without forgetting previously learned entities. For example, in the sentence “Liverpool lost to Chelsea last week”, a continual named entity recognition model aims to correctly label “Liverpool” and “Chelsea” as [Sports Team], while non-entity tokens are labeled as [Other]. This approach allows the model to adapt to recognize new entities such as [Politician] in other contexts. In addition to the challenge of catastrophic forgetting, continual named entity recognition must also contend with semantic shifts [159, 266]. Semantic shift occurs when the classification of a label changes, for instance, from “Other” to a specific entity type, or vice versa. This is particularly challenging as only entities relevant to the current task are annotated, while both previously learned and unseen entities are labeled as “Other”. Existing methods can be broadly classified into four primary categories: distillation-based [26, 142, 245–247, 255, 266], replay-based [13, 125, 226, 238], prototype-based [27, 93, 159], architecture-based [116, 174, 181]. A detailed comparison between these methods is provided in Table 1. Manuscript submitted to ACM
+4.2.1 Distillation-Based. In general continual learning scenarios, feature-level knowledge distillation is commonly employed to impose implicit knowledge constraints on the student model in the feature space. In continual named entity recognition, knowledge distillation involves inputting new training examples into the teacher model and guiding the student model using the resulting logits. This effectively utilizes old samples from new training examples for implicit replay, thereby impose explicit knowledge constrains on the student model. As a pioneer work, ExtendNER [142], considering the realistic scenario of continuously emerging named entities, introduces knowledge distillation into named entity recognition to construct a framework for continuous named entity recognition. Subsequent methods, integrating knowledge distillation techniques, have been improved to address semantic shift caused by the "Other" entity type, such as DLD [247], RDP [246], CPFD [245], etc. In addition to this, some methods have introduced new perspectives or technologies. CFNER [266] establishes a causal framework [149, 268, 271] to link old and new knowledge, addressing noisy labels with curriculum learning. SpanKL [255] shifts the paradigm by modeling continual named entity recognition at the span-level, which reduces conflicts in labeling. SKD-NER [26] refines distillation by incorporating reinforcement learning to optimize the selection of temperature coefficients and weights for better soft label generation.
+4.2.2 Replay-Based. Although continual named entity recognition is a token-level task, the stored replay samples are at the sentence level, incorporating contextual information about the entities. To better utilize replay samples for reviewing old entities, several works have designed different methods to extract old knowledge. L&R [226] employs generative models to produce pseudo-samples that enhance the training with historical entity data. OCILNER [125] utilizes replay samples to calculate the centers of old-class entities and employs contrastive learning to cluster entities in the feature space, enhancing the discriminability between entities. KD+R+K [238] aggregates the feature representations of new and old entities based on their similarity, initializing representations for new entities and enhancing the associations between new and old entities. To improve storage efficiency, KCN [13] leverages the similarity between replay samples and class centers to gradually prune old samples that are far from the class centers while continuously adding new samples.
+4.2.3 Prototype-Based. Compared to replay-based methods, prototype-based approaches often employ clustering centers or class means to define prototypes, avoiding the direct use of old samples. This approach mitigates concerns about privacy and storage limitations to some extent. SDAPN [27] assigns portions of the feature space to new classes preemptively and uses the similarity between new samples and old class prototypes to correct biases. ProtoNER [93] replaces traditional linear classifiers with prototypes derived from the last hidden layer’s feature vectors, refining the classification process. IS3 [159] combats semantic biases by integrating prototypes with a de-biased cross-entropy loss, ensuring the model does not disproportionately favor newer over older classes.
+4.2.4 Architecture-Based. Addressing the challenge of high resource costs associated with full model fine-tuning, architecture-based methods [116, 174, 181] focus on modifying the model structure to support continual learning without extensive retraining. ICE [116] maintains a static model backbone, using frozen classifiers for known entities and introducing new classifiers for emerging entities during training. At inference, these classifiers are unified to ensure comprehensive entity recognition. ConPET [181] employs distinct Parameter Efficient Tuning (PET) modules for each task, significantly reducing tuning overhead and minimizing both overfitting and forgetting.
+Table 2. Comparison between representative methods for continual text relation extraction and continual machine translation. PEFT represents whether utilize parameter-efficient finetuning methods for training models. Replay, Regularization, Distillation, Architecture refer to the common techniques summarized in Section 2.3.
+Method
+Year
+Publication
+Backbone
+Dataset
+Code
+PEFT
+Replay
+Distillation
+Regularization
+Architecture
+Others
+Continual Relation Extraction
+MLLRE [145]
+2019
+RepL4NLP
+Bi-LSTM
+FewRel, SimpleQuestions
+/
+/
+�
+/
+/
+/
+Meta Learning
+EA-EMR [199]
+2019
+NAACL
+Bi-LSTM
+FewRel, SimpleQuestions
+Link
+/
+�
+/
+/
+/
+/
+EMAR [53]
+2020
+ACL
+Bi-LSTM
+FewRel, SimpleQuestions, TACRED
+Link
+/
+�
+/
+/
+/
+Prototype
+CML [221]
+2021
+AAAI
+Bi-LSTM
+FewRel, SimpleQuestions, TACRED
+Link
+/
+�
+/
+/
+/
+Meta Learning
+RP-CRE [32]
+2021
+ACL
+BERT
+FewRel, TACRED
+Link
+/
+�
+/
+/
+/
+Prototype
+CRL [263]
+2022
+ACL (Findings)
+BERT
+FewRel, TACRED
+Link
+/
+�
+�
+/
+/
+Contrastive Learning, Prototype
+ERDA [154]
+2022
+ACL
+Bi-LSTM, BERT
+FewRel, TACRED
+Link
+/
+�
+/
+/
+/
+Contrastive Learning, Prototype
+FEA [204]
+2022
+/
+BERT
+FewRel, TACRED
+/
+/
+�
+/
+/
+/
+/
+CRECL [62]
+2022
+COLING
+BERT
+FewRel, TACRED
+Link
+/
+�
+/
+/
+/
+Contrastive Learning, Prototype
+ACA [205]
+2022
+EMNLP
+BERT
+FewRel, TACRED
+Link
+/
+�
+/
+/
+/
+Data Augmentation
+KIP-Framework [250]
+2022
+TASLP
+BERT
+FewRel, SimpleQuestions, TACRED
+/
+/
+�
+/
+/
+/
+Prototype
+ConPL [25]
+2023
+ACL
+BERT
+FewRel, TACRED
+Link
+Prompt Tuning
+�
+/
+/
+/
+Prototype
+Xia et. al [224]
+2023
+ACL (Findings)
+BERT
+FewRel, TACRED
+Link
+/
+�
+/
+/
+/
+Adversarial Tuning
+CEAR [264]
+2023
+ACL
+BERT
+FewRel, TACRED
+Link
+/
+�
+�
+/
+/
+Contrastive Learning, Prototype
+SCKD [210]
+2023
+ACL (Findings)
+BERT
+FewRel, TACRED
+Link
+/
+�
+�
+�
+/
+Data Augmentation
+ICE [116]
+2023
+ACL (Findings)
+BERT
+TACRED
+Link
+/
+/
+/
+/
+�
+Frozen Backbones
+ICA-Proto [75]
+2023
+EACL (Findings)
+BERT, Glove
+FewRel
+/
+/
+/
+/
+/
+/
+Prototype
+SEQ* [269]
+2023
+/
+BERT, GPT2, Pythia
+FewRel, TACRED
+Link
+/
+/
+/
+/
+/
+Classifier Expasion
+Continual Machine Translation
+Khayrallah et. al. [88]
+2018
+NGT
+Bi-LSTM
+WMT, TED-Talks, EMEA
+Link
+/
+/
+�
+/
+/
+Escolano et. al. [38]
+2019
+JASIST
+Transformer
+WMT
+/
+/
+/
+/
+/
+�
+Decomposed Vector Quantization
+Barrault et. al. [8]
+2020
+WMT
+GRU
+WMT
+/
+/
+/
+/
+/
+�
+/
+Berard et. al. [9]
+2021
+WMT
+BERT
+TED-Talks
+/
+/
+/
+/
+/
+�
+Vocabulary
+Cao et. al. [14]
+2021
+NAACL
+Transformer
+WMT, IWSLT2013
+Link
+/
+�
+�
+/
+/
+/
+Garcia et. al. [41]
+2021
+NAACL
+Transformer
+WMT, Paracrawl
+/
+/
+/
+/
+/
+�
+Vocabulary Substitution
+COKD [170]
+2022
+ACL
+Transformer
+WMT, IWSLT15, TED bilingual
+Link
+/
+/
+�
+/
+/
+/
+COMETA [251]
+2022
+EMNLP (Findings)
+Transformer
+CN-25
+Link
+/
+/
+/
+�
+/
+Meta Learning
+LFR [46]
+2022
+EMNLP
+mBART50-nn
+FLORES-101, OPUS100
+Link
+/
+/
+�
+�
+/
+/
+EVS [67]
+2022
+EMNLP
+Transformer
+WMT
+Link
+/
+/
+/
+/
+�
+Vocabulary Substitution
+CKD [256]
+2023
+ACL
+Transformer
+LDC, AI Challenger 2018, translation2019zh,
+TED transcripts, Subtitles
+Link
+/
+/
+�
+/
+/
+/
+KT [68]
+2023
+ACL
+Transformer
+WMT
+Link
+/
+/
+/
+/
+�
+/
+BVP [114]
+2023
+EMNLP
+mBART50-nn
+WMT
+Link
+/
+/
+/
+/
+�
+Pruning
+SG-Rep [165]
+2024
+/
+T5
+IWSLT17, UNPC
+Link
+/
+Pseudo Sample
+/
+/
+/
+/
+F-MALLOC [220]
+2024
+NAACL
+Transformer
+WMT
+Link
+/
+/
+/
+/
+�
+Pruning
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6efc/6efcb5da-5080-4929-8808-7a0f148b5a67.png" style="width: 50%;"></div>
+# 4.3 Continual Relation Extraction
+Continual Relation Extraction (CRE) entails updating relation extraction models to recognize new relationships while retaining accuracy on previously learned data. For instance, from the sentence "Lange was born July 23, 1957, in Illinois," a relation extraction system identifies the relationship between "Lange" and "Illinois" as "State or Province of Birth." The challenge is for the system to learn new relationships, like "Country of Headquarters," without forgetting existing ones. Apart from catastrophic forgetting, continual relation extraction confronts two challenges: (1) Order Sensitivity [28, 237]: This refers to the phenomenon where the performance of the model varies depending on the sequence of task introduction. (2) Interference of Analogous Relations [205, 264]: Challenges arise when the model confuses similar relations, such as "country of headquarters" and "state or province of headquarters." In continual relation extraction, experience replay [32, 53, 62, 263] are widely favored due to their efficacy in managing both the acquisition of new information and the retention of old knowledge. Five popular techniques are combined with experience replay: knowledge distillation [210, 263, 264], relation prototypes [32, 53, 204, 250], contrastive learning [62, 126, 263, 264], meta learning [145, 221], data augmentation [126, 154, 205]. Table 2 provides a detailed comparison of these methods. Manuscript submitted to ACM
+4.3.1 Knowledge Distillation. Focal Knowledge Distillation (FKD) is utilized by CEAR[264]. Specifically, FKD focuses on assigning higher importance to analogous relations, whereas SCKD [210] emphasizes serial distillation with pseudo-samples to bolster few-shot learning capabilities. In contrast, the focus on consistent relation representation learning across tasks makes CRL [263] align embedding in memory maintenance and ensure stability in the embedding space. 4.3.2 Relation Prototypes. Relation prototypes refer to a representation of relation in the feature space. As a pioneer work, EMAR [53] focus on utilizing relation prototypes for memory replay. Similarly, relation prototypes are used by RP-CRE [32] to refine sample embeddings. Inspired by EMAR [53] and RP-CRE [32], a more simplified variant in FEA [204] operates through the fast adaption and balanced tuning process. With the help of external knowledge, KIP-Framework[250] infuses prototypes with these knowledge to generate prototypes. 4.3.3 Contrastive Learning. The application of contrastive learning [72] varies from focusing on data distribution and embedding stability (CRECL [62] and CRL [263]) to addressing few-shot learning and overfitting challenges (CPL[126]), as well as enhancing the distinction of analogous relations (CEAR[264]). CRECL[62] uses a contrastive network, which contrasts a given instance with prototypes of each candidate relation stored in a memory module. For contrastive replay, it is used by CRL[263] to train memorized samples. Similarly, CEAR[264] utilizes contrastive learning alongside a linear method for training, where the former helps in improving feature space alignment and the latter ensures task-specific decision boundaries. Besides, a margin-based contrastive learning objective is introduced by CPL [126] to gain discriminative representations. 4.3.4 Meta Learning. To enable models to adapt quickly to new tasks while mitigating catastrophic forgetting, MLLRE [145] and CML [221] both use meta-learning frameworks. On the one hand, MLLRE[145] employs the REPTILE algorithm [144] for gradient-based meta-learning without second-order derivatives. On the other hand, CML[221] combines curriculum learning with meta learning to create a dynamic learning curriculum that prioritizes tasks based on difficulty. The main difference is that CML[221] focuses on task ordering and the difficulty in constructing learning curricula, while MLLRE[145] directly optimizes meta-objectives. 4.3.5 Data Augmentation. Data augmentation is leveraged to enrich the training data and improve model generalization across tasks, especially in low-resource settings. The majority of methods utilize external data[154] or generated samples[126, 205]. Adversarial examples are incorporated by ACA[205] to enhance model robustness and generalization. Besides, ERDA[154] selects informative samples from an unlabeled corpus that consists of sentences from Wikipedia to provide more relational knowledge for few-shot tasks. With the help of large language models, CPL [126] guides them to generate diverse and relevant samples for memory augmentation. 4.4 Continual Machine Translation Continual Machine Translation [14, 16, 41, 46, 67, 68, 170, 217, 253] is devised to cater to the demands of multilingual tasks in real-world scenarios, facilitating the addition of new languages over time. Continual machine translation
+4.3.1 Knowledge Distillation. Focal Knowledge Distillation (FKD) is utilized by CEAR[264]. Specifically, FKD focuses on assigning higher importance to analogous relations, whereas SCKD [210] emphasizes serial distillation with pseudo-samples to bolster few-shot learning capabilities. In contrast, the focus on consistent relation representation learning across tasks makes CRL [263] align embedding in memory maintenance and ensure stability in the embedding space.
+# 4.4 Continual Machine Translation
+Continual Machine Translation [14, 16, 41, 46, 67, 68, 170, 217, 253] is devised to cater to the demands of multilingual tasks in real-world scenarios, facilitating the addition of new languages over time. Continual machine translation typically undergoes training on a general domain corpus, encompassing a collection of various languages, followed by fine-tuning through continued training on an in-domain corpus specific to new languages. The objective is to learn the new language while retaining knowledge of the initial languages. Most of the methods for continual machine translation are single-step incremental language learning [14, 16, 41, 46, 67, 68, 170, 253], and a small number are multi-step incremental language learning [16, 217]. Several articles contribute to the field by proposing new benchmarks Manuscript submitted to ACM
+tailored to assess lifelong learning capabilities in multilingual contexts. Barrault et al. [8] provides training, lifelong, and test datasets for English-German and English-French to push forward research in lifelong learning NMT. Conversely, CLLE [251] introduces a Chinese-centric benchmark, featuring tasks that test a model’s ability to handle closely related languages and diverse language families, reflecting real-world demands. Furthermore, Continual machine translation methods can be broadly classified into four primary approaches: distillation-based [14, 170, 256], regularization-based [46, 88, 114], architecture-based [9, 41, 67, 68, 220], and others [8, 38, 165, 251]. A detailed comparison between these methods is provided in Table 2. 4.4.1 Distillation-Based. Traditional NMT models are unable to handle continual or sequential learning problems without forgetting previously learned knowledge. Therefore, there are several methods innovating with different facets of dynamic knowledge distillation, such as Cao et al. [14] and CKD [256]. In addition to this, to address the unbalanced training problem, COKD [170] balances the model’s focus across training samples, uniquely integrating dynamically updated teacher models.
+tailored to assess lifelong learning capabilities in multilingual contexts. Barrault et al. [8] provides training, lifelong, and test datasets for English-German and English-French to push forward research in lifelong learning NMT. Conversely, CLLE [251] introduces a Chinese-centric benchmark, featuring tasks that test a model’s ability to handle closely related languages and diverse language families, reflecting real-world demands. Furthermore, Continual machine translation methods can be broadly classified into four primary approaches: distillation-based [14, 170, 256], regularization-based [46, 88, 114], architecture-based [9, 41, 67, 68, 220], and others [8, 38, 165, 251]. A detailed comparison between these methods is provided in Table 2.
+without forgetting previously learned knowledge. Therefore, there are several methods innovating with different facets of dynamic knowledge distillation, such as Cao et al. [14] and CKD [256]. In addition to this, to address the unbalanced training problem, COKD [170] balances the model’s focus across training samples, uniquely integrating dynamically updated teacher models.
+4.4.2 Regularization-Based. To balance learning objectives on continual neural machine translation, there are many different implementations, such as regularizing the training process to minimize deviation from established models [88] identifying parameter updates that risk minimal forgetting [46], or categorizing parameters based on their relevance to specific tasks or overall functionality [114].
+and model structure [38, 68, 220]. Lexical structure refers to the set of unique tokens or words that an NMT model can recognize and generate. These tokens typically include words, subwords, or characters that the model uses to process and translate text from one language to another. EVS [67] optimizes embedding spaces by dynamically managing vocabularies based on their entropy values across languages, enhancing linguistic diversity without enlarging the model. Similarly, the method proposed by Garcia et al. [41] refines embedding efficiency by selectively substituting vocabulary parts, maintaining translation quality while integrating new languages efficiently. Model structure innovations are highlighted by the introduction of dynamic resource allocation mechanisms and modular adaptation, which determines how effectively a model can handle different linguistic elements, especially when translating between multiple languages. F-MALLOC [220] introduces a memory allocation model that adapts to new languages by dynamically adjusting resources, thus supporting scalable and efficient learning. Concurrently, KT [68] integrates language-specific adapters into the NMT framework, facilitating seamless knowledge transfer and enabling the model to learn new languages without extensive retraining, thereby preserving its performance across a diverse linguistic spectrum.
+# 4.5 Continual Instruction Tuning
+The traditional machine learning paradigm for NLP assumed that target tasks were predefined and static, and that task supervision relied on labeled samples. This raises the question of how to build a system that can continuously learn new tasks from their instructions. Continual Instruction Tuning addresses this by designing various instructions for the same model to solve multiple NLP tasks. Earlier literature using GPT-2 [161] often used simple instructions like dataset names or special tokens [184]. In this survey, instruction tuning is defined more broadly, encompassing methods evaluated on a variety of generation tasks. Manuscript submitted to ACM
+Table 3. Comparison between representative methods for continual instruction tuning, continual knowledge editing, and continual alignment. PEFT represents whether utilize parameter-efficient finetuning methods for training models. Replay, Regularization, Distillation, Architecture refer to the common techniques summarized in Section 2.3.
+Method
+Year
+Publication
+Backbone
+Dataset
+Code
+PEFT
+Replay
+Distillation
+Regularization
+Architecture
+Others
+Continual Instruction Tuning
+IDS [208]
+2019
+ACL
+GRU
+SubD1-D5
+Link
+/
+/
+/
+/
+/
+Uncertainty Estimation
+DnR [185]
+2020
+COLING
+GPT-2
+SST, QA-SRL, WOZ, SQUAD, WIkiSQL, AG-
+News, Yelp, Amazon, DBPedia, Yahoo
+/
+/
+Pseudo Sample
+�
+/
+/
+/
+ARPER [136]
+2020
+EMNLP (Findings)
+GPT-2
+MultiWoZ-2.0
+Link
+/
+�
+/
+�
+/
+/
+LAMOL [184]
+2020
+ICLR
+GPT-2
+SST, QA-SRL, WOZ, SQUAD, WIkiSQL, AG-
+News, Yelp, Amazon, DBPedia, Yahoo
+Link
+/
+Pseudo Sample
+/
+/
+/
+/
+Rational LAMOL [80]
+2021
+ACL
+GPT-2
+BoolQ, Movie, SciFact
+Link
+/
+Pseudo Sample
+/
+/
+/
+/
+TPEM [43]
+2021
+ACL
+GRU
+In-Car Assistant, Multi-WOZ 2.1, CamRest
+Link
+/
+/
+/
+/
+�
+Pruning
+BiHNet [77]
+2021
+EMNLP (Findings)
+BART
+CLIF-26, CLIF-55
+Link
+Adapters
+/
+/
+�
+/
+Hyper-Networks
+AdapterCL [128]
+2021
+EMNLP
+GPT-2
+TaskMaster 2019, TaskMaster 2020, Schema
+Guided Dialogue, MultiWoZ
+Link
+Adapters
+/
+/
+/
+�
+/
+ACM [257]
+2022
+ACL
+GPT-2
+E2ENLG, RNNLG, WikiSQL, CNN/DailyMail,
+MultiWOZ
+Link
+Adapters
+Pseudo Sample
+/
+/
+�
+/
+InstructionSpeak [236]
+2022
+ACL
+BART
+NaturalInstructions
+/
+/
+�
+/
+/
+/
+/
+Continual Prompt Tuning [273]
+2022
+ACL
+T5
+Schema Guided Dialogue
+Link
+Prompt Tuning
+�
+/
+/
+/
+/
+PCLL [265]
+2022
+EMNLP
+GPT-2
+DSTC, TOP
+Link
+/
+Pseudo Sample
+�
+/
+/
+Variational Auto Encoder
+CT0 [168]
+2022
+EMNLP
+T0
+Simpl, HGen, Haiku, CQA, InqQG, EmDg, Exp,
+TwSt
+Link
+/
+�
+/
+/
+/
+/
+LFPT5 [153]
+2022
+ICLR
+T5
+AGNews, Amazon Review, DBPedia, Yahoo, CN-
+NDM, WikiHow, Xsum
+Link
+Prompt Tuning
+Pseudo Sample
+/
+/
+/
+/
+LPT [109]
+2023
+ACL
+T5
+ACE05-Ent, CoNLL03, CoNLL04, ACE05Rel,
+SciERC,NYT, CASIE, ACE05-Evt, SemEval-14,
+SemEval-15, SemEval-16
+Link
+Prompt Tuning
+/
+/
+/
+�
+Pruning
+DYNAINST [141]
+2023
+ACL
+BART
+SuperNI
+/
+/
+�
+/
+/
+/
+/
+HMI-LAMOL [129]
+2023
+EACL
+GPT-2, BERT
+SQuAD, WikiSQL, SST, QASRL, WOZ, AGNews,
+Yelp, Amazon, DBPedia, Yahoo
+Link
+/
+Pseudo Sample
+/
+/
+/
+/
+DMEA [152]
+2023
+EMNLP
+GPT-2, BERT
+RNNLG, E2ENLG, CNN/DailyMail, MultiWOZ,
+WikiSQL
+/
+Adapters
+/
+/
+/
+/
+/
+O-LoRA [209]
+2023
+EMNLP (Findings)
+LLaMA, T5
+GLUE, SuperGLUE, IMDB
+Link
+LoRA
+/
+/
+�
+�
+Orthogonal Subspaces
+TSS [84]
+2023
+EMNLP (Findings)
+BART
+AGNews, Yelp, Amazon, DBPedia, Yahoo
+Link
+Adapters
+/
+/
+/
+�
+/
+ProgPrompt [162]
+2023
+ICLR
+T5, BERT
+GLUE, SuperGLUE, IMDB
+Link
+Prompt Tuning
+/
+/
+/
+�
+/
+SAPT [140]
+2024
+/
+LLaMA, T5
+SuperNI, GLUE, SuperGLUE, IMDB
+/
+Prompt Tuning, LoRA
+Pseudo Sample
+/
+/
+�
+/
+InsCL [211]
+2024
+/
+LLaMA
+SuperNI
+/
+/
+�
+/
+/
+/
+/
+I-LoRA [164]
+2024
+/
+LLaMA
+ScienseQA, MedMCQA, FOMC, JEC-QA, C-
+STANCE, 20Minuten, NumGLUE, MMLU, BBH,
+PIQA
+Link
+LoRA
+�
+�
+/
+�
+/
+SSR [65]
+2024
+/
+LLaMA, Alpaca
+SuperNI
+/
+LoRA
+Pseudo Sample
+/
+/
+/
+/
+SLM [11]
+2024
+ICLR
+LLaMA, T5, BERT
+AGNews, Yelp, Amazon, DBPedia, Yahoo, Medi-
+cal, MMLU, Finance
+Link
+LoRA
+/
+/
+/
+/
+/
+Q-Tuning [48]
+2024
+NAACL (Findings)
+BERT, T5
+GLUE, SuperGLUE, IMDB
+/
+Prompt Tuning
+/
+/
+/
+�
+/
+SAPT [140]
+2024
+/
+T5, LLaMA
+SuperNI, GLUE, SuperGLUE, IMDB
+/
+LoRA, Prompt Tuning
+Pseudo Sample
+�
+�
+/
+/
+MoRAL [234]
+2024
+/
+LLaMA, Phi
+Arxiv, HotpotQA
+/
+LoRA
+/
+/
+/
+�
+/
+Continual Knowledge Editing
+Lee et. al. [96]
+2022
+ACL (Findings)
+T5
+zsRE, NQ-SituatedQA
+Link
+LoRA, K-Adapter
+/
+/
+�
+�
+/
+SLAG [56]
+2023
+EACL
+BART, RoBERTa
+zsRE, Wikidata5m, FEVER, LeapOfThought
+Link
+/
+/
+/
+/
+/
+/
+GRACE [55]
+2023
+ICLR
+T5, BERT
+zsRE, SCOTUS, Natural Questions
+/
+GRACE Adapters
+/
+/
+/
+�
+Codebook
+TPatcher [70]
+2023
+ICLR
+BART, BERT
+zsRE, FEVER, CBQA
+Link
+/
+/
+/
+/
+�
+/
+WilKE [61]
+2024
+/
+GPT-J, GPT-2
+CounterFact
+/
+/
+/
+/
+/
+�
+/
+Continual Alignment
+Zhao et. al. [261]
+2023
+/
+LLaMA, GPT-2
+BBQ, Pile, HarmfulQA
+/
+LoRA
+�
+/
+/
+/
+Data Filtering, Self-Correction
+CPPO [249]
+2024
+ICLR
+LLaMA, GPT-2
+HH-RLHF, Reddit TL;DR
+Link
+/
+/
+�
+/
+/
+/
+COPR [248]
+2024
+/
+LLaMA, GPT-J, OPT,
+HH-RLHF, Reddit TL;DR, IMDB
+Link
+/
+/
+/
+�
+/
+/
+Chen et al. [18] proposes a comprehensive benchmark test, the Continuous Instruction tuNing (CoIN), to evaluate existing models in the sequential instruction tuning paradigm. CoIN evaluates two aspects: instruction following and general knowledge. It consists of 10 commonly used datasets spanning 8 task categories, ensuring a diverse range of instructions and tasks. Continual instruction tuning methods can be broadly classified into three primary approaches: replay-based [65, 80, 129, 153, 184, 185, 265], regularization-based [11, 77, 136, 209, 211], gradient-based [92, 97], and architecture-based [43, 48, 84, 109, 128, 162, 168, 208, 236, 257, 273]. A detailed comparison between these methods is provided in Table 3.
+4.5.1 Replay-Based. The Replay-Based methods include the Generative Replay-Based method [65, 80, 129, 153, 184 185, 265] and the Experience Replay-Based method [164].
+Generative replay inspired by hippocampal memory mechanisms [177], this foundational paper introduces a novel approach by mimicking the human hippocampus, renowned for its role in memory formation and recall. The model efficiently retains prior knowledge while assimilating new information, setting a baseline for addressing catastrophic forgetting. Progressing from this foundation, LAMOL [184] embeds the generative replay directly within the language model. This integration simplifies the architecture and enables dynamic pseudo-sample generation, enhancing memory consolidation without extra computational overhead. Further refining this approach, LFPT5 [153] utilizes prompt tuning to adapt quickly to new tasks with few examples, significantly reducing the data dependency and maintaining performance across tasks. Futhermore, there are several methods to improve the framework of Generative replay, such as PCLL [265], HMI-LAMOL [129], SSR [65]. A few approaches follow the conventional setting using experience replay, such as I-LoRA [164].
+approach by mimicking the human hippocampus, renowned for its role in memory formation and recall. The model efficiently retains prior knowledge while assimilating new information, setting a baseline for addressing catastrophic forgetting. Progressing from this foundation, LAMOL [184] embeds the generative replay directly within the language model. This integration simplifies the architecture and enables dynamic pseudo-sample generation, enhancing memory consolidation without extra computational overhead. Further refining this approach, LFPT5 [153] utilizes prompt tuning to adapt quickly to new tasks with few examples, significantly reducing the data dependency and maintaining performance across tasks. Futhermore, there are several methods to improve the framework of Generative replay, such as PCLL [265], HMI-LAMOL [129], SSR [65]. A few approaches follow the conventional setting using experience replay, such as I-LoRA [164]. 4.5.2 Regularization-Based. The regularization-based methods can be can be broadly categorized into direct [136, 209] and indirect [11, 77, 211] regularization approaches. Direct regularization directly influencing model parameters to preserve prior learning. For instance, ARPER [136] integrates adaptive regularization directly into the training process, utilizing regularization terms that directly mitigate the forgetting of previously acquired knowledge during the learning of new dialogue tasks. Similarly, O-LoRA [209] employs an orthogonal low-rank adaptation (O-LoRA) method that directly constrains gradient updates to be orthogonal to the subspaces of previous tasks. Indirect regularization utilizes factors such as similarity and importance between tasks to impose indirect restrictions on model parameters. For example, BiHNet [77] leverages a bi-level hypernetwork to create task-specific adapters, an architectural adjustment that indirectly preserves past knowledge by minimizing task interference. InsCL [211] utilizes dynamic replay of enriched data, indirectly facilitating continual learning by reintroducing crucial features of past tasks. Additionally, SLM [11] introduces a dynamic re-parameterization mechanism that adjusts the model’s parameters according to the task distribution, ensuring that each task’s learning is compartmentalized, thereby reducing the overwrite of important historical information. 4.5.3 Gradient-Based. In the realm of continual instruction tuning, effectively managing knowledge transfer and mitigating catastrophic forgetting are critical challenges that influence the robustness and versatility of language models. Some advances have focused on innovative gradient manipulation techniques to address these issues. Lee et al. [97] proposes a method that enhances gradient alignment across different tasks to promote better generalization and minimize negative transfer. Complementarily, Korbak et al. [92] introduces a framework for dynamically adjusting the learning parameters to preserve previously acquired knowledge during the fine-tuning process. Together, these methodologies underscore the potential of sophisticated gradient strategies to refine the adaptability of language models across diverse linguistic tasks without compromising their performance on previously learned information. 4.5.4 Architecture-Based. Architecture-based approaches can be categorized into model-based [43, 208], adapter-
+4.5.2 Regularization-Based. The regularization-based methods can be can be broadly categorized into direct [136, 209] and indirect [11, 77, 211] regularization approaches. Direct regularization directly influencing model parameters to preserve prior learning. For instance, ARPER [136] integrates adaptive regularization directly into the training process, utilizing regularization terms that directly mitigate the forgetting of previously acquired knowledge during the learning of new dialogue tasks. Similarly, O-LoRA [209] employs an orthogonal low-rank adaptation (O-LoRA) method that directly constrains gradient updates to be orthogonal to the subspaces of previous tasks. Indirect regularization utilizes factors such as similarity and importance between tasks to impose indirect restrictions on model parameters. For example, BiHNet [77] leverages a bi-level hypernetwork to create task-specific adapters, an architectural adjustment that indirectly preserves past knowledge by minimizing task interference. InsCL [211] utilizes dynamic replay of enriched data, indirectly facilitating continual learning by reintroducing crucial features of past tasks. Additionally, SLM [11] introduces a dynamic re-parameterization mechanism that adjusts the model’s parameters according to the task distribution, ensuring that each task’s learning is compartmentalized, thereby reducing the overwrite of important historical information. 4.5.3 Gradient-Based. In the realm of continual instruction tuning, effectively managing knowledge transfer and mitigating catastrophic forgetting are critical challenges that influence the robustness and versatility of language models. Some advances have focused on innovative gradient manipulation techniques to address these issues. Lee et al. [97] proposes a method that enhances gradient alignment across different tasks to promote better generalization and minimize negative transfer. Complementarily, Korbak et al. [92] introduces a framework for dynamically adjusting the learning parameters to preserve previously acquired knowledge during the fine-tuning process. Together, these methodologies underscore the potential of sophisticated gradient strategies to refine the adaptability of language models across diverse linguistic tasks without compromising their performance on previously learned information.
+4.5.2 Regularization-Based. The regularization-based methods can be can be broadly categorized into direct [136, 209] and indirect [11, 77, 211] regularization approaches. Direct regularization directly influencing model parameters to preserve prior learning. For instance, ARPER [136] integrates adaptive regularization directly into the training process, utilizing regularization terms that directly mitigate the forgetting of previously acquired knowledge during the learning of new dialogue tasks. Similarly, O-LoRA [209] employs an orthogonal low-rank adaptation (O-LoRA) method that directly constrains gradient updates to be orthogonal to the subspaces of previous tasks. Indirect regularization utilizes factors such as similarity and importance between tasks to impose indirect restrictions on model parameters. For example, BiHNet [77] leverages a bi-level hypernetwork to create task-specific adapters, an architectural adjustment that indirectly preserves past knowledge by minimizing task interference. InsCL [211] utilizes dynamic replay of enriched data, indirectly facilitating continual learning by reintroducing crucial features of past tasks. Additionally, SLM [11] introduces a dynamic re-parameterization mechanism that adjusts the model’s parameters according to the task distribution, ensuring that each task’s learning is compartmentalized, thereby reducing the overwrite of important historical information.
+4.5.4 Architecture-Based. Architecture-based approaches can be categorized into model-based [43, 208], adapterbased [84, 128, 140, 152, 257] and prompt-based methods[48, 109, 162, 164, 168, 236, 273]. Model-based methods dynamically adjust the full network architecture in response to new information without requiring complete system retraining. For instance, TPEM [43] employs a cycle of pruning to eliminate less useful connections, expanding the network to accommodate new tasks, and masking to selectively deactivate certain pathways, ensuring that the system remains efficient and relevant to current tasks. Besides, Wang et al. [208] leverages an Manuscript submitted to ACM
+uncertainty estimation to decide when the system should update itself and an online learning component that facilitates immediate integration of new data into the model. Adapter-based methods selectively adds new modules to manage knowledge retention and adaptability across sequential tasks. Several approaches allows the model to expand by dynamically adjusting and optimizing its architecture for each new task, such as ACM [257], DMEA [152] and so on. It incorporates new modules and adapts existing ones based on their performance and relevance to ongoing and past tasks, making the expansion process both targeted and efficient. In addition to this, SAPT [140] does not expand by adding new layers or modules in a conventional sense, but rather by utilizing a flexible attention mechanism to apply different sets of parameters stored from previous tasks to new tasks. Prompt-based methods are essentially task-specific modifiers that guide the pre-trained language models in generating outputs that are appropriate for new tasks while retaining the capability to perform well on older tasks. This is achieved by strategically modifying or augmenting the input space of the models with prompts that encapsulate the essence of the task at hand, allowing the core model parameters to remain unchanged. For example, LPT [109] uses a binary prompt mask to selectively prune ineffective prompt vectors, enhancing computational efficiency and preserving crucial task-specific knowledge. Complementarily, DYNAINST [141] integrates a dynamic replay mechanism to selectively maintain training examples that improve learning efficiency, thereby optimizing knowledge retention across tasks. Further, ProgPrompt [162] innovates by sequentially concatenating task-specific prompts to accumulate knowledge and facilitate forward transfer without losing prior information. Together, these methods advance prompt-based strategies to boost the scalability and efficiency of lifelong learning in language models.
+# 4.6 Continual Knowledge Editing
+Continual Knowledge Editing serves as a pivotal component of lifelong learning for language models, designed to ensure their adaptability and accuracy as they encounter new information or discover that previous knowledge has become outdated [70]. Unlike traditional question-answering tasks that respond based on fixed knowledge, continual knowledge editing involves updating the model’s understanding through knowledge triplets—structured data forms like (head_entity, relation, tail_entity)—which help in precisely defining the modifications needed in the model’s knowledge base [207]. For instance, consider the triplet (Pluto, IsA, Planet), which may need updating to (Pluto, IsA, Dwarf Planet) as astronomical definitions evolve. Research in this area has traditionally focused on one-step editing techniques [33, 34, 133, 134, 139], where models undergo a single, significant update to rectify or enhance their knowledge bases. However, more recent approaches [55, 56, 61, 70, 96] advocate for a continual and sequential editing process, aligning more closely with the principles of lifelong learning. This involves making multiple, smaller adjustments over time, allowing the model to adapt to the changing real-world requirements and maintain its relevance and accuracy without the need for comprehensive retraining. Continual knowledge editing methods can be categorized into three main strategies [207]: External Memorization, Global Optimization, and Local Modification. A detailed comparison between these methods is provided in Table 3. (1) External Memorization methods like GRACE [55] and T-Patcher [70] use extension-based strategies to integrate new data [207]. GRACE, for example, employs key-value pairs to dynamically store new information, allowing the model to access the latest data without a full retraining cycle. T-Patcher, on the other hand, makes precise, targeted adjustments to model parameters to correct specific errors, similar to software patches fixing bugs, thus ensuring that the model’s outputs remain accurate and current. (2) Global Optimization involves more comprehensive updates Manuscript submitted to ACM
+across the model’s parameters, exemplified by SLAG [56], which uses intermediate fine-tuning strategies to carefully balance the integration of new information with the retention of existing knowledge [207]. This approach allows for gradual updates that refine the model’s understanding without overwhelming the previously learned data. Lee et al. [96] further this concept by incorporating LoRA to focus on expanding specific parts of the model’s architecture, minimizing the disruption to the overall system. (3) Local Modification focuses on making changes at a more granular level within the model, such as adjusting specific neurons or layers that are most relevant to the new information. WilKE [61] utilizes gradient-based strategies to precisely identify and modify the parts of the model that directly relate to outdated or incorrect information [207], enabling targeted updates that do not require extensive retraining but still ensure the model’s growth in knowledge and capabilities.
+# 4.7 Continual Alignment
+Continual alignment in Large Language Models is essential to ensure that these models remain aligned with human values and societal norms throughout their lifecycle. Traditionally, alignment has been a one-step process where LLMs are aligned after pretraining and instruction tuning stages [173]. However, as the demands and expectations from AI systems evolve, it is becoming increasingly necessary to adopt a multi-step alignment approach [248, 249, 261], where models are realigned periodically to accommodate new ethical standards and societal values. The alignment tax, which refers to the trade-off between aligning models to human values and potentially compromising their general performance, is a critical consideration in this process [110]. Continual alignment can be categorized into two main areas: value alignment [110, 248, 249] and security alignment [150, 243, 261]. A detailed comparison between these methods is provided in Table 3. (1) In Value Alignment, the focus is on ensuring that the model’s responses adhere to ethical guidelines without losing previously acquired capabilities. Techniques such as CPPO [249] implement weighting strategies to balance new ethical priorities with existing knowledge. COPR [248] addresses catastrophic forgetting in the context of value alignment by dynamically adjusting regularization based on both new and historical preferences. Meanwhile, Lin et al. [110] suggest model averaging to effectively manage the alignment tax, optimizing the balance between maintaining performance and adhering to updated values. (2) Security Alignment concentrates on safeguarding the integrity and security of the data processed by LLMs. It involves strategies to prevent the perpetuation of harmful information and protect against data leaks. Zhao et al. [261] have developed a forgetting filter technique that prioritizes the security of content during model updates. Zhan et al. [243] demonstrate the ease with which minimal fine-tuning can compromise established security measures, highlighting the ongoing need for robust protection mechanisms. To strengthen LLMs against potential misuse and evolving security threats, ongoing research, and methodological innovations are crucial, as noted by Lermen et al. [98] and Qi et al. [150]. These efforts ensure that as LLMs are aligned with new security protocols, they do not become vulnerable to novel forms of exploitation.
+# 4.8 Summary
+Building on continual pretraining, which enhances the internal knowledge of LLMs, continual finetuning further adapts these models to specific tasks such as text classification, named entity recognition, relation extraction, machine translation, and instruction tuning. Techniques like distillation, replay, regularization, architecture-based, and gradient-based methods are employed to address challenges like catastrophic forgetting and task interference. Despite advancements, significant challenges remain, particularly in maintaining long-term performance and resource efficiency. Manuscript submitted to ACM
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d75a/d75a7c3d-65ff-4522-9f4f-310a4f17ebed.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;">Fig. 6. An illustration of two lifelong learning scenarios which equip LLMs with external knowledge: Retrieval-Based Lifelong Learni (left) and

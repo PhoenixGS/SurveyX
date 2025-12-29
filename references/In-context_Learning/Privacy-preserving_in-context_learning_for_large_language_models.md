@@ -1,0 +1,574 @@
+# PRIVACY-PRESERVING IN-CONTEXT LEARNING FOR LARGE LANGUAGE MODELS
+Tong Wu*, Ashwinee Panda*, Jiachen T. Wang*, Prateek Mittal Princeton University
+ABSTRACT
+In-context learning (ICL) is an important capability of Large Language Models (LLMs), enabling these models to dynamically adapt based on specific, in-context exemplars, thereby improving accuracy and relevance. However, LLM’s responses may leak the sensitive private information contained in in-context exemplars. To address this challenge, we propose Differentially Private In-context Learning (DPICL), a general paradigm for privatizing ICL tasks. The key idea for DP-ICL paradigm is generating differentially private responses through a noisy consensus among an ensemble of LLM’s responses based on disjoint exemplar sets. Based on the general paradigm of DP-ICL, we instantiate several techniques showing how to privatize ICL for text classification and language generation. We evaluate DP-ICL on four text classification benchmarks and two language generation tasks, and our empirical results show that DP-ICL achieves a strong utility-privacy tradeoff.
+# INTRODUCTION
+In-context learning (ICL) (Brown et al., 2020; Min et al., 2022a) enables large language models (LLM) (OpenAI, 2023; Anthropic, 2023) to adapt to domain-specific information. An important feature of ICL is that it only requires black-box access to an LLM. Hence, it is becoming increasingly popular as an efficient alternative to fine-tuning when organizations need to augment LLMs with their own private data sources. In-context learning appends the relevant information (e.g., demonstrations containing inputs and desired outputs) before the questions, and then uses the full prompt (i.e., query-exemplar pair) to query the model. It usually provides more accurate answers by referencing the context and has gained traction for various real-world applications (Liu, 2022; Chase, 2022; Veen et al., 2023), including retrieval-augmented-generation (RAG) systems.
+Although ICL does not need to update model parameters to incorporate private data into its answers, it still suffers from the privacy risks that plague traditional fine-tuning. Consider a real-world scenario shown in Figure 1. A healthcare institution owns some sensitive dataset (e.g., clinical records) and deploys LLMs to answer user queries. ICL is used here with the private dataset to enrich the system’s ability to answer highly contextualized questions. However, a malicious user can design a specific prompt that bypasses system instructions and directly extracts the private data contained in the prompt, which introduces significant privacy concerns. Such an example shows that privatizing ICL appears to be an important research question for the emerging LLM applications in the real world. Contributions. In this work, we propose differentially private in-context learning (DP-ICL), a general paradigm for privatizing ICL (Figure 2 & Section 3). The key insight behind the DPICL paradigm is the use of parallel inference
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/88c9/88c9a99a-e2be-4b0a-bd19-9bbd23cb1f50.png" style="width: 50%;"></div>
+Figure 1: A demonstration of the privacy attack on in-context exemplars, also known as prompt leaking attack. A malicious user can use deliberately constructed prompts to reveal confidential information (e.g., health records) in exemplars.
+<div style="text-align: center;">Figure 1: A demonstration of the privacy attack on in-context exemplars, also known as prompt leaking attack. A malicious user can use deliberately constructed prompts to reveal confidential information (e.g., health records) in exemplars.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7736/773648ed-6512-4db6-8b05-dda726cd29ab.png" style="width: 50%;"></div>
+Figure 2: Our proposed DP-ICL framework has four phases: In Phase I, we partition the subsampled sensitive database into separate subsets, each comprising a collection of exemplars. Phase II involves constructing prompts by pairing each exemplar with the query. During Phase III, the model processes these exemplar-query pairs and produces corresponding outputs. Finally, in Phase IV, these outputs are aggregated through a differentially private mechanism before being returned to the user. More details are presented in Section 3.
+over an ensemble of LLM’s responses based on disjoint exemplar subsets. We aggregate and release these responses in a differentially private way that does not overly rely on any single exemplar.
+these responses in a differentially private way that does not overly rely on any single exemplar. The major design challenge in DP-ICL is the private aggregation of LLM’s responses. Text classification and language generation are the major tasks that use ICL. For text classification, we use the Report-Noisy-Max with Gaussian noise to release the class that receives the majority vote in a private way. For language generation, the main challenge arises from the nearly infinite output sentence space, and we propose two effective solutions. Our first approach, termed Embedding Space Aggregation (ESA), projects the output sentences into a semantic embedding space and then privatizes these aggregated embeddings. Our second approach, termed Keyword Space Aggregation (KSA), identifies frequently occurring keywords in the output and then privately selects them via propose-test-release (Dwork & Lei, 2009) or the joint exponential mechanism (Gillenwater et al., 2022). We evaluate our DP-ICL paradigm with these approaches for private aggregation on datasets spanning text classification (SST-2, Amazon, AGNews, TREC), documentation question-answering (DocVQA), and document summarization (SAMsum). Our empirical evaluation demonstrates that DP-ICL can achieve a strong privacy guarantee while achieving a comparable performance as the non-private counterpart. For instance, under a privacy budget of ε = 3 on the SST-2 dataset, DP-ICL reaches an impressive accuracy of 95.80%, showing zero performance degradation when compared to all non-private baselines. Similarly, in document summarization, the average ROUGE scores experience a minimal degradation of approximately 1% under a strict privacy constraint of ε = 1. Overall, our research offers a promising overall paradigm for applying ICL in a privacy-preserving way, and signifies a milestone toward trustworthy usage of large language models.
+# 2 BACKGROUND: PRIVACY RISKS OF IN-CONTEXT LEARNING
+We present an overview of in-context learning, the privacy risks, and differential privacy. Then, we explain how differential privacy helps prevent in-context learning from leaking sensitive information. In-Context Learning. To answer a query Q with ICL, we concatenate a sequence of k exemplars (i.e., query-answer pairs) S := ((Q1, A1), (Q2, A2), . . . , (Qk, Ak)) to Q using an appropriate format and instructions. We then use the LLM to generate the next token via argmaxA LLM(A|S + Q), where + denotes concatenation. Intuitively, exemplars assist the LLM in identifying the relevant mapping between (Q, A), which substantially enhances performance compared to directly querying test data, also known as zero-shot learning.
+We present an overview of in-context learning, the privacy risks, and differential privacy. Then, w explain how differential privacy helps prevent in-context learning from leaking sensitive informatio
+In-Context Learning. To answer a query Q with ICL, we concatenate a sequence of k exemplars (i.e., query-answer pairs) S := ((Q1, A1), (Q2, A2), . . . , (Qk, Ak)) to Q using an appropriate format and instructions. We then use the LLM to generate the next token via argmaxA LLM(A|S + Q), where + denotes concatenation. Intuitively, exemplars assist the LLM in identifying the relevant mapping between (Q, A), which substantially enhances performance compared to directly querying test data, also known as zero-shot learning.
+
+<div style="text-align: center;">Table 1: Summary of private aggregation approaches in our DP-ICL framework.</div>
+Algorithm Name
+Algorithm Pros/Cons
+Private Voting (Sec. 3.1)
+Applicable to text classification with high utility;
+assumes a small voting space and composes privacy loss over each generated token
+Embedding Space Aggregation
+Applicable to language generation without assumptions;
+(Sec. 3.2.1)
+performance depends on text-to-embedding and embedding-to-text mappings
+Keyword Space Aggregation
+Applicable to language generation with high utility;
+by Joint EM (Sec. 3.2.2)
+not applicable for very large or infinite output domains
+Keyword Space Aggregation
+Applicable to language generation without assumptions;
+by PTR (Sec. 3.2.2)
+subject to occasional PTR test failures
+Privacy Attacks on ICL. These prompt leakage attacks (Figure 1) have been deployed effectively to extract proprietary prompts (Liu, 2023) from real-world systems. Wang et al. (2023) study the privacy leakage of secret information via ICL in the presence of privacy-preserving prompts. Furthermore, Duan et al. (2023b) describe a membership inference attack targeted at ICL, which can potentially expose whether a particular record was part of the training data. Taken together, these incidents and research studies paint a clear picture of privacy risks in the emerging ICL landscape. Differential Privacy. Differential privacy (Dwork et al., 2006b) is the gold standard for reasoning about the privacy of machine learning algorithms. Formally, we call a randomized algorithm M is (ε, δ)-differentially private if it follows Pr[M(D) ∈E] ≤eε · Pr[M(D′) ∈E] + δ, where adjacent dataset D and D′ only differ in one data point. It indicates that if two datasets are similar, a DP algorithm should produce similar output E with a high probability so that attackers cannot infer the difference between them. In our case, M functions as an in-context learning (ICL) algorithm, producing answers to queries by utilizing private data as in-context exemplars. If this ICL algorithm adheres to differential privacy, it should generate similar outputs even when the in-context exemplars vary. Consequently, this prohibits the generation of private information, such as replicating the in-context exemplars, like Figure 1.
+# 3 DIFFERENTIALLY PRIVATE IN-CONTEXT LEARNING
+In this section, we first introduce the general paradigm of privatizing In-context Learning depicted in Figure 2. We then discuss the specific algorithm instantiations of this general paradigm for text classification and language generation tasks.
+classification and language generation tasks. General Paradigm of DP-ICL. To privatize the task of in-context learning, we draw inspiration from the famous “sample-and-aggregate” paradigm (Nissim et al., 2007). Here is a breakdown of our approach: (1) Partition: We first partition the full set of private demonstration exemplars into disjoint subsets of exemplars. (2) Pairing with Queries: Each demonstration exemplar subset is then paired with the query, resulting in a set of exemplar-query pairs. (3) Prompting the Model: For each exemplar-query pair, we prompt the LLM’s API, yielding a collection of answers (class predictions for text classification tasks or generated text outputs for language generation tasks). (4) Private Aggregation of Answers: The collection of individual LLM’s answers is aggregated in a differentially private way. The privately aggregated model answer is then returned to the user. Privacy Amplification by Subsampling. When faced with a large dataset of exemplars, generating in-context exemplars from the entire dataset incurs significant monetary costs associated with API queries. To address this, upon receiving a query, we can first sample a random subset of the private exemplar dataset. Following the mainstream DP literature, we adopt Poisson sampling, which independently collects each data point with a fixed probability q. Integrating subsampling into DP-ICL alleviates processing and cost challenges and significantly amplifies the differential privacy guarantee (Balle et al., 2018). In the following, we develop various techniques for privately aggregating the LLM’s answers, as summarized in Table 1. These techniques vary based on the complexity of the task at hand, ranging from classification problems (Section 3.1) to more intricate language generation tasks (Section 3.2). It is worth noting that the output in language generation tasks consists of sentences with multiple tokens, making their private aggregation a non-trivial challenge.
+# 3.1 PRIVATE AGGREGATION FOR TEXT CLASSIFICATION
+We describe our private voting algorithm for text classification in Figure 3. We first create a voting histogram by aggregating one-shot class predictions from the LLM’s evaluation of each exemplarquery pair. We release the class with the highest vote count in a differentially private way through the Report-Noisy-Max mechanism with Gaussian noise (RNM-Gaussian) (Dwork et al., 2014; Zhu & Wang, 2022), where we add independent Gaussian noise to the vote count for each candidate class, and release the class with the highest noisy count.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/abc5/abc5f073-698a-4502-a420-e80e0052afb2.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3: An overview of private aggregation method for text classification. We first count the outpu labels and put them in a histogram. Next, we add Gaussian noise to this histogram. Finally, we release the label with the highest noisy count.</div>
+RNM-Gaussian Mechanism. For a query Q and classes 1 to m, let oj(Q) ∈[m] denote the LLM prediction for j-th exemplar-query pair on Q, and ci(Q) denote the vote count for the i-th class, i.e., ci(Q) = |{j : oj(Q) = i}|. The Report-Noisy-Max with Gaussian noise (RNM-Gaussian) mechanism can be defined as: Mσ(Q) := argmax j∈[m] � cj(Q) + N � 0, σ2�� where N � 0, σ2� is the Gaussian distribution with mean 0 and variance σ2. The aggregation mechanism selects the class with the highest vote count after adding Gaussian noise to each count. Intuitively, adding noise obfuscates the contribution of any single exemplar in a dataset. While there exist other mechanisms for RNM, in this work we adopt RNM-Gaussian due to the well-studied privacy cost analysis for the Gaussian mechanism. We provide a detailed privacy analysis in Appendix B, which gives the privacy guarantee in terms of the noise magnitude.
+Although our private voting method works well for text classification, extending it to the more compelling task of language generation proves to be non-trivial. In this section, we first describe the challenges of private language generation, namely the high-dimensional nature of the domain, and then describe our design goals to address these challenges. We then propose two novel techniques (Section 3.2.1 & Section 3.2.2) that we overview in Figure 4. Challenges of dimensionality in privately generating language. An autoregressive language model generates text (conditioned on some prefix ˆx1, . . . , ˆxi) by iteratively sampling ˆxi+1 ∼LLM(xi+1|ˆx1, ..., ˆxi) and then feeding ˆxi+1 back into the model to sample ˆxi+2 ∼ LLM(xi+2|ˆx1, ..., ˆxi+1). This process is repeated until a desired stopping criterion is reached (e.g., the sentence length limit). The number of possible values that ˆxi+1 can take on is equal to the vocabulary space of the model’s tokenizer; consider a vocab size of 50, 000. The number of possible values that the entire generation can take on, for a maximum generation length of 100, is therefore 50, 000100, and this constitutes the size of the voting space for our private voting technique. It is unlikely that the model conditioned on two distinct exemplar pairs will generate the same text given a sufficiently long generation, because of the autoregressive nature of generation. Therefore, to assemble a histogram for language generation, where the “classes” are all possible generations of a given length, would yield an intractably large yet sparse histogram -precisely the opposite of what we want for our private voting method. The alternative is to operate the private voting method at each iteration, but this requires composing the privacy loss over the number of tokens being generated, which will quickly destroy the privacy-utility tradeoff. Design goal. We fuse our insights into a design goal that will enable us to generate high-quality passages of text under privacy constraints. We want to do private aggregation in a lower dimensional
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/0f69/0f6968b3-c2c1-4d4a-a4f9-4a338462b169.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2464/2464cf41-eb22-4830-8e0f-9d814c630a85.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+Figure 4: An overview of private aggregation methods for language generation. (a) Embedding Space Aggregation (Section 3.2.1): First, we transform all output sentences into an embedding space using a text-to-embedding model. Second, we privately estimate the mean embedding. Finally, we reconstruct a sentence from the privatized mean embedding. (b) Keyword Space Aggregation (Section 3.2.2): First, we decompose all output sentences into individual words and form a histogram based on their frequencies. Then, we employ either the PTR or joint EM mechanism to privately select the keywords. Finally, we reconstruct the sentence by incorporating these selected keywords into the prompt and re-querying the API.
+space, by transforming generated model outputs into representations that preserve relative semantic meaning. We now propose a method that maps to the embedding space (Section 3.2.1) and a method that transforms model outputs into what we call the keyword space (Section 3.2.2).
+# 3.2.1
+# 3.2.1 EMBEDDING SPACE AGGREGATION (ESA)
+Figure 4(a) depicts how embedding space aggregation (ESA) maps outputs to the embedding space and then reconstructs the private aggregation. The semantic embedding space (Reimers & Gurevych, 2019) is a natural choice for a representation that preserves the distance between outputs according to relative semantic meaning. Algorithm Overview. We map each sentence generated by the LLM for a given exemplar-query pair onto the embedding space via a publicly available text-to-embedding model. In our empirical evaluations, we use OpenAI’s widely used text-embedding-ada-002 model1, which maps each input sentence into a 1563-dimensional embedding vector with ℓ2 norm of 1. We then release a privatized mean of the embedding vectors converted from the generated sentences based on each private exemplar-query pair. To map from the embedding space back to a human-readable output space, we look for the sentences from the original sentence space that have similar embeddings to the newly privatized mean embedding. Technical Details. Privately estimating the mean of the embedding vectors is straightforward; because we know the ℓ2 norm of all embeddings is 1, the Gaussian mechanism (Dwork et al., 2006a) minimizes the estimation error. The challenge lies in mapping the private mean from embedding space back to the sentence space so that we can output it to the user. Utilizing the LLM’s zero-shot capabilities, we generate a set of sentence candidates by querying the API without any context. This approach ensures that these generated sentences do not add to the privacy budget, as they don’t make use of the private in-context exemplars. We then select the generated sentence that maximizes the cosine similarity with the privatized mean embedding. The performance of our ESA technique depends on the quality of the methods used for the text-to-embedding and embedding-totext mappings. While publicly available text-to-embedding models can generate good representations,
+1https://platform.openai.com/docs/guides/embeddings
+<div style="text-align: center;"></div>
+going from embedding-to-text is an active research direction on its own (Anonymous, 2023; Linus, 2023).
+# 3.2.2 KEYWORD SPACE AGGREGATION (KSA)
+In this section, we introduce keyword space aggregation (KSA Figure 4(b)). KSA maps the model outputs into what we call the keyword space, performs private aggregation in the keyword space, and maps back to the output space by using the keywords to create a prompt for the LLM. The keyword space can be considered a low-dimensional approximation of the entire sentence space, and enables use of the private voting method without suffering from the curse of dimensionality. Algorithm Overview. The goal of this algorithm is to extract a set of keywords that are very likely to be contained in a sentence that performs well as the answer for the query.2 Clearly, such keywords should be present in many sentences generated based on different disjoint private in-context exemplars. Hence, we can count the frequency of each word token among the sentences generated based on individual private in-context exemplars and release the top-K tokens that achieve the highest counts in a differentially private way. After obtaining those keywords, we can reconstruct a complete sentence by designing a new prompt with keywords and querying the LLM API. Technical Details. Applying the RNM mechanism K times to release the top-K tokens based on count might seem straightforward. However, such an algorithm repeats RNM for K times, and hence the privacy costs can be large for relatively large K. Moreover, it is very likely that the keyword space is large or even infinite. Fortunately, private top-K selection on large domain spaces has been a well-studied problem, and we adopt two state-of-the-art methods for different scenarios depending on the size of the voting space. (1) Moderately large domain space. In this case, we adopt the joint exponential mechanism (joint EM) (Gillenwater et al., 2022). Unlike repeated applying RNM for K times, this approach directly performs RNM on the space of all size-K sequences and hence does not use composition. Note that for this case, the ranking of the counts for the word tokens is also released. (2) Very large or infinite domain space. In this case, we adopt the technique from Zhu & Wang (2022) which is based on the famous propose-test-release (PTR) paradigm. The main idea here is that, as long as the vote count difference between the Kth and (K + 1)th highest candidate is > 2, we can release the tokens with the top-K vote counts directly without privatization. We note that in this case, the ranking of the counts for the word tokens is not released. See Appendix A for a detailed description of our methods and Appendix B for their privacy analysis.
+# 4 EXPERIMENTS
+In this section, we demonstrate the experimental results of DP-ICL across three different tasks, including text classification (Section 4.1), document question-answering (Section 4.2), and dialog summarization (Section 4.3). Then, we perform ablation studies for dialog summarization in Section 4.4 and further results are presented in Appendix E & F.
+# 4.1 DP-ICL FOR TEXT CLASSIFICATION
+We study text classification using four datasets: sentiment analysis using SST-2 (Socher et al., 2013) and Amazon (Zhang et al., 2015), topic classification using the 4-way AGNews (Zhang et al., 2015) datasets, and 6-way question classification using TREC (Voorhees & Tice, 2000). For all datasets, we randomly select 8,000 samples for training and 1,000 samples for testing if the size is large. We use the GPT-3 Babbage model for all tasks and additionally consider the GPT-3 Davinci model3 for SST-2. We choose these models because they have shown promising results of in-context learning. Further details can be found in Appendix D.1. We primarily focus on in-context learning with 4 exemplars (4-shot) and 10,000 queries. We compare with a zero-shot prediction that provides inherently privacy guarantee (ε = 0) and non-private (ε = ∞) 4-shot prediction. Since the performance of in-context learning has a large variance (Zhao et al., 2021; Min et al., 2022b), we also compare our results with the performance of output aggregation (ε = ∞(Agg)). We set the number of exemplar-query pairs to 10 after subsampling and selected ε = {1, 3, 8} to achieve different levels of privacy. DP-ICL achieves a comparable performance with non-private ICL across all tasks (Table 2).
+2This idea is inspired by the Bag-of-Words method (Salton et al., 1975). 3GPT-3 Davinci has 100 times more parameters and is 40 times more expensive than GPT-3 Babbage.
+performance only drops by 0.04% for SST-2 with ε = 3 on GPT-3 Babbage. Even for a conservative privacy budget of ε = 1, we observe that DP-ICL can significantly outperform the zero-shot prediction (e.g., over 20 % for AGNews) depending on the dataset. DP-ICL can be further improved via deploying advanced LLMs. By comparing the performance of GPT-3 Davinci and GPT-3 Babbage on SST-2, we find that the larger model leads to better performance across all ε for DP-ICL. Take ε = 1 as an example; GPT-3 Davinci outperforms GPT-3 Babbage by ∼3.1%. In addition, we note that all our results can be further improved by simply replacing the GPT-3 API call with even more advanced LLMs, such as GPT-4. Table 2: Results of DP-ICL for Text classification. We compare our method with zero-shot prediction (ε = 0), four-shot predictions (ε = ∞), and an aggregation of 10 four-shot predictions (ε = ∞(Agg)). For ε = {1, 3, 8}, our DP-ICL generally surpasses zero-shot predictions and yields competitive performance relative to non-private predictions. Dataset Model ε = 0 (0-shot) ε = 1 ε = 3 ε = 8 ε = ∞(Agg) ε = ∞ SST-2 Babbage 86.58 91.970.49 92.830.28 92.900.24 92.870.09 91.891.23 Davinci 94.15 95.110.35 95.800.21 95.830.21 95.730.13 95.490.37 Amazon Babbage 93.80 93.830.33 94.100.22 94.120.20 94.100.11 93.580.64 AGNews Babbage 52.60 75.491.46 81.001.14 81.861.22 82.222.16 68.7711.31
+performance only drops by 0.04% for SST-2 with ε = 3 on GPT-3 Babbage. Even for a conservative privacy budget of ε = 1, we observe that DP-ICL can significantly outperform the zero-shot prediction (e.g., over 20 % for AGNews) depending on the dataset. DP-ICL can be further improved via deploying advanced LLMs. By comparing the performance of GPT-3 Davinci and GPT-3 Babbage on SST-2, we find that the larger model leads to better performance across all ε for DP-ICL. Take ε = 1 as an example; GPT-3 Davinci outperforms GPT-3 Babbage by ∼3.1%. In addition, we note that all our results can be further improved by simply replacing the GPT-3 API call with even more advanced LLMs, such as GPT-4. Table 2: Results of DP-ICL for Text classification. We compare our method with zero-shot prediction (ε = 0), four-shot predictions (ε = ∞), and an aggregation of 10 four-shot predictions (ε = ∞(Agg)). For ε = {1, 3, 8}, our DP-ICL generally surpasses zero-shot predictions and yields competitive performance relative to non-private predictions.
+Dataset
+Model
+ε = 0 (0-shot)
+ε = 1
+ε = 3
+ε = 8
+ε = ∞(Agg)
+ε = ∞
+SST-2
+Babbage
+86.58
+91.970.49
+92.830.28
+92.900.24
+92.870.09
+91.891.23
+Davinci
+94.15
+95.110.35
+95.800.21
+95.830.21
+95.730.13
+95.490.37
+Amazon
+Babbage
+93.80
+93.830.33
+94.100.22
+94.120.20
+94.100.11
+93.580.64
+AGNews
+Babbage
+52.60
+75.491.46
+81.001.14
+81.861.22
+82.222.16
+68.7711.31
+TREC
+Babbage
+23.00
+24.483.58
+26.365.19
+26.265.61
+26.325.33
+27.007.72
+# 4.2 DP-ICL FOR DOCUMENT QUESTIONS ANSWERING
+Then, we consider the document questions answering task, which aims to answer questions via reasoning a given document. We adopt a dataset that originates from a Privacy Preserving Federated Learning Document VQA (PFL-DocVQA) competition. We directly leverage the token extracted from the OCR model as the given context and use LLMs to generate answers to questions. Here, we use the open-source model OpenLLaMA-13B Geng & Liu (2023) and 1-shot ICL as a cost-effective choice to conduct experiments, and our methods are readily generalizable to other LLMs. We employ three metrics, ROUGE-1, BLEU, and normalized Levenshitein similarity, to comprehensively evaluate our proposed methods. Higher values in these metrics indicate better performance. See Appendix D.2 for more details and examples. For baseline methods, we again include evaluations for zero-shot prediction (ε = 0), 1-shot prediction (ε = ∞), and non-private aggregation (ε = ∞(Agg)) where we perform aggregation without introducing noise. We compare embedding space aggregation and keyword space aggregation by PTR approaches.4 The ensemble, query, and output candidate sizes are all set to 100.
+Table 3: Results of DP-ICL Applied to Document Question Answering. We use three baselines including zero-shot predictions (ε = 0), 1-shot ICL (ε = ∞), as well as non-private aggergation (ε = ∞(Agg)). In the non-private aggregation setting, we use either embedding or keyword methods
+ithout adding privacy noise.
+Methods
+Metrics
+ε = 0 (0-shot)
+ε = 1
+ε = 3
+ε = 8
+ε = ∞(Agg)
+ε = ∞(1-shot)
+Embedding
+ROUGE-1 ↑
+19.05
+37.780.35
+37.910.19
+38.060.15
+37.97
+50.68
+BLEU ↑
+4.42
+6.490.20
+6.510.04
+6.540.16
+6.43
+24.03
+Levenshtein ↑
+16.15
+30.390.50
+30.710.45
+30.880.06
+30.94
+49.30
+Keyword
+by PTR
+ROUGE-1 ↑
+19.05
+59.920.60
+60.400.50
+60.660.61
+62.42
+50.68
+BLEU ↑
+4.42
+23.320.51
+23.670.45
+23.930.45
+25.10
+24.03
+Levenshtein ↑
+16.15
+51.470.67
+52.051.06
+52.471.09
+52.42
+49.30
+DP-ICL achieves competitive results to non-private aggregations even with ε=1 (Table 3). Remarkably, our empirical results suggest that adopting differential privacy does not lead to substantial performance degradation. For instance, the decline in ROUGE-1 scores when shifting from ε = ∞(Agg) to ε = 1 is less than 3% for keyword space aggregation (KSA) by PTR methods. For embedding space aggregation (ESA), the decrease is even more minimal at 0.19%.
+4Here, we did not implement the joint EM method, given that the output domain for question answerin could potentially be infinite.
+4Here, we did not implement the joint EM method, given that the output domain for question answering could potentially be infinite.
+Another noteworthy point is that the KSA method significantly surpasses the ESA approach, even exceeding the results of standard 1-shot ICL. This is because the consensus of keywords in output sentences leads to a more reliable answer. This performance drop in the ESA is mainly due to two factors: (1) information loss during projecting outputs into an embedding space, and (2) the lack of high-quality candidates generated by zero-shot predictions of OpenLLaMA-13B models. We think employing advanced LLMs and embedding reconstruction methods could mitigate these drawbacks.
+# 4.3 DP-ICL FOR DIALOG SUMMARIZATION
+We evaluate on the SAMSum dialog summarization dataset Gliwa et al. (2019). This task is much more challenging than previous tasks because the output can be multiple long sentences. We consider all three proposed methods: embedding space aggregation (ESA), keyword by PTR, and keyword by jointEM, using 4-shot ICL and GPT-3 Davinci API. For the keyword space aggregation (KSA), GPT-3 is again used to reconstruct the answers with extracted keywords within prompts. We compare three baselines: zero-shot learning, 4-shot ICL, and predictions of non-private aggregation. More details of the evaluation are in Appendix D.2.
+<div style="text-align: center;">Table 4: Results of DP-ICL for dialog summarization. We again compare with zero-shot predictions (ε = 0), 4-shot ICL (ε = ∞), as well as non-private aggregation (ε = ∞(Agg)). We eport three variants of our private aggregation approaches with ε = {1, 3, 8}.</div>
+<div style="text-align: center;">predictions (ε = 0), 4-shot ICL (ε = ∞), as well as non-private aggregation (ε = ∞(Agg)). We report three variants of our private aggregation approaches with ε = {1, 3, 8}.</div>
+port three variants of our private aggregation approaches with {}.
+Method
+Metrics
+ε = 0 (0-shot)
+ε = 1
+ε = 3
+ε = 8
+ε = ∞(Agg)
+ε = ∞(4-shot)
+Embedding
+ROUGE-1 ↑
+35.31
+38.210.39
+38.920.24
+39.620.40
+40.27
+43.32
+ROUGE-2 ↑
+12.65
+14.550.66
+15.180.43
+15.430.46
+16.52
+19.08
+ROUGE-L ↑
+27.02
+29.850.61
+30.860.22
+31.240.45
+32.29
+34.78
+Keyword
+by joint EM
+ROUGE-1 ↑
+35.31
+40.020.37
+40.980.47
+41.210.58
+42.40
+43.32
+ROUGE-2 ↑
+12.65
+15.670.60
+16.490.79
+16.310.43
+15.61
+19.08
+ROUGE-L ↑
+27.02
+30.460.73
+31.760.26
+31.840.34
+32.60
+34.78
+Keyword
+by PTR
+ROUGE-1 ↑
+35.31
+38.540.47
+39.090.39
+39.710.21
+41.03
+43.32
+ROUGE-2 ↑
+12.65
+14.420.54
+14.320.45
+14.600.39
+15.91
+19.08
+ROUGE-L ↑
+27.02
+29.580.45
+30.180.44
+30.560.30
+32.47
+34.78
+Employing DP-ICL offers consistent advantages over zero-shot learning across all methods (Table 4). Notably, under privacy constraints with ε = 1, our most effective approach, keyword by joint EM, yielded an improvement of approximately 4.5% in ROUGE-1, 3.0% in ROUGE-2, and 3.4% in ROUGE-L than zero-shot learning. This result is only marginally lower, by ∼1% on average than the performance achieved with non-private aggregations. Interestingly, the keyword by joint EM outperforms the keyword by PTR; this advantage is primarily due to joint EM also releasing the order of frequency. Another finding is that our non-private aggregation methods performed worse than in-context learning predictions, even for keyword space aggregation methods. We leave the question of optimizing the utilization of extracted keywords as future research.
+# 4.4 ABLATION STUDIES
+We also conduct an ablation study on the dialog summarization task, as it is the most challenging task, with varying number of queries and number of ensembles. Experimental results on text classification task are provided in Appendix E, and more findings related to language generation tasks are present in Appendix F. Here, we set the differential privacy parameter ε = 3.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/af4e/af4e9050-a83a-47a2-be36-da9306701378.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Varying numbers of ensembles</div>
+Figure 5: Ablation studies on dialog summarization task. Figure 12 & 11 present full resu
+<div style="text-align: center;">(b) Varying numbers of queries</div>
+Effectiveness across numbers of ensembles (Figure 5(a)). Our prior evaluation discussed in Section 4.3 utilizes an ensemble of 100 teachers for all methods. In this section, we vary the ensemble size from 10 to 100. It is noteworthy that increasing the ensemble size results in raised subsampling rates, thereby introducing additional noise into the aggregation process. At the same time, a larger ensemble size could also generate a more reliable consensus. We observe a clear trend of performance improvement when increasing ensembles for embedding space aggregation and keyword by PTR. However, the result of the keyword by joint EM approach shows more fluctuations and reaches a high performance with 30 ensembles. Effectiveness across numbers of queries (Figure 5(b)). We then investigate the impact of varying the number of queries across the set {1, 10, 100, 1000, 10000}. It is important to note that increasing the number of queries inherently strengthens privacy protection, causing a higher noise level. Our results indicate that performance degradation in KSA by joint EM remains marginal up to 103 queries, suggesting its suitability for real-world applications.
+# 5 RELATED WORKS
+Differentially Private Language Models. The existing research on differentially private language models (Li et al., 2022; Yu et al., 2022; Bu et al., 2023; He et al., 2023) primarily focused on improving DP-SGD (Abadi et al., 2016) for training language models. In this paradigm, noise is introduced to the gradient during the model’s training to ensure privacy. However, as the scale of the large language models significantly increased, fine-tuning has become much more challenging, making this approach less practical. We provide detailed qualitative and quantitative comparisons between DP-ICL and DP-SGD in Appendix C. Concurrent works on Differentially Private In-Context Learning. For differentially private in-context learning, concurrent to our work, Duan et al. (2023a) propose an approach that privately labels a publicly available dataset and then uses the newly labeled data pairs as demonstrations, while our approach does not rely on public data. Later, Tang et al. (2023) present an approach that privately generates in-context exemplars directly via prompting and achieves effective ICL. It is essential to underscore that both approaches are restricted to tasks involving limited label spaces, such as text classification and word extraction. By contrast, we show that DP-ICL can obtain competitive performance on SAMSum and DocVQA, which are considerably more complex and challenging tasks in language generation. Our methodology and compelling results indicate that our methods can be broadly applied across various natural language processing tasks.
+# 6 DISCUSSION AND FUTURE WORKS
+In this paper, we initiate the study of incorporating in-context learning with differential privacy. We developed a unified framework for privatizing ICL based on the famous “sample-and-aggregate” paradigm, and we propose several instantiations for the private aggregation for the task of text classification and language generation.
+In this paper, we initiate the study of incorporating in-context learning with differential privacy. We developed a unified framework for privatizing ICL based on the famous “sample-and-aggregate” paradigm, and we propose several instantiations for the private aggregation for the task of text classification and language generation. While our method exhibits strong performance, there are multiple directions for future research. For instance, for the Embedding Space Aggregation method, a better-trained embedding-to-text model may yield further improvements in the model performance. Additionally, DP-ICL relies on dividing the exemplars into disjoint subsets and queries the LLM with each of the subsets. As the number of subsets increases, the computational efficiency, while still significantly better compared with directly fine-tuning the LLM, will be larger. The efficiency-utility tradeoff for the choice of the number of subsets in DP-ICL is an interesting problem for future works.
+While our method exhibits strong performance, there are multiple directions for future research. For instance, for the Embedding Space Aggregation method, a better-trained embedding-to-text model may yield further improvements in the model performance. Additionally, DP-ICL relies on dividing the exemplars into disjoint subsets and queries the LLM with each of the subsets. As the number of subsets increases, the computational efficiency, while still significantly better compared with directly fine-tuning the LLM, will be larger. The efficiency-utility tradeoff for the choice of the number of subsets in DP-ICL is an interesting problem for future works.
+# REFERENCES
+Martin Abadi, Andy Chu, Ian Goodfellow, H Brendan McMahan, Ilya Mironov, Kunal Talwar, and Li Zhang. Deep learning with differential privacy. In Proceedings of the 2016 ACM SIGSAC conference on computer and communications security, pp. 308–318, 2016.
+Borja Balle, Gilles Barthe, and Marco Gaboardi. Privacy amplification by subsampling: Tigh analyses via couplings and divergences. Advances in neural information processing systems, 3 2018.
+Borja Balle, Gilles Barthe, and Marco Gaboardi. Privacy amplification by subsampling: Tight analyses via couplings and divergences. Advances in neural information processing systems, 31, 2018.
+2018. Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin (eds.), Advances in Neural Information Processing Systems, volume 33, pp. 1877–1901. Curran Associates, Inc., 2020. URL https://proceedings.neurips. cc/paper_files/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf. Zhiqi Bu, Yu-Xiang Wang, Sheng Zha, and George Karypis. Differentially private optimization on large model at small cost, 2022. Zhiqi Bu, Yu-Xiang Wang, Sheng Zha, and George Karypis. Differentially private bias-term only finetuning of foundation models, 2023. URL https://openreview.net/forum?id=zoTUH3Fjup. Mark Bun and Thomas Steinke. Concentrated differential privacy: Simplifications, extensions, and lower bounds. In Theory of Cryptography Conference, pp. 635–658. Springer, 2016. Harrison Chase. LangChain, October 2022. URL https://github.com/hwchase17/langchain. Haonan Duan, Adam Dziedzic, Nicolas Papernot, and Franziska Boenisch. Flocks of stochastic parrots: Differentially private prompt learning for large language models. ArXiv, abs/2305.15594, 2023a. URL https://api.semanticscholar.org/CorpusID:258887717. Haonan Duan, Adam Dziedzic, Mohammad Yaghini, Nicolas Papernot, and Franziska Boenisch. On the privacy risk of in-context learning. In The 61st Annual Meeting Of The Association For Computational Linguistics, 2023b. David Durfee and Ryan M Rogers. Practical differentially private top-k selection with pay-what-youget composition. Advances in Neural Information Processing Systems, 32, 2019. Cynthia Dwork and Jing Lei. Differential privacy and robust statistics. In Proceedings of the forty-first annual ACM symposium on Theory of computing, pp. 371–380, 2009. Cynthia Dwork and Guy N. Rothblum. Concentrated differential privacy. CoRR, abs/1603.01887, 2016. URL http://arxiv.org/abs/1603.01887. Cynthia Dwork, Krishnaram Kenthapadi, Frank McSherry, Ilya Mironov, and Moni Naor. Our data, ourselves: Privacy via distributed noise generation. In Advances in Cryptology-EUROCRYPT 2006: 24th Annual International Conference on the Theory and Applications of Cryptographic Techniques, St. Petersburg, Russia, May 28-June 1, 2006. Proceedings 25, pp. 486–503. Springer, 2006a. Cynthia Dwork, Frank McSherry, Kobbi Nissim, and Adam Smith. Calibrating noise to sensitivity in private data analysis. In Theory of cryptography conference, pp. 265–284. Springer, 2006b. Cynthia Dwork, Guy N Rothblum, and Salil Vadhan. Boosting and differential privacy. In 2010 IEEE 51st Annual Symposium on Foundations of Computer Science, pp. 51–60. IEEE, 2010.
+Cynthia Dwork, Aaron Roth, et al. The algorithmic foundations of differential privacy. Foundations and Trends® in Theoretical Computer Science, 9(3–4):211–407, 2014. Xinyang Geng and Hao Liu. Openllama: An open reproduction of llama, May 2023. URL https: //github.com/openlm-research/open_llama. Jennifer Gillenwater, Matthew Joseph, Andres Munoz, and Monica Ribero Diaz. A joint exponential mechanism for differentially private top-k. In International Conference on Machine Learning, pp. 7570–7582. PMLR, 2022. Bogdan Gliwa, Iwona Mochol, Maciej Biesek, and Aleksander Wawer. SAMSum corpus: A humanannotated dialogue dataset for abstractive summarization. In Proceedings of the 2nd Workshop on New Frontiers in Summarization, pp. 70–79, Hong Kong, China, November 2019. Association for Computational Linguistics. doi:10.18653/v1/D19-5409. URL https://aclanthology.org/ D19-5409. Sivakanth Gopi, Yin Tat Lee, and Lukas Wutschitz. Numerical composition of differential privacy. Advances in Neural Information Processing Systems, 34:11631–11642, 2021. Jiyan He, Xuechen Li, Da Yu, Huishuai Zhang, Janardhan Kulkarni, Yin Tat Lee, Arturs Backurs, Nenghai Yu, and Jiang Bian. Exploring the limits of differentially private deep learning with group-wise clipping. In The Eleventh International Conference on Learning Representations, 2023. URL https://openreview.net/forum?id=oze0clVGPeX. Antti Koskela and Antti Honkela. Computing differential privacy guarantees for heterogeneous compositions using fft. CoRR, abs/2102.12412, 2021. URL https://arxiv.org/abs/2102. 12412. Antti Koskela, Joonas Jälkö, and Antti Honkela. Computing tight differential privacy guarantees using fft. In International Conference on Artificial Intelligence and Statistics, pp. 2560–2569. PMLR, 2020. Oleksii Kuchaiev, Jason Li, Huyen Nguyen, Oleksii Hrinchuk, Ryan Leary, Boris Ginsburg, Samuel Kriman, Stanislav Beliaev, Vitaly Lavrukhin, Jack Cook, Patrice Castonguay, Mariya Popova, Jocelyn Huang, and Jonathan M. Cohen. Nemo: a toolkit for building ai applications using neural modules, 2019. Xuechen Li, Florian Tramer, Percy Liang, and Tatsunori Hashimoto. Large language models can be strong differentially private learners. In International Conference on Learning Representations, 2022. URL https://openreview.net/forum?id=bVuP3ltATMz. Linus, 2023. URL https://twitter.com/thesephist/status/1698095739899974031. Liu, 2023. URL https://twitter.com/kliu128/status/1623472922374574080. Jerry Liu. LlamaIndex, 11 2022. URL https://github.com/jerryjliu/llama_index. Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. Ro{bert}a: A robustly optimized {bert} pretraining approach. 2020. URL https://openreview.net/forum?id=SyxS0T4tvS. Frank McSherry and Kunal Talwar. Mechanism design via differential privacy. 48th Annual IEEE Symposium on Foundations of Computer Science (FOCS’07), pp. 94–103, 2007. Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis, Hannaneh Hajishirzi, and Luke Zettlemoyer. Rethinking the role of demonstrations: What makes in-context learning work? In Conference on Empirical Methods in Natural Language Processing, 2022a. Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis, Hannaneh Hajishirzi, and Luke Zettlemoyer. Rethinking the role of demonstrations: What makes in-context learning work? In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing, pp. 11048–11064, Abu Dhabi, United Arab Emirates, December 2022b. Association for Computational Linguistics. doi:10.18653/v1/2022.emnlp-main.759. URL https://aclanthology.org/2022. emnlp-main.759.
+Ilya Mironov. Rényi differential privacy. In 2017 IEEE 30th Computer Security Foundations Symposium (CSF), pp. 263–275. IEEE, 2017. Kobbi Nissim, Sofya Raskhodnikova, and Adam Smith. Smooth sensitivity and sampling in private data analysis. In Proceedings of the thirty-ninth annual ACM symposium on Theory of computing, pp. 75–84, 2007. Nvidia. Large language models enterprise data, Mar 2023. URL https://blogs.nvidia.com/ blog/2023/03/21/nemo-large-language-models-enterprise-data/. OpenAI. Gpt-4 technical report, 2023. Ashwinee Panda, Xinyu Tang, Vikash Sehwag, Saeed Mahloujifar, and Prateek Mittal. Dp-raft: A differentially private recipe for accelerated fine-tuning. arXiv preprint arXiv:2212.04486, 2022. Nicolas Papernot and Thomas Steinke. Hyperparameter tuning with renyi differential privacy. In International Conference on Learning Representations, 2022. URL https://openreview.net/ forum?id=-70L8lpp9DF. Politico. Chatgpt is entering a world of regulatory pain in the eu, Apr 2023. URL https://www.politico.eu/article/ chatgpt-world-regulatory-pain-eu-privacy-data-protection-gdpr/. Nils Reimers and Iryna Gurevych. Sentence-bert: Sentence embeddings using siamese bert-networks. In Conference on Empirical Methods in Natural Language Processing, 2019. URL https: //api.semanticscholar.org/CorpusID:201646309. Gerard Salton, Anita Wong, and Chung-Shu Yang. A vector space model for automatic indexing. Commun. ACM, 18:613–620, 1975. URL https://api.semanticscholar.org/CorpusID:6473756. Swami Sivasubramanian. Announcing new tools for building with generative ai on aws, Apr 2023. URL https://aws.amazon.com/blogs/machine-learning/ announcing-new-tools-for-building-with-generative-ai-on-aws/. Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D Manning, Andrew Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sentiment treebank. In emnlp, 2013. Xinyu Tang, Richard Shin, Huseyin A. Inan, Andre Manoel, FatemehSadat Mireshghallah, Zinan Lin, Sivakanth Gopi, Janardhan Kulkarni, and Robert Sim. Privacy-preserving in-context learning with differentially private few-shot generation. 2023. URL https://api.semanticscholar.org/ CorpusID:262083977. Dave Van Veen, Cara Van Uden, Louis Blankemeier, Jean-Benoit Delbrouck, Asad Aali, Christian Bluethgen, Anuj Pareek, Malgorzata Polacin, William Collins, Neera Ahuja, Curtis P. Langlotz, Jason Hom, Sergios Gatidis, John Pauly, and Akshay S. Chaudhari. Clinical text summarization: Adapting large language models can outperform human experts, 2023. Ellen M Voorhees and Dawn M Tice. Building a question answering test collection. In SIGIR, 2000. Boxin Wang, Weixin Chen, Hengzhi Pei, Chulin Xie, Mintong Kang, Chenhui Zhang, Chejian Xu, Zidi Xiong, Ritik Dutta, Rylan Schaeffer, Sang T. Truong, Simran Arora, Mantas Mazeika, Dan Hendrycks, Zinan Lin, Yu Cheng, Sanmi Koyejo, Dawn Song, and Bo Li. Decodingtrust: A comprehensive assessment of trustworthiness in gpt models, 2023. Da Yu, Saurabh Naik, Arturs Backurs, Sivakanth Gopi, Huseyin A Inan, Gautam Kamath, Janardhan Kulkarni, Yin Tat Lee, Andre Manoel, Lukas Wutschitz, Sergey Yekhanin, and Huishuai Zhang. Differentially private fine-tuning of language models. In International Conference on Learning Representations, 2022. URL https://openreview.net/forum?id=Q42f0dfjECO. Xiang Zhang, Junbo Jake Zhao, and Yann LeCun. Character-level convolutional networks for text classification. In NIPS, 2015.
+Yiming Zhang, Shi Feng, and Chenhao Tan. Active example selection for in-context learning. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing, pp. 9134–9148, Abu Dhabi, United Arab Emirates, December 2022. Association for Computational Linguistics. URL https://aclanthology.org/2022.emnlp-main.622. Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. Calibrate before use: Improving few-shot performance of language models. In Marina Meila and Tong Zhang (eds.), Proceedings of the 38th International Conference on Machine Learning, volume 139 of Proceedings of Machine Learning Research, pp. 12697–12706. PMLR, 18–24 Jul 2021. URL https://proceedings.mlr. press/v139/zhao21c.html. Yuqing Zhu and Yu-Xiang Wang. Adaptive private-k-selection with adaptive k and application to multi-label pate. In International Conference on Artificial Intelligence and Statistics, pp. 5622–5635. PMLR, 2022.
+Yiming Zhang, Shi Feng, and Chenhao Tan. Active example selection for in-context learning. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing, pp. 9134–9148, Abu Dhabi, United Arab Emirates, December 2022. Association for Computational Linguistics. URL https://aclanthology.org/2022.emnlp-main.622. Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. Calibrate before use: Improving few-shot performance of language models. In Marina Meila and Tong Zhang (eds.), Proceedings of the 38th International Conference on Machine Learning, volume 139 of Proceedings of Machine Learning Research, pp. 12697–12706. PMLR, 18–24 Jul 2021. URL https://proceedings.mlr. press/v139/zhao21c.html. Yuqing Zhu and Yu-Xiang Wang. Adaptive private-k-selection with adaptive k and application to multi-label pate. In International Conference on Artificial Intelligence and Statistics, pp. 5622–5635. PMLR, 2022.
+A DETAILS AND PSEUDOCODE OF DP IN-CONTEXT LEARNING IN SECTION 3 In this appendix, we provide full details of our DP-ICL algorithms. These algorithms include text classification through RNM-Gaussian (Appendix A.1), language generation via embedding space aggregation (Appendix A.2), and language generation via keyword space aggregation (Appendix A.3).
+<div style="text-align: center;">Our method is detailed in Algorithm 1, and further privacy analysis is detailed in Appendix B.1.</div>
+Algorithm 1 Differentially Private In-Context Learning via RNM-Gaussian
+Require: Private data D, query Q, model LLM, noise σ, number of subsets N
+1: Partition D1, D2, . . . , DN ←D.
+2: for i ∈{1, . . . , N} do
+3:
+Form exemplar-query pair DQ
+i = Di ∪{Q}.
+4:
+Obtain model output oi(Q) = LLM(DQ
+i ).
+5:
+Convert oi(Q) to a one-hot vector with length equal to the number of classes.
+6: end for
+7: Sum the one-hot vectors into a histogram H.
+8: Add noise to N
+�
+0, σ2�
+to each entry of H.
+9: Report the top-1 bin from H.
+A.2
+LANGUAGE GENERATION VIA EMBEDDING SPACE AGGREGATION (ESA)
+In Algorithm 2, we present the full descriptions of our ESA method. The main idea is to project those
+output sentences into embedding space, get a differentially private mean, and map it back to sentence
+space. Further privacy analysis, including how to compute σ, is presented in Appendix B.2.
+Algorithm 2 Differentially Private In-Context Learning via Embedding
+Require: Private data D, query Q, model LLM, noise σ, number of subsets N, public candidate
+sentences obtained by zero-shot predictions OC with total number of C
+1: Partition D1, D2, . . . , DN ←D.
+2: for i ∈{1, . . . , N} do
+3:
+Form exemplar-query pair DQ
+i = Di ∪{Q}.
+4:
+Obtain model output sentence Oi(Q) = LLM(DQ
+i ).
+5:
+Project Oi(Q) into embedding vector Ei(Q).
+6: end for
+7: Take the mean of all embedding vectors E = 1
+N
+�N
+i=1 Ei.
+8: Adding noise and obtain the noisy embedding �E = E + N
+�
+0, σ2I
+�
+.
+9: Return the sentence argmaxo∈OC CosineSimilarity(o, �E).
+The keyword space aggregation (KSA) algorithm is demonstrated in Algorithm 3. We illustrate two differential private approaches for selecting keywords in the following subsections, including joint Exponential Mechanism (Appendix A.3.1) and Propose-Test-Release (Appendix A.3.2).
+The keyword space aggregation (KSA) algorithm is demonstrated in Algorithm 3. We illustrate two differential private approaches for selecting keywords in the following subsections, including joint Exponential Mechanism (Appendix A.3.1) and Propose-Test-Release (Appendix A.3.2). A.3.1 KSA J E M.
+The main idea of the joint exponential mechanism (Gillenwater et al., 2022) is to provide a mechanism that samples sequences of items rather than use variants of the exponential mechanism that may require composition over the number of tokens (Durfee & Rogers, 2019). We create the “public domain” for our summarization tasks by creating a histogram of counts for the words in the dialogue we want to summarize. We increase these counts for each exemplar. Note that just creating a
+Algorithm 3 Keyword Space Aggregation
+Require: Private data D, query Q, model LLM, noise σ, number of subsets N, public candidates
+obtained by zero-shot predictions OC with total number of C, maximum token length M,
+method ∈{JEM, PTR}.
+1: Partition D1, D2, . . . , DN ←D.
+2: for i ∈{1, . . . , N} do
+3:
+Form exemplar-query pair DQ
+i = Di ∪{Q}.
+4:
+Obtain model output sentence Oi(Q) = LLM(DQ
+i ).
+5: end for
+6: For each token, count the number of sentences in {Oi(Q)} it appears, and form a histogram H.
+7: if method = JEM then
+8:
+Return JointEM(k, H). (Algorithm 4)
+9: else if method = PTR then
+10:
+�k = FindBestK(H). (Algorithm 6)
+11:
+Return TopKwithPTR(�k, FindBestK(H)). (Algorithm 5)
+12: end if
+Algorithm 4 JointEM (Gillenwater et al., 2022)
+Require: Vector of item counts c1, . . . , cd, number of items to estim
+1: Sort and relabel items so c1 ≥c2 ≥· · · ≥cd
+2: Construct matrix ˜U by ˜Uij = −(ci −cj) −d(k−i)+j
+2dk
+3: Sort ˜U in decreasing order to get ˜U(1), . . . , ˜U(dk), storing the (
+(r(a), c(a))
+4: Initialize n1, . . . , nk ←0
+5: Initialize set of non-zero ni, N ←∅
+6: Initialize b ←0
+7: for a = 1, . . . , dk do
+8:
+nr(a) ←c(a) −(r(a) −1)
+9:
+N ←N ∪{r(a)}
+10:
+if |N| = k then
+11:
+break
+12:
+end if
+13:
+Set ˜m( ˜U(a)) ←0, and set b ←a
+14: end for
+15: Set p ←�
+r∈[k] nr
+16: Compute ˜m( ˜U(b+1)) ←p/nr(a)
+17: for a = b + 2, . . . , dk do
+18:
+Set p ←p/nr(a)
+19:
+Compute ˜m( ˜U(a)) ←p
+20:
+Update nr(a) ←nr(a) + 1
+21:
+Update p ←p · nr(a)
+22: end for
+23: Sample a utility ˜Uij from: P
+�
+˜Uij
+�
+∝˜m
+�
+˜Uij
+�
+exp
+�
+ε⌈˜Uij⌉
+2
+�
+24: Initialize size-k output vector s with si ←j
+25: for i′ = 1, 2, . . . , i −1, i + 1, . . . , k do
+26:
+Compute ti′( ˜Uij) by iterating through row i′ of ˜U
+27:
+Sample si′ uniformly from ti′( ˜Uij)\{j, s1, s2, . . . , si′−1}
+28: end for
+29: Return Vector of item indices s
+Algorithm 4 JointEM (Gillenwater et al., 2022)
+Require: Vector of item counts c1, . . . , cd, number of items to estimate k, privacy parameter ε
+1: Sort and relabel items so c1 ≥c2 ≥· · · ≥cd
+2: Construct matrix ˜U by ˜Uij = −(ci −cj) −d(k−i)+j
+2dk
+3: Sort ˜U in decreasing order to get ˜U(1), . . . , ˜U(dk), storing the (row, column) of each ˜U(a) as
+(r(a), c(a))
+4: Initialize n1, . . . , nk ←0
+5: Initialize set of non-zero ni, N ←∅
+6: Initialize b ←0
+7: for a = 1, . . . , dk do
+8:
+nr(a) ←c(a) −(r(a) −1)
+9:
+N ←N ∪{r(a)}
+10:
+if |N| = k then
+11:
+break
+12:
+end if
+13:
+Set ˜m( ˜U(a)) ←0, and set b ←a
+14: end for
+15: Set p ←�
+r∈[k] nr
+16: Compute ˜m( ˜U(b+1)) ←p/nr(a)
+17: for a = b + 2, . . . , dk do
+18:
+Set p ←p/nr(a)
+19:
+Compute ˜m( ˜U(a)) ←p
+20:
+Update nr(a) ←nr(a) + 1
+21:
+Update p ←p · nr(a)
+22: end for
+23: Sample a utility ˜Uij from: P
+�
+˜Uij
+�
+∝˜m
+�
+˜Uij
+�
+exp
+�
+ε⌈˜Uij⌉
+2
+�
+24: Initialize size-k output vector s with si ←j
+25: for i′ = 1, 2, . . . , i −1, i + 1, . . . , k do
+26:
+Compute ti′( ˜Uij) by iterating through row i′ of ˜U
+27:
+Sample si′ uniformly from ti′( ˜Uij)\{j, s1, s2, . . . , si′−1}
+28: end for
+29: Return Vector of item indices s
+histogram over the outputs of all exemplars would violate privacy. This is a challenge in extending KSA-JOINT to the infinite domain. We use this histogram to initialize a data structure to efficiently sample with the joint exponential mechanism. Our implementation uses the code from (Gillenwater et al., 2022).
+# A.3.2 KSA VIA PROPOSE-TEST-RELEASE (KSA-PTR)
+Notations. We use N to denote the total number of tokens (e.g., N = 50, 000). We use H to denote the histogram for the counts of each token, and we use H(j) to denote the jth highest count, i.e., H(1) ≥H(2) ≥. . . ≥H(N). The main idea of KSA-PTR is that, for the task of releasing the top-k index set of a voting histogram, if H(k) −H(k+1) > 2, then the top-k indices are exactly the same for all the neighboring datasets. Hence, one can release the exact top-k indices without any randomness. However, we need to test whether H(k) −H(k+1) > 2 in a differentially private way, where we can leverage the famous propose-test-release paradigm (Dwork & Lei, 2009), as shown in Algorithm 5.
+Algorithm 5 TopKwithPTR
+Require: k – the number of top counted tokens to release; H – histogram for the counts of each
+token; δ – failure probability
+1: Set dk := H(k) −H(k+1).
+2: Set �dk := max(2, dk) + N(0, 4σ2) −Φ(1 −δ; 0, 2σ).
+3: If �dk > 2, Return the exact top-k tokens.
+4: Else Terminate (or use zero-shot learning).
+As we can see, such an algorithm can have the highest utility when we choose the k that maximizes
+H(k) −H(k+1). Hence, to further improve the utility of the algorithm, we can select k in a data-
+dependent way, i.e., we release argmax H −H in a differentially private way (which is
+Algorithm 5 TopKwithPTR
+Require: k – the number of top counted tokens to release; H – histogram for the counts of each
+token; δ – failure probability
+1: Set dk := H(k) −H(k+1).
+2: Set �dk := max(2, dk) + N(0, 4σ2) −Φ(1 −δ; 0, 2σ).
+3: If �dk > 2, Return the exact top-k tokens.
+4: Else Terminate (or use zero-shot learning).
+As we can see, such an algorithm can have the highest utility when we choose the k that maximizes H(k) −H(k+1). Hence, to further improve the utility of the algorithm, we can select k in a datadependent way, i.e., we release argmaxk H(k) −H(k+1) in a differentially private way (which is another Report-Noisy-Max) using Exponential mechanism.
+Algorithm 6 FindBestK
+Require: H – histogram for the counts of each token
+1: Compute histogram gap dk := H(k) −H(k+1) for each k = 1 . . . N −1.
+2: Return argmaxk{dk + r(k) + Gumbel(4/ε)}
+Here, r(k) is a regularizer independent of the dataset, e.g., we can set r(k) = −∞for any k > 30 and k < 15, if we don’t want to return more than 30 or less than 15 tokens.
+In this section, we review the important properties of differential privacy and provide the privacy analysis for the algorithms introduced in Section 3. We first state the formal DP definition. Definition 1 (Differential Privacy (Dwork et al., 2006b)). For ε, δ ≥0, a randomized algorithm M : MultiSets(X) →Y is (ε, δ)-differentially private if for every neighboring dataset pair D, D′ ∈MultiSets(X), we have:
+∀T ⊆Y Pr[M(D) ∈T] ≤eε · Pr[M(D′) ∈T] + δ
+where the randomness is over the coin flips of M.
+Post-processing Property. Differential privacy exhibits a robust post-processing property. Informally, this means that if a mechanism is differentially private, then any post-processing applied to the output of that mechanism is also differentially private. This property is crucial for enabling flexible analysis of privately released data. Lemma 2 (Post-processing (Dwork et al., 2006b)). If M : MultiSets(X) →Y is (ε, δ)-differentially private and f : Y →Z is an arbitrary (possibly randomized) function, then the composed mechanism f ◦M : MultiSets(X) →Z is also (ε, δ)-differentially private. (Adaptive) Composition of Differential Privacy. In practice, multiple differentially private mechanisms may be applied to the same dataset. Crucially, multiple DP mechanisms can be adaptively composed in the sense that the output of one mechanism can be used as an input to another mechanism, denoted as M(D) = M1 ◦M2(D) := (M1(D), M2(D, M1(D))). Differential privacy offers strong composition guarantees, that help quantify the cumulative privacy loss resulting from these combined mechanisms. These guarantees are provided by various composition theorems or privacy accounting techniques, including the basic composition theorem (Dwork et al., 2006a), advanced composition theorem (Dwork et al., 2010), and Moments Accountant (Abadi et al., 2016). For example, the basic composition theorem states that if M1 is (ε1, δ1)-DP and M2 is (ε2, δ2)-DP, then the adaptive composition of M1 and M2 is (ε1 + ε2, δ1 + δ2)-DP. Consider two attackers: the first asks their allotted k queries in one batch and then observes the answers, the second asks each query sequentially and incorporates information gained from observing the answer to the current query into the next query. The second attacker is certainly stronger, and this increased strength is captured by adaptive composition. Privacy Amplification by Subsampling. Privacy amplification by subsampling is a technique used to enhance privacy guarantees in differentially private mechanisms by randomly selecting a subset of the data before applying the privacy mechanism. This subsampling process can lead to a reduction in the privacy cost, allowing for better utility while preserving privacy. We can show that the Poisson subsampled Gaussian mechanism with sensitivity 1, noise scale σ, and subsampling rate q has the PRV Y = log(P(o)/Q(o)), o ∼P, where P = (1 −q)N(0, σ2) + qN(1, σ2) and Q = N(0, σ2), and P(·), Q(·) are the density functions of P, Q. With the PRV of subsampled Gaussian mechanism as well as the PRV accountant, we can now efficiently and tightly track the privacy costs for DP-ICL.
+# B.1 TEXT CLASSIFICATION VIA RNM-GAUSSIAN
+Theorem 3. The mechanism RNM-Gaussian Mσ from Section 3.1 is (ε, δ)-DP with σ = 2 � log(1.25/δ)/ε.
+Proof. Note that Mσ can be broken down into applying the argmax operator on a noisy histogram, which is generated by adding Gaussian noise to each dimension of the original histogram. The Gaussian mechanism is known to satisfy (ε, δ)-DP with σ = ∆ � 2 log(1.25/δ)/ε (Dwork et al., 2014), where ∆:= supD∼D′ ∥f(D) −f(D′)∥represents the global sensitivity of the underlying aggregation function f. In our case, f calculates the original voting histogram. As each exemplarquery prediction may alter two counts (increasing one and decreasing the other), the sensitivity ∆is √ 2. The overall privacy guarantee is then derived from the post-processing property of differential privacy.
+# B.2 EMBEDDING SPACE AGGREGATION (ESA)
+Theorem 4. The Step 2 to Step 9 in Alg. 2 is (ε, δ)-DP with σ = 2 � log(1.25/δ)/ε.
+� Proof. Note that each embedding output by the text-to-embedding model has ℓ2 norm to be 1. Hence, the referred steps are essentially the same as Gaussian mechanism with ℓ2 sensitivity 1. The last step of releasing the public candidate sentence that has the maximum cosine similarity can be regarded as the post-processing step and hence does not affect the overall privacy guarantee.
+Tracking Privacy Loss with PRV Accountant for Gaussian mechanism. To better keep track of the privacy cost for RNM-Gaussian and ESA, we use the most recent advances in privacy cost accounting based on the notion of the Privacy Loss Random Variable (PRV) (Dwork & Rothblum, 2016). The PRV accountant was introduced by Koskela et al. (2020) and later refined in Koskela & Honkela (2021); Gopi et al. (2021). For any DP-algorithm, one can easily compute its (ε, δ) privacy guarantee based on the distribution of its PRV. The key property of PRVs is that, under (adaptive) composition, they simply add up; the PRV Y of the composition M = M1 ◦M2 ◦· · · ◦Mk is given by Y = �k i=1 Yi, where Yi is the PRV of Mi. Therefore, one can then find the distribution of Y by convolving the distributions of Y1, Y2, . . . , Yk. Prior works (Koskela & Honkela, 2021; Gopi et al., 2021) approximate the distribution of PRVs by truncating and discretizing them, then using the Fast Fourier Transform (FFT) to efficiently convolve the distributions.
+B.3 LANGUAGE GENERATION VIA KEYWORD SPACE AGGREGATION (KSA)
+# B.3 LANGUAGE GENERATION VIA KEYWORD SPACE AGGREGATION (KSA)
+Rényi differential privacy (RDP) is a variant of the standard (ε, δ)-DP that uses Rényi-divergence as a distance metric between the output distributions of M(D) and M(D′), which is particularly useful in training differentially private machine learning models. Definition 5 (Rényi Differential Privacy (Mironov, 2017)). We say that a mechanism M is (α, εM(α))-RDP with order α ∈(1, ∞) if for every dataset pair D, D′ ∈MultiSets(X) such that d(D, D′) = 1, we have: �� ��
+ − �� where µM(·) denotes the density function of M’s distribution.
+Another useful relaxation of the RDP definition is approximate RDP. Definition 6 (Approximate RDP (Bun & Steinke, 2016; Zhu & Wang, 2022)). We say a randomized algorithm M is δ-approximately (α, εM(α))-RDP with order α ≥1, if for all neighboring dataset D, D′, there exist events E (depending on M(D)) and E′ (depending on M(D′)) such that Pr[E] ≥ 1 −δ and Pr[E′] ≥1 −δ, and ∀α ≥1, we have Dα (M(D)|E ∥M (D′) |E′) ≤εM(α) (2)
+For both methods of KSA-JEM and KSA-PTR, we use RDP and approximate RDP for a tighter measure of the privacy cost under composition. After we obtain the (approximate) RDP guarantee for the overall algorithm, we can then convert the privacy guarantee back into the standard DP definition. We refer the readers to Bun & Steinke (2016) and Mironov (2017) for the composition and conversion formula for RDP and approximate RDP. In the following, we state the privacy guarantee of individual building blocks for private prompt generation and selection in terms of (approximate) RDP. We then introduce the exponential mechanism (McSherry & Talwar, 2007), one of the most famous and frequently used DP mechanisms. The exponential mechanism takes a utility function q : MultiSets × Y →R and can be thought of as evaluating how good q(D, y) is for an outcome y ∈Y on dataset D. Definition 7 (Exponential Mechanism). Let EMq : MultiSets →Y be a mechanism where for all outputs y ∈Y we have � �
+� � where ∆(q) is the sensitivity of the quality score, i.e. for all neighboring inputs D, D′ we have supy∈Y |q(D, y) −q(D′, y)| ≤∆(q)
+(1)
+(2)
+Furthermore, Durfee & Rogers (2019) shows that adding Gumbel noise to each output’s utility and releasing the output with the highest noisy utility score is equivalent to using the exponential mechanism. Theorem 8 (Bun & Steinke (2016)). The exponential mechanism is ε-DP, and (α, εEM(α))-RDP s.t.
+B.3.1 KSA VIA JOINT EXPONENTIAL MECHANISM Theorem 9. Alg. 4 is ε-DP, and εEM(α)-RDP.
+Theorem 9. Alg. 4 is ε-DP, and εEM(α)-RDP.
+Proof. Alg. 6 is an Exponential mechanism on the domain space of positive integers k = 1, 2, . . . , where the utility of k is dk := H(k) −H(k+1). The sensitivity of dk is 2. Hence, the DP and RDP guarantee follows from the privacy guarantee of exponential mechanism in Theorem 8.
+Proof. Alg. 6 is an Exponential mechanism on the domain space of positive integers k = 1, 2, . . . , where the utility of k is dk := H(k) −H(k+1). The sensitivity of dk is 2. Hence, the DP and RDP guarantee follows from the privacy guarantee of exponential mechanism in Theorem 8. B.3.2 KSA VIA PROPOSE-TEST-RELEASE (KSA-PTR)
+Proof. Alg. 6 is an Exponential mechanism on the domain space of positive integers k = 1, 2, . . . , where the utility of k is dk := H(k) −H(k+1). The sensitivity of dk is 2. Hence, the DP and RDP guarantee follows from the privacy guarantee of exponential mechanism in Theorem 8. Theorem 11. Alg. 5 is δ-approximate α 2σ2 -RDP.
+Proof. Releasing the noisy threshold �dk is α 2σ2 -RDP. If dk > 2, then releasing the exact top-k tokens has no privacy cost, as its local sensitivity is 0. If dk ≤2, then if �dk ≤2, the program terminates and there’s no privacy cost. If dk ≤2, the failure probability
+  Pr[�dk > 2] = Pr[max(2, dk) + N(0, 4σ2) −Φ(1 −δ; 0, 2σ) > 2] = Pr[2 + N(0, 4σ2) −Φ(1 −δ; 0, 2σ) > 2] = Pr[N(0, 4σ2) −Φ(1 −δ; 0, 2σ) > 0] = δ
+Theorem 12. If M is δ-approximate εM(α)-RDP, then M ◦Poisson with subsampling rate q is δq-approximate εM◦Poisson(α)-RDP, where εM◦Poisson(α) is the tightest possible amplification bound for any mechanism that is εM(α)-RDP with subsampling rate q(1−δ) 1−qδ . Proof. Consider D := D′ ∪{z}, D, D′ are neighboring datasets. Denote S ⊆D′, and let γS the probability of sampling S. Denote µS := M(S).
+Proof. Consider D := D′ ∪{z}, D, D′ are neighboring datasets. Denote S ⊆D′, and let γS the probability of sampling S. Denote µS := M(S).
+
+
+(3)
+(4)
+For any pair of S, S ∪z, denote event ES, ES∪z s.t. Dα(µS|ES∥µS∪z|ES∪z) ≤εM(α) and Pr[ES] ≥1 −δ and Pr[ES∪z] ≥1 −δ. Hence, we can rewrite M(Poisson(D′)) and M(Poisson(D)) as
+For any pair of S, S ∪z, denote event ES, ES∪z s.t. Dα(µS|ES∥µS∪z|ES∪z) ≤εM(α) and Pr[ES] ≥1 −δ and Pr[ES∪z] ≥1 −δ. Hence, we can rewrite M(Poisson(D′)) and  as
+Hence, there exists event ED, ED′ s.t. Pr[ED] ≥1 −qδ and Pr[ED′] ≥1 −qδ, and M(Poisson(D′))|ED = (1 −q) � S⊆D′ γSµS + q(1 −δ) � S⊆D′ γSµS|ES M(Poisson(D))|ED′ = (1 −q) � S⊆D′ γSµS + q(1 −δ) � S⊆D′ γSµS∪z|ES∪
+Hence
+Dα (M(Poisson(D))|ED ∥M(Poisson(D′))|ED′) has privacy amplification with subsampling rate q(1−δ) 1−qδ .
+has privacy amplification with subsampling rate q(1−δ) 1−qδ .
+(6)
+# C DP-ICL ENABLES PRIVATE PREDICTION
+Our work represents a major departure from prior work on DP LLMs in that we consider private prediction rather than private training. A line of recent work (Li et al., 2022; Yu et al., 2022; Bu et al., 2022; He et al., 2023) has proposed fine-tuning pre-trained models on downstream tasks with differentially private stochastic gradient descent (DP-SGD) (Abadi et al., 2016). Despite ample research into DP LLMs and the growing industry demand for solutions to augment LLMs with proprietary data (Kuchaiev et al., 2019; Nvidia, 2023), a number of key challenges remain for DP LLMs that we seek to address by considering private prediction. Private training makes training harder. Fine-tuning with DP-SGD requires adopting entirely new hyperparameters and shifting existing hyperparameters to be radically different from non-private training (Li et al., 2022). Performing this additional hyperparameter tuning can take hundreds of trials. DP-SGD uses per-example gradient clipping to bound the sensitivity of individual datapoints. Materializing per-example gradients can increase the memory consumption of training by an order of magnitude (Bu et al., 2022) and slow down training. Although recent methods have been proposed for efficient hyperparameter tuning (Panda et al., 2022; Papernot & Steinke, 2022), efficient per-example gradient clipping (Li et al., 2022), and parameter-efficient fine-tuning (Yu et al., 2022), we emphasize that DP-SGD introduces challenging engineering and optimization problems that are a topic of ongoing research. Our method requires no hyperparameter tuning and is computationally efficient. Private training is incompatible with black-box LLMs. Developers building on top of cloudhosted LLMs such as OpenAI, Anthropic, or AWS Bedrock cannot implement the complex DP-SGD algorithm (Sivasubramanian, 2023). Organizations employing closed-source LLMs such as GPT-3+, Claude, or Bard cannot even access the weights for fine-tuning and may never be able to (OpenAI, 2023). Our method is compatible with any LLM API. Private training does not allow flexible data editing. Private training generates a single model that is inextricably tied to each datapoint in its training data. This is at odds with the right to be forgotten mandated by GDPR (Politico, 2023), that would require retraining the entire model to delete the influence of a private datapoint -an impracticality if not an outright impossibility when considering fine-tuning billion-parameter models. By contrast, honoring the right to be forgotten with DP-ICL is as straightforward as just removing the individual’s private data from the exemplar database. Our method enables the right to be forgotten. DP-ICL outperforms all previous DP-SGD methods on SST-2 benchmark (Table 5). We also compare our results with current state-of-the-art differentially private stochastic gradient descent (DP-SGD) methods on SST-2. The results illustrate an improvement over earlier methods. For instance, the enhancement at ε = 3 is 1.2%, which translates to an over 20% reduction in relative error rate, thereby establishing a new SOTA in the field.5 Moreover, by presenting the results with ε = ∞, we notice that our performance gains do not correlate to the advanced large language model, where our upper bound is lower than other methods. That means DP-ICL exhibits less sacrifice when achieving a differential privacy guarantee.
+<div style="text-align: center;">Table 5: Comparison of DP-ICL and DP-SGD on the SST-2 Dataset. Our DP-ICL meth demonstrates significantly lower performance degradation under privacy constraints of ε = {3, 8}</div>
+<div style="text-align: center;">demonstrates significantly lower performance degradation under privacy constraints of ε = {3, 8}.</div>
+onstrates significantly lower performance degradation under privacy constraints of {
+Model
+Method
+ε = 3 (gap)
+ε = 8 (gap)
+ε = ∞
+RoBERTa-large
+(Liu et al., 2020)
+DP-SGD (Li et al., 2022)
+93.04 (-3.16)
+93.81 (-2.39)
+96.20
+DP-SGD (Yu et al., 2022)
+–
+95.30*(-1.10)
+96.40
+DP-SGD (Bu et al., 2023)
+94.60 (-0.90)
+94.70 (-0.80)
+95.50
+DP-SGD (He et al., 2023)
+94.23 (-1.97)
+94.87 (-1.33)
+96.20
+GPT-3 Davinci
+DP-ICL (Ours)
+95.800.21 (+0.07)
+95.830.22 (+0.10)
+95.73 (4-shot)
+* 
+* Result present in (Yu et al., 2022) is ε = 6.7.
+However, DP-ICL in Table 5 is capable of responding to a maximum of 10,000 queries, whereas DP

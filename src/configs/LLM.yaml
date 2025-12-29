@@ -1,0 +1,135 @@
+# Pricing information for LLM models (CNY per 1M tokens)
+# https://platform.openai.com/docs/pricing (Converted to CNY)
+
+gpt-4o: 
+    input: 18.0 
+    output: 72.0
+
+gpt-4o-mini:
+    input: 1.1
+    output: 4.4
+
+# ZhipuAI models (glm-4, glm-4-flash)
+# Pricing information for ZhipuAI models in CNY per 1M tokens
+glm-4:
+    input: 5.0
+    output: 5.0
+
+glm-4-flash:
+    input: 0.1
+    output: 0.1
+
+# Paratera API Models (Paratera 平台模型) - Pricing in CNY per 1M tokens
+GLM-4-Flash:
+    input: 0.1
+    output: 0.1
+
+GLM-4-FlashX:
+    input: 0.1
+    output: 0.1
+
+GLM-4-Plus:
+    input: 5.0
+    output: 5.0
+
+GLM-4.5:
+    input: 10.0
+    output: 10.0
+
+GLM-4.5-Air:
+    input: 0.05  # 轻量级高质量模型
+    output: 0.05
+
+GLM-4.5-AirX:
+    input: 0.05
+    output: 0.05
+
+GLM-4.5-Flash:
+    input: 0.02  # 快速版本
+    output: 0.02
+
+GLM-4.5-X:
+    input: 0.2  # 扩展版本
+    output: 0.2
+
+GLM-4-Air:
+    input: 0.05
+    output: 0.05
+
+GLM-4-AirX:
+    input: 0.05
+    output: 0.05
+
+GLM-4-Long:
+    input: 0.15  # 长文本模型
+    output: 0.15
+
+GLM-4-9B:
+    input: 0.02  # 小模型
+    output: 0.02
+
+GLM-4V-Flash:
+    input: 0.02  # 视觉模型快速版
+    output: 0.02
+
+GLM-4V-Plus-0111:
+    input: 0.15  # 视觉模型增强版
+    output: 0.15
+
+GLM-4.6:
+    input: 0.15
+    output: 0.15
+
+GLM-4.6V:
+    input: 0.15
+    output: 0.15
+
+GLM-4.7:
+    input: 0.15
+    output: 0.15
+
+GLM-Z1-Air:
+    input: 0.05
+    output: 0.05
+
+GLM-Z1-AirX:
+    input: 0.05
+    output: 0.05
+
+GLM-Z1-Flash:
+    input: 0.02
+    output: 0.02
+
+# Qwen 系列模型（如果使用）
+Qwen3-Next-80B-A3B-Instruct:
+    input: 0.1
+    output: 0.1
+
+Qwen3-235B-A22B-Instruct-2507:
+    input: 0.2
+    output: 0.2
+
+Qwen2.5-72B-Instruct:
+    input: 0.1
+    output: 0.1
+
+# DeepSeek 系列模型 - Pricing in CNY per 1M tokens
+DeepSeek-V3.2:
+    input: 2.0
+    output: 3.0
+
+DeepSeek-R1:
+    input: 4.0
+    output: 16.0
+
+DeepSeek-V3.2-Instruct:
+    input: 2.0
+    output: 3.0
+
+DeepSeek-V3.2-Thinking:
+    input: 4.0
+    output: 16.0
+
+default:
+    input: 5.0
+    output: 5.0

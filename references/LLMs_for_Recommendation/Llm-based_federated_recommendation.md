@@ -1,0 +1,667 @@
+# LLM-based Federated Recommendation
+
+e
+Wenjie Wang wenjiewang96@gmail.com National University of Singapore
+Chen Xu xc_chen@ruc.edu.cn Renmin University of China
+
+Wenjie Wang wenjiewang96@gmail.com National University of Singapore
+
+Jujia Zhao zhao.jujia.0913@gmail.com National University of Singapore
+Wenjie Wang wenjiewang96@gmail.com National University of Singapore
+Ren
+
+Zhaochun Ren z.ren@liacs.leidenuniv.nl Leiden University
+See-Kiong Ng seekiong@nus.edu.sg National University of Singapore
+
+Zhaochun Ren z.ren@liacs.leidenuniv.nl Leiden University
+
+See-Kiong Ng seekiong@nus.edu.sg National University of Singapore
+
+# ABSTRACT
+
+Large Language Models (LLMs), with their advanced contextual understanding abilities, have demonstrated considerable potential in enhancing recommendation systems via fine-tuning methods. However, fine-tuning requires users’ behavior data, which poses considerable privacy risks due to the incorporation of sensitive user information. The unintended disclosure of such data could infringe upon data protection laws and give rise to ethical issues. To mitigate these privacy issues, Federated Learning for Recommendation (Fed4Rec) has emerged as a promising approach. Nevertheless, applying Fed4Rec to LLM-based recommendation presents two main challenges: first, an increase in the imbalance of performance across clients, affecting the system’s efficiency over time, and second, a high demand on clients’ computational and storage resources for local training and inference of LLMs. To address these challenges, we introduce a Privacy-Preserving LLM-based Recommendation (PPLR) framework. The PPLR framework employs two primary strategies. First, it implements a dynamic balance strategy, which involves the design of dynamic parameter aggregation and adjustment of learning speed for different clients during the training phase, to ensure relatively balanced performance across all clients. Second, PPLR adopts a flexible storage strategy, selectively retaining certain sensitive layers of the language model on the client side while offloading non-sensitive layers to the server. This approach aims to preserve user privacy while efficiently saving computational and storage resources. Experimental results demonstrate that PPLR not only achieves a balanced performance among clients but also enhances overall system performance in a manner that is both computationally and storage-efficient, while effectively protecting user privacy.
+
+
+CCS CONCEPTS
+• Information systems → Recommender systems
+
+# KEYWORDS
+
+LLM-based Recommendation, Federated Learning for Recommendation, Privacy-Preserving
+
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. Conference’17, July 2017, Washington, DC, USA © 2024 Association for Computing Machinery. ACM ISBN 978-x-xxxx-xxxx-x/YY/MM...$15.00 https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. Conference’17, July 2017, Washington, DC, USA © 2024 Association for Computing Machinery. ACM ISBN 978-x-xxxx-xxxx-x/YY/MM...$15.00 https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+Chen Xu xc_chen@ruc.edu.cn Renmin University of China
+
+Tat-Seng Chua dcscts@nus.edu.sg al University of Sin
+
+Tat-Seng Chua dcscts@nus.edu.sg National University of Singapore
+
+dcscts@nus.edu.sg National University of Singapore
+
+National University of Singapore
+
+ACM Reference Format: Jujia Zhao, Wenjie Wang, Chen Xu, Zhaochun Ren, See-Kiong Ng, and TatSeng Chua. 2024. LLM-based Federated Recommendation. In Proceedings of ACM Conference (Conference’17). ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+# 1 INTRODUCTION
+
+Large Language Models (LLMs) with advanced contextual understanding abilities have demonstrated potential in building generative recommendation systems [12, 13, 21, 29]. To better comprehend the item popularity and user preference, fine-tuning LLMs with user behavior data is essential [2, 19]. However, utilizing users’ behavior data for fine-tuning will face serious privacy leakage risks like in the traditional recommender models. The unintended disclosure of sensitive user data could cause ethical issues and infringe upon data protection laws such as the General Data Protection Regulation in the European Union [16]. Therefore, ensuring the security and privacy of recommendation data during the LLM fine-tuning process is crucial. To address the data privacy concerns, Federated Learning for Recommendation (Fed4Rec) emerges as a promising solution [27, 30]. Fed4Rec requires clients (e.g., user devices and platforms with a group of users) to conduct local training using the client’s data, and then exchange non-sensitive intermediate parameters such as model parameters and gradients, instead of raw client data, for collaborative training. In General, Fed4Rec mainly employs two frameworks: 1) Peer-Peer Framework [1, 38], which makes every client broadcast the updated parameters to other clients directly within the peer-to-peer network. However, this framework faces limitations in LLM-based recommendation scenarios, primarily due to the high communication costs incurred by the large number of LLM parameters. 2) Client-Server Framework [40, 42], which transmits the updated parameters of the clients to a central server for aggregation. Previous works [30, 39] have demonstrated that the client-server framework is more efficient in terms of communication overhead, making it a more suitable choice in LLMbased recommendations. However, adapting the client-server framework to LLM-based recommendation presents two challenges: 1) Exacerbated Client Performance Imbalance: Based on our empirical analysis in Figure 1(a), it is evident that directly applying the client-server framework to LLM-based recommendation models leads to a more significant client performance imbalance compared to traditional models. This exacerbated imbalance may cause less accurate and equitable recommendations for specific clients, ultimately impacting the system’s long-term effectiveness and user satisfaction [4, 35].
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ad73/ad73c2ca-9d53-46fe-bc2e-eb5816a736bc.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/daf8/daf8ce7d-6410-4734-8199-725201b48467.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Client Performance Imbalance Comparison
+</div>
+<div style="text-align: center;">(a) Client Performance Imbalance Comparison
+</div>
+<div style="text-align: center;">(b)  Loss Convergence Comparison
+</div>
+Figure 1: (a) illustrates the exacerbated client performance imbalance when applying a classical client-server method (FedAvg [26]) to LLM-based recommender models (BIGRec) compared with traditional recommender models (MF). (b) shows the convergence rate of two selected clients when applying FedAvg to LLM-based and traditional models. The observations are on the Games dataset.
+
+This exacerbated imbalance potentially stems from the accelerated training convergence among clients, as depicted in Figure 1(b), possibly due to the fast adaptation capabilities of LLMs [2, 3]. 2) Substantial Client Resource Costs: The client-server framework necessitates that each client possesses the capability to locally train and infer LLMs. However, the extensive computational and storage resources required by LLMs pose a substantial challenge for individual clients in meeting these demands [6, 10]. To tackle the issues of exacerbated performance imbalance and substantial resource costs, we refine the client-server framework with two strategies: 1) Dynamic Balance Strategy. To mitigate the performance imbalance among clients, we introduce a dynamic balance strategy: it involves designing dynamic parameter aggregation and learning speed for each client during the training phase to ensure relatively equitable performance across the board. 2) Flexible Storage Strategy: To reduce client costs, we propose a flexible storage strategy for the client model. Intuitively, this strategy selectively allocates some LLM layers, especially those capable of extracting sensitive user data, on the client side, while situating other non-sensitive layers on the server to save cost. In light of these, we propose a P rivacyP reserving L LM-based R ecommendation (PPLR) framework. 1) PPLR adapts dynamic balance strategies for different clients. Specifically, PPLR preserves personalized parameters on each client (e.g., Low-Rank Adaption (LoRA) [17]) and employs a dynamic parameter aggregation method based on attention mechanisms. Meanwhile, PPLR devises dynamic learning speed by proposing a Curriculum Heating learning method [7] based on client loss, which helps client undergoes a gradual pre-warming phase to familiarize themselves with their own data distribution. 2) PPLR adopts the flexible storage strategy to deploy those input and output layers on the client side to ensure the protection of all sensitive information (see detailed analysis in Section 4.3). Empowered with the two strategies, PPLR can safeguard data privacy for LLM-based recommendations in a more balanced and efficient way, meanwhile, it has better performance than other federated baselines. We instantiate PPLR on two LLM backend models and conduct extensive experiments on three datasets, validating its effectiveness and efficiency. The main contributions of this work are threefold: (1) We introduce a privacy-preserving task for fine-tuning LLMbased recommendation models, where we identify the challenges
+
+of directly adopting Fed4Rec: exacerbated client performance imbalance and substantial client resource costs. (2) We propose a privacy-preserving LLM-based recommendation framework called PPLR, which addresses the two challenges well while preserving data privacy. (3) Experiments across three public datasets under various settings, confirming its efficacy and efficiency.
+
+of directly adopting Fed4Rec: exacerbated client performance imbalance and substantial client resource costs. (2) We propose a privacy-preserving LLM-based recommendation framework called PPLR, which addresses the two challenges well while preserving data privacy. (3) Experiments across three public datasets under various settings, confirming its efficacy and efficiency.
+
+# 2 PRELIMINARY
+
+In this section, we firstly give a formulation for LLM-based recommendation tasks. Then we will formulate the client-server framework under Fed4Rec settings.
+
+In LLM-based recommendation, let U, I be the user set and item set. For a given user 𝑢 ∈U, the LLM-based recommender 𝑓 (P) will utilize the user’s historical interactions 𝐻 𝑢 to generate a ranking list 𝐿 𝐾 (𝐻 𝑢) ⊂I as the recommendation for user 𝑢, where 𝐾 is the item numbers in a ranking list (i.e., ranking size) and P is the parameter set of LLMs. 𝐻 𝑢 is the user 𝑢 ’s browsing history: 𝐻 𝑢 = [𝑖 1,𝑖 2, · · ·,𝑖 𝑁], where 𝑖 𝑛 ∈I is the 𝑛 − th item in the interaction history (typically in a natural language form [2]), and 𝑁 is the history length.
+
+# Client-Server Framework under Fed4Rec
+
+Since LLM-based recommendation poses the risk of exposing user historical interactions i.e., 𝐻 𝑢, which raises privacy concerns for both the user and platform, the client-server framework under Fed4Rec is the promising solution. Typically, let C be the client set, where each client 𝑐 ∈C could be a user 𝑢 or a group of users from specific platform. Each client 𝑐, equipped with a model parameter P 𝑐, has a local dataset D 𝑐 = {(𝐻 𝑢,𝑦), ∀ 𝑢 ∈ 𝑐}, which includes the users’ interaction history 𝐻 𝑢 and the label 𝑦 (usually the next-interacted item) for training. Within the client-server framework, the most classic approach is FedAvg [26], designed to allow a client 𝑐 to benefit from the training information of other clients without exposing its own local data D 𝑐. Specifically, at each training epoch, FedAvg utilizes a central server to aggregate parameters from various clients to generate unified updated parameters for every client. Formally, at each epoch, each client is required to update its parameter based on its local dataset: P 𝑐 = arg min P 𝑐 � (𝐻 𝑢,𝑦)∈ D 𝑐 𝑙 (𝑓 (𝐻 𝑢; P 𝑐),𝑦), ∀ 𝑐 ∈C, where 𝑙 (·) is the loss function of recommendation. Subsequently, the central server will aggregate parameters from all clients, and send the unified aggregated parameters back to every
+client: P 𝑐 = 1
+𝑛 � 𝑐 ′ ∈C | D 𝑐 ′ |
+| D | P 𝑐 ′, ∀ 𝑐 ∈C. FedAvg adeptly ensures privacy by obviating the necessity to transmit original data to the server, concentrating instead on the exchange of model parameters. However, directly applying FedAvg to LLM-based recommendations will meet the issues of exacerbated client performance imbalance and substantial client resource cost.
+
+# 3 PPLR FRAMEWORK
+
+In response to the challenges of exacerbated client performance imbalance and significant client resource costs, we introduce the
+
+<div style="text-align: center;">Flexible Allocation Strategy
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7009/7009f192-f6b0-4bce-9b65-3fc255866c04.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2: PPLR Structure. The left part is the flexible allocation strategy which offloads non-sensitive LLM to save resources. The right part is the dynamic balance strategy which ensures relatively balanced perform
+</div>
+<div style="text-align: center;">re. The left part is the flexible allocation strategy which offloads non-sensitive LLM layers to the server right part is the dynamic balance strategy which ensures relatively balanced performance across clients.
+</div>
+<div style="text-align: center;">Figure 2: PPLR Structure. The left part is the flexible allocation strategy which offloa to save resources. The right part is the dynamic balance strategy which ensures relativ
+</div>
+Privacy-Preserving LLM-based Recommendation (PPLR) framework, designed to enhance data privacy in LLM-based recommendation systems both equitably and efficiently. PPLR encompasses two key strategies: 1) Dynamic balance strategy, which entails the adoption of dynamic parameter aggregation and learning speeds to ensure relatively balanced performance across clients. 2) Flexible storage strategy, which enables the flexible storage of LLM model layers to conserve resources. The comprehensive architecture of PPLR is depicted in Figure 2.
+
+# 3.1 Dynamic Balance Strategy
+
+As illustrated in Section 1, the direct application of the clientserver framework in LLM-based recommendation models results in an exacerbated imbalance in performance across clients. This imbalance may further lead to less equitable recommendations for specific clients, thereby detrimentally affecting the system’s overall effectiveness and diminishing user satisfaction. The imbalance could be potentially attributed to two primary factors: 1) the diverse data distribution among clients, which may lead to conflicting optimization objectives among clients, thus possibly sacrificing the performance of specific clients. 2) The varied learning difficulty levels among clients, where those facing greater challenges may exhibit relatively poorer performance. To address these issues, PPLR first ensures client personalization by maintaining client-specific parameters for each client, including two kinds: 1) LoRA [17], and 2) either a part or the entirety of LLM’s own parameters. To economize on client resources, the remaining parameters are fixed. Our analysis primarily utilizes LoRA as an illustrative example, given that the underlying principles apply similarly to other methods. Specifically, for client 𝑐, the model parameters are denoted as P 𝑐 with LoRA R 𝑐, where LoRA is client-specific parameters and P 𝑐 is the original LLM model parameters which is fixed. Subsequently, PPLR incorporates a dynamic balance strategy, which involves designing dynamic parameter aggregation and learning speeds for each client, addressing two key factors of imbalance respectively.
+
+An intuitive idea of our method is:
+�
+
+(1)
+
+�
+where 𝑑 𝑐,𝑐 ′ is the dynamic aggregation weight and it can be divided into two parts: 𝑑 𝑐,𝑐 ′ = 𝑤 𝑐 · 𝑠 𝑐,𝑐 ′, where 𝑠 𝑐,𝑐 ′ is the attention-based aggregation weight corresponding to the Sub-section 3.1.1 and 𝑤 𝑐 is the learning difficulty weight illustrated at the Sub-section 3.1.2.
+3.1.1 Dynamic Parameter Aggregation. Given the variability in data distribution among clients, the optimization objectives for them may diverge, potentially leading to conflicts when trying to optimize a global model. Such conflicts may inadvertently sacrifice the performance of specific clients, which causes imbalance. Given this, PPLR incorporates an attention-based parameter aggregation method. This method customizes the aggregation process of each client according to their unique data distribution, aiming to mitigate performance imbalances without compromising the performance of specific clients. Intuitively, this approach ensures that the client model prioritizes learning from clients with similar data distributions while reducing the influence of those deemed non-relevant. The prioritization mechanism involves aggregating the client model parameters based on the cosine similarity between the parameters of the current client and those of other clients. Specifically, for client 𝑐, the aggregation formula is:
+�
+
+(2)
+
+(3)
+
+∥(R)∥∥(R ∥)
+where ∥· ∥ 2 denotes the ℓ 2 norm, R 𝑐 represents the client-specific LoRA parameter of client 𝑐, vec (R 𝑐)  represents the flattened onedimension client-specific LoRA parameter of client 𝑐, and 𝑠 𝑐,𝑐 ′ is the attention-based aggregation weight, which is the cosine similarity between vec (R 𝑐) and vec (R 𝑐 ′). Through dynamic parameter aggregation, PPLR ensures more balanced performance across clients by customizing the aggregation process of each client based on its specific data distribution.
+
+3.1.2 Dynamic Learning Speed. Given the varied heterogeneity within client datasets, clients encounter different learning difficulties during training [37]. Consequently, the learning status of different clients (e.g., ongoing learning, convergence or overfitting) can vary significantly. If a client has not adequately learned from its own data, excessively aggregating parameters from other clients may detrimentally affect its performance, potentially leading to performance imbalances across clients. In response to this challenge, we develop a client-specific dynamic learning speed mechanism. This mechanism dynamically adjusts the extent of learning from other clients according to the client’s current learning status, thereby personalizing the client’s learning process. PPLR assesses a client’s learning status via its local loss, which serves as a gauge of the client’s learning difficulty, and adjusts the extent of learning from peers accordingly. Based on this, PPLR introduces a Curriculum Heating learning method [7], which is adapted based on client loss. Intuitively, clients experiencing higher losses undergo a gradual pre-warming phase, allowing them to acclimate to their data distribution, whereas clients with lower losses engage in a rapid convergence strategy, enhancing training efficiency. Specifically, for client 𝑐, the warm-up coefficient is:
+
+(4)
+
+� � �
+where 𝛼 is the speed-related warm-up factor, influencing the warmup’s overall pace; 𝛽 is the time-related warm-up factor, affecting the temporal impact on warm-up speed. In essence, a higher 𝛼 or a lower 𝛽 accelerates warm-up for clients. This warm-up coefficient is posed on the similarity score with other clients to control the learning speed:
+
+where 𝑑 𝑐,𝑐 ′ is the final dynamic aggregation weight. This approach, through the application of the warm-up coefficient, dynamically adjusts a client’s learning pace based on its current learning status, providing a tailored learning speed for each client and mitigating performance imbalances across the clients.
+
+# 3.2 Flexible Storage Strategy
+
+In LLM-based recommendation systems, training and inference processes demand significant resource investment. Recognizing that not all clients have the capacity for the storage and computational demands of an LLM model, PPLR framework introduces a flexible storage strategy aimed at reducing resource expenditure for clients. PPLR strategically selects specific subsets of layers to be retained on the client side, particularly those closer to the input and output layers, due to their processing of sensitive data. The rest of the layers are hosted on the server side to save resources. Speicfically, for client 𝑐, the client model parameters are denoted as P 𝑐 with LoRA R 𝑐. Both of this two parts P 𝑐 and R 𝑐 can be divided into 𝑁 layers: {P (𝑖) 𝑐} 𝑁 𝑖 = 1, {R (𝑖) 𝑐} 𝑁 𝑖 = 1, respectively, where 𝑁 is the total number of LLM layers. Therefore, we combine them as T 𝑐 for simplicity, where T 𝑐 = {P (𝑖) 𝑐, R (𝑖) 𝑐} 𝑁 𝑖 = 1 Based on this, The layer retained on
+the client side are {T (𝑖) 𝑐} 𝑘 𝑖 = 1 and T (𝑁) 𝑐, where 𝑘 represents the layer-allocation hyper-parameter. Conversely, the layers stored on the server side are {T (𝑖) 𝑐} 𝑁 − 1 𝑖 = 𝑘 + 1.
+
+Algorithm 1 PPLR Training Phase
+Input: The client set C, item set I, epoch number 𝑇, local
+round number 𝑅, warm-up parameter 𝛼, 𝛽. The personalized
+parameters R𝑐and local data D𝑐= {𝐻𝑢,𝑦}, ∀𝑐∈C.
+Output: The fine-tuned personalized parameters R𝑐, ∀𝑐∈C.
+1: Initialize client model R𝑐,𝑐∈C
+2: for all each epoch 𝑡= 1, 2, · · · ,𝑇do
+3:
+Initialize L𝑐= 0
+4:
+// Client Local Training
+5:
+for all each client 𝑐∈C in parallel do
+6:
+for all each round 𝑟= 1, 2, · · · , 𝑅do
+7:
+𝑙𝑐(R𝒄) = �
+(𝐻𝑢,𝑦)∈D𝑐𝑙(𝑓(𝐻𝑢; R𝑐),𝑦)
+8:
+L𝑐= L𝑐+ 𝑙𝑐
+9:
+R𝑐= arg minR𝑐𝑙𝑐(R𝑐)
+10:
+Upload {R(𝒊)
+𝒄
+}𝑘
+𝑖=1, R(𝑵)
+𝒄
+, ∀𝑐∈C to server for aggregation
+11:
+// Aggregate parameters for all clients
+12:
+𝑤𝑐= tanh(
+𝛼
+�
+exp(L𝑐)/�𝑁
+𝑖=1 exp(L𝑖))
+�𝑡/𝛽)
+13:
+𝑠𝑐,𝑐′ =
+vec(R𝑐)⊤vec(R𝑐′)
+∥vec(R𝑐)∥2∥vec(R𝑐′ ∥2) , ∀𝑐,𝑐′ ∈C
+14:
+𝑑𝑐,𝑐′ = 𝑤𝑐𝑠𝑐,𝑐′
+15:
+R𝑐=
+�
+𝑐′∈C 𝑑𝑐,𝑐′ R𝑐′
+�
+𝑐′∈C 𝑑𝑐,𝑐′
+, ∀𝑐∈C
+16:
+Send aggregated {R(𝒊)
+𝒄
+}𝑘
+𝑖=1, R(𝑵)
+𝒄
+, ∀𝑐∈C back to clients
+<div style="text-align: center;">Algorithm 1 PPLR Training Phase
+</div>
+During each training round, the client sends input data 𝐻 𝑢 to its preserved input layers, which then forwards the output embedding 𝒆 (𝑘) 𝑢 = 𝑔 (𝐻 𝑢, {T (𝑖) 𝑐} 𝑘 𝑖 = 1) to the server for further processing, where 𝑔 (·) commonly is the attention layer with feed-forward layer in the LLM scenario. The server processes this embedding and returns the output 𝒆 (𝑁 − 1) 𝑢 = 𝑔 (𝒆 (𝑘) 𝑢, {T (𝑖) 𝑐} 𝑁 − 1 𝑖 = 𝑘 + 1) to the client to produce
+the final output embedding 𝒆 𝑁 𝑢 = 𝑔 (𝒆 (𝑁 − 1) 𝑢, T (𝑁) 𝑐). Formally, the forward process of PPLR is described as T 𝒄 = {T (𝑖) 𝑐} 𝑘 𝑖 = 1 ◦
+{T (𝑖) 𝑐} 𝑁 − 1 𝑖 = 𝑘 + 1 ◦ T (𝑁) 𝑐, where ◦ represents operation composition, with the output of the function on the right being used as the input to the function on the left. This strategy significantly reduces client resource cost during both training and inference, as demonstrated in Table 2. It is noteworthy that the determination of the number of layers to preserve is adaptable, enabling control over client costs. However, despite our method’s efforts to protect data privacy, there may be malicious behavior from the server side aimed at attacking the model to access user privacy data. Our subsequent experiments indicate that retaining more layers on the server side increases the vulnerability to attacks (as detailed in Section 4.3), where we analyze the trade-off between the risk of attacks and the costs.
+
+# 3.3 PPLR Framework
+
+# In this section, we will illustrate the overflows of the training and inference phases, respectively, to enhance clarity.
+
+In this section, we will illustrate the overflows of the training and inference phases, respectively, to enhance clarity.
+
+3.3.1 Training.  In the training phase, PPLR trains the personalized parameter R 𝑐 for each client 𝑐 without sharing their data. Specifically, at each epoch 𝑡, PPLR first conducts client local training
+
+Algorithm 2 PPLR Inference Phase
+
+<div style="text-align: center;">Algorithm 2 PPLR Inference Phase
+</div>
+Algorithm 2 PPLR Inference Phase
+Input: The client set C, item set I, ranking size 𝐾, parameters of
+each client T𝑐, ∀𝑐∈C, the user 𝑢
+Output: Ranking list 𝐿𝐾(𝑢)
+1: // Offline Storage
+2: for all client 𝑐∈C do
+3:
+Get item embeddings 𝒆𝑐(𝑖) = 𝑓(𝑖, {T(𝑖)
+𝑐}𝑁
+𝑖=1), ∀𝑖∈I
+4: User 𝑢arrives in PPLR;
+5: Finding 𝑢corresponds to the client 𝑐;
+6: // Client c executes
+7: 𝒆(𝑘)
+𝑢
+= 𝑔(𝐻𝑢, {T(𝑖)
+𝑐}𝑘
+𝑖=1)
+8: Upload 𝑒(𝑘)
+𝑢
+to Server;
+9: // Server executes
+10: 𝒆(𝑁−1)
+𝑢
+= 𝑔(𝒆(𝑘)
+𝑢
+, {T(𝑖)
+𝑐}𝑁−1
+𝑖=𝑘+1)
+11: Upload 𝒆(𝑁−1)
+𝑢
+to Client;
+12: // Client c executes
+13: Get output embedding 𝒆(𝑁)
+𝑢
+= 𝑔(𝒆(𝑁−1)
+𝑢
+, {T(𝑁)
+𝑐
+)}
+14: // Ranking Step
+15: 𝐿𝐾(𝑢) = arg min𝑆⊂I,|𝑆|=𝐾
+�
+𝑖∈𝑆distance(𝒆𝑐(𝑖), 𝒆(𝑁)
+𝑢
+)
+�
+(lines 4-9 in Algorithm 1) and then aggregates parameters of all clients to update their personalized parameter R 𝑐 (lines 11-16 in Algorithm 1). Specifically, at client local training phases, each client updates their parameters R 𝑐 utilizing their respective local datasets D 𝑐. Subsequently, each client uploads their client-preserved parameters to the server for aggregation, making use of the parameters from other clients to assist the update process. In the aggregate phase, each client gets their dynamic aggregation weight 𝑑 𝑐,𝑐 ′, ∀ 𝑐 ′ ∈C through dynamic parameter aggregation and dynamic learning speed mechanism. Subsequently, they get the aggregated personalized parameters R 𝑐 based on their specific aggregation weight and then send the client-preserved parameters back to clients. During the training process, the client model is not entirely stored on the client side. Instead, parts of the model are stored on the server side, as dictated by the flexible storage strategy, to reduce the resource costs associated with training LLMs.
+
+3.3.2 Inference. In the inference phase, for any given client 𝑐, PPLR utilizes the updated LoRA parameters R 𝑐 and fixed parameters P 𝑐 to form the complete parameters T 𝑐, and aims to get the ranking list 𝐿 𝐾 as the recommendation for user 𝑢 belongs to this client. Specifically, the inference phase is divided into four phases: 1) Client 𝑐 independently stores the embeddings 𝒆 𝑐 (𝑖) for all items from the item corpus I, in preparation for the ranking step. 2) Client 𝑐 gets the hidden embedding at 𝑘 − th layer of LLM through: 𝒆 (𝑘) 𝑢 = 𝑔 (𝐻 𝑢, {T (𝑖) 𝑐} 𝑘 𝑖 = 1); 3) Then the server re
+ceives the uploaded 𝒆 (𝑘) 𝑢 and continue to compute the hidden embedding 𝒆 (𝑁 − 1) at (𝑁 − 1)− th layer of LLM through 𝒆 (𝑁 − 1) 𝑢 = 𝑔 (𝒆 (𝑘) 𝑢, {T (𝑖) 𝑐} 𝑁 − 1 𝑖 = 𝑘 + 1); 4) Finally, client 𝑐 directly computes the distance (e.g., cosine similarity[2] or L2 distance [19]) between the generated embedding 𝒆 (𝑁) 𝑢 and the item embeddings 𝒆 𝑐 (𝑖)
+
+from item corpus, and get the final ranking list through: 𝐿 𝐾 (𝑢) = arg min 𝑆 ⊂I, | 𝑆 | = 𝐾 � 𝑖 ∈ 𝑆 distance (𝒆 𝑐 (𝑖), 𝒆 (𝑁) 𝑢). This approach allows for inference to be conducted locally on the client’s device, enhancing data privacy by negating the need for data transfer to a server. Additionally, by offloading portions of the computation to the server, the PPLR inference process is optimized, thereby reducing the computational load on clients and minimizing their hardware requirements.
+
+# 4 EXPERIMENTS
+
+n this section, we conduct a comprehensive experimental study to address the following research questions:
+RQ1: How does the performance of PPLR compare with other baselines across the datasets?
+RQ2: What is the impact of different components (e.g., dynamic balance strategy and flexible storage strategy) within the PPLR on overall performance?
+RQ3: How does PPLR perform under different hyper-parameters?
+
+# 4.1 Experimental Settings
+
+4.1.1 Datasets and Settings. We assess the effectiveness of PPLR on three popular benchmark datasets. 1) Games 1 is from the Amazon review datasets, which covers interactions between users and video games with rich textual features such as game titles and categories. It contains 50,532 users, 16,857 items, and 452,894 interactions. 2) MicroLens 2 is a newly released short video recommendation dataset. Each short video contains raw modal information such as title, cover image, audio, and video information. It contains 45,886 users, 12,413 items, and 332,730 interactions. 3) Book is also derived from Amazon review datasets, containing users’ interactions with extensive books. It contains 64,989 users, 56,394 items, and 4,963,757 interactions. For all three datasets, we organize user-item interactions chronologically based on global timestamps and divide the data into training, validation, and testing sets in an 8:1:1 ratio. Within the context of LLM-based recommendations, we explore two distinct fine-tuning approaches: 1) Few-shot fine-tuning  finetunes LLMs using a limited number of examples, e.g., 1024-shot. 2) Full fine-tuning utilizes all samples to fine-tune LLMs.
+
+4.1.2 Evaluation. We adopt full-ranking protocol [15] to evaluate the performance of all methods. Specifically, as for evaluation metrics, we employ Recall@ 𝐾 and NDCG@ 𝐾 for performance comparison, where 𝐾 = 10 or 20 on three datasets.
+
+4.1.3 Baselines. We compare our proposed PPLR against a range of competitive baselines. Given the absence of LLM-based privacy-preserving recommendation method in existing literature, our comparison includes baselines from traditional recommendation methods. Specifically, we select MF and LightGCN as the centralized-based method, along with their federated counterparts: FedMF, LightFR, and FedPerGNN. 1) MF [11] is a classical matrix factorization (MF) approach. 2) LightGCN [15] leverages highorder neighbor information to enhance the user and item representations. 3) FedMF [5] is a privacy-enhanced MF approach
+
+1 https://nijianmo.github.io/amazon/index.html. 2 https://github.com/westlake-repl/MicroLens.
+
+<div style="text-align: center;">Table 1: Overall performance of PPLR and other baselines. Bold signifies the best performance among t methods. * denotes statistically significant improvements of PPLR over the second-best privacy-preservi to the t-tests with a significance level of 𝑝 < 0.01.
+</div>
+<div style="text-align: center;">d other baselines. Bold signifies the best performance among the privacy-preserving improvements of PPLR over the second-best privacy-preserving methods, according
+</div>
+to the t-tests with a significance level of 𝑝< 0.01.
+Method
+Games
+Microlens
+Book
+R@10
+R@20
+N@10
+N@20
+R@10
+R@20
+N@10
+N@20
+R@10
+R@20
+N@10
+N@20
+Centralized-based
+MF
+0.0101
+0.0164
+0.0070
+0.0090
+0.0044
+0.0063
+0.0026
+0.0032
+0.0050
+0.0089
+0.0060
+0.0071
+LightGCN
+0.0153
+0.0234
+0.0101
+0.0127
+0.0078
+0.0116
+0.0044
+0.0055
+0.0065
+0.0120
+0.0078
+0.0093
+Fed-based
+FedMF
+0.0065
+0.0108
+0.0044
+0.0058
+0.0029
+0.0045
+0.0021
+0.0027
+0.0050
+0.0070
+0.0034
+0.0041
+LightFR
+0.0088
+0.0139
+0.0051
+0.0069
+0.0041
+0.0055
+0.0024
+0.0044
+0.0048
+0.0079
+0.0049
+0.0061
+FedPerGNN
+0.0145
+0.0229
+0.0093
+0.0121
+0.0043
+0.0060
+0.0024
+0.0029
+0.0062
+0.0112
+0.0075
+0.0089
+LLM-based
+BIGRec
+0.0194
+0.0316
+0.0127
+0.0164
+0.0089
+0.0132
+0.0050
+0.0062
+0.0079
+0.0097
+0.0126
+0.0116
++FedAvg
+0.0145
+0.0257
+0.0093
+0.0126
+0.0021
+0.0039
+0.0012
+0.0017
+0.0081
+0.0097
+0.0119
+0.0112
++FedProx
+0.0143
+0.0255
+0.0090
+0.0123
+0.0033
+0.0051
+0.0032
+0.0040
+0.0081
+0.0096
+0.0120
+0.0112
++PPLR
+0.0158*
+0.0274*
+0.0104*
+0.0139*
+0.0088*
+0.0128*
+0.0051*
+0.0062*
+0.0085*
+0.0102*
+0.0124*
+0.0116*
+RecFormer
+0.0193
+0.0360
+0.0117
+0.0169
+0.0190
+0.0369
+0.0104
+0.0155
+0.0318
+0.0512
+0.0333
+0.038
++FedAvg
+0.0149
+0.0262
+0.0089
+0.0124
+0.0096
+0.0198
+0.0048
+0.0076
+0.0095
+0.0150
+0.0104
+0.0118
++FedProx
+0.0150
+0.0266
+0.0086
+0.0121
+0.0086
+0.0166
+0.0041
+0.0064
+0.0103
+0.0161
+0.0113
+0.0130
++PPLR
+0.0175*
+0.0322*
+0.0101*
+0.0146*
+0.0163*
+0.0279*
+0.0072*
+0.0105*
+0.0274*
+0.0409*
+0.0274*
+0.0300*
+based on secure homomorphic encryption. 4) LightFR [42] is a lightweight federated recommendation framework with privacypreserving MF. 5) FedPerGNN [34] designs a privacy-preserving graph expansion protocol to incorporate high-order information under privacy protection in GNN-based recommendation. To broaden our evaluation, we also incorporate two wellestablished federated learning algorithms that can be deployed on LLM: 6) FedAvg [26] aggregates client model parameters without uploading their data. 7) FedProx [20] extends FedAvg by adding a proximity term to the local optimization, allowing for more robust handling of heterogeneous data across clients. Additionally, we select two backend LLMs due to their superior capability: 8) BIGRec [2] using LLaMA-7B as the LLM backbone, utilizing the item title to present the user sequence. 9) RecFormer [19] using LongFormer as the LLM backbone, utilizing both item titles and descriptions to represent user sequences.
+
+4.1.4 Implementation. For all the baselines, we follow the original settings in their paper for implementation. Besides, we adopt the parameter-efficient fine-tuning technique LoRA to finetune BIGRec in 1024-shot and fully fine-tune RecFormer. For the client partition, we cluster users based on pre-trained MF user embeddings, leveraging the premise that users with analogous characteristics and preferences are more likely to congregate in similar areas or platforms. For FedAvg, FedProx and PPLR, we set the same local round number to ensure a fair comparison. The best hyper-parameters are selected with the searching scopes as follows: speed-related warm-up factor and time-related warm-up factor are tuned in {0. 3, 0. 5, 0. 7, 0. 9, 1. 1, 1. 3} and {1, 3, 5, 10, 15, 20}.
+
+# 4.2 Overall Performance (RQ1)
+
+We conduct comprehensive experiments to compare PPLR’s performance with other baselines, with the client number set at 5. The results, illustrated in Table 1, indicate that: 1) PPLR consistently surpasses other privacy-preserving methods across all datasets and achieves performance on par with centralized LLM-based methods. This efficacy is largely due to PPLR’s dynamic balance strategy, which offers dynamic parameter aggregation and learning speeds. 2) The performance of FedAvg and FedProx fluctuates, possibly due to their inability to robustly adapt to varied data
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b29b/b29b53e9-83af-44eb-9089-db44c2c51a0a.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4a61/4a618815-9c3d-4975-af8f-0f4c672a9163.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7939/79397d34-53cd-451e-b657-594cc13c3184.png" style="width: 50%;"></div>
+Figure 3: (a) shows the similarity between input embeddings and predicted input embeddings according to extracted embeddings of different layers from BIGRec. (b) shows the time (s) and memory (MiB) cost for different 𝑘.
+
+<div style="text-align: center;">Figure 3: (a) shows the similarity between input embeddings and predicted input embeddings according to extracted embeddings of different layers from BIGRec. (b) shows the time (s) and memory (MiB) cost for different 𝑘.
+</div>
+Table 2: Cost of PPLR and FedAvg. 𝑘 and 𝑁 represent layerallocation hyper-parameter and LLM layer number, respectively, where 𝑘 + 1 <𝑁. 𝑏 and 𝑐 represent the communication cost of uploading one layer of LLM parameters and data embeddings to the server, respectively.
+
+embeddings to the server, respectively.
+Storage Cost
+Inference Cost
+Communication Cost
+PPLR
+O(𝑘+ 1)
+O(𝑘+ 1)
+O((𝑘+ 1) · 𝑏+ 2 · 𝑐)
+FedAvg
+O(𝑛)
+O(𝑛)
+O(𝑛· 𝑏)
+distributions across clients and the heterogeneity within clients. 3) LLM-based recommendation methods uniformly exceed the performance of traditional recommendation models, underscoring the significant potential of LLMs in recommendation scenarios due to their advanced contextual comprehension and abundant global pre-trained knowledge.
+
+# 4.3 Efficiency Analysis (RQ2)
+
+4.3.1 Trade-off between attack risk and efficiency.  To mitigate client-side resource consumption, PPLR employs the flexible allocation strategy in Section 3.2. However, putting some layers on the server side may also bring the risk of attacking to leak the privacy. In this section, we conduct an attack simulation experiment to assess the possibility of attacks via intermediate embeddings processed on the server side, thereby offering a more thorough evaluation of PPLR’s security measures. We utilize BIGRec as an example, extracting intermediate output embeddings from all layers and employing a Multilayer Perceptron (MLP) to attempt the reconstruction of the input embedding from
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2459/24596ab3-5b02-482f-9b2f-2a6e741d7c5d.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1d79/1d798e6d-017d-4f8b-a083-c9bc61d35f05.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d4cf/d4cf7f9e-3eea-46a1-83ae-3f0fc3e65f26.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 4: Contributions of dynamic parameter aggregation and learning speed to PPLR compared with backend models.
+</div>
+these layer embeddings [36]. We report the similarity ratio between the MLP reconstructed embeddings and the ground truth input embeddings, as illustrated in Figure 3 (a). We find that: 1) the likelihood of reconstructing user historical interactions from intermediate embeddings decreases with ascending layer number generally. 2) The possibility of reconstruction from the last layer increases since LLM training aims to align the final output with the target interacted item, which may have higher similarity with the input embeddings. Consequently, the selection of the parameter 𝑘 should be informed by the outcomes of this attack simulation experiment (for this setting, 𝑘 ≥ 21).
+
+# Time and Memory Cost. We also analyze the t y cost for different layer-allocation hyper-parame
+
+# .2 Time and Memory Cost. We also emory cost for different layer-allocation h
+
+memory cost for different layer-allocation hyper-parameter 𝑘, as shown in Figure 3 (b). This analysis underscores a crucial trade-off in determining the number of layers to store server-side: retaining more layers elevates the risk of attack but reduces the client resource cost. Therefore, clients can dynamically select layer numbers stored on the server side based on their own capacity. Furthermore, we evaluate PPLR against FedAvg across various metrics beyond accuracy, including storage (memory) cost, communication cost, and local client inference cost, to affirm the efficiency of our approach. The findings, presented in Table 2, demonstrate that our method outperforms FedAvg in storage and inference cost. For communication cost, our method outperforms FedAvg under the conditions: (𝑘 + 1)· 𝑏 + 2 · 𝑐 <𝑛 · 𝑏, which simplifies to 𝑐 <(𝑛 − 𝑘 − 1) 𝑏 / 2. Intuitively, the lower the value of 𝑘, the greater the likelihood of achieving superior communication efficiency compared to FedAvg. Similarly, a lower value of 𝑐, indicating a smaller device scope, further enhances the superiority of our method. This indicates that our method is particularly effective in clients with limited scope, making it ideally suited for user devices.
+
+# 4.4 In-depth analysis
+
+4.4.1 Ablation Study (RQ2). In this section, we evaluate the unique contributions of dynamic parameter aggregation and dynamic learning speed in comparison with FedAvg, presenting the results in Figure 4 for the Games and Microlens datasets (excluding the Book dataset due to analogous trends). The analysis reveals that: 1) PPLR with dynamic parameter aggregation consistently surpasses FedAvg. This highlights the benefits of an attentionbased parameter aggregation method that tailors aggregation to the specific data distribution within PPLR. 2) Similarly, PPLR with dynamic learning speed invariably outperforms FedAvg, emphasizing the advantages of customizing the learning speed of each client based on their learning status. 3) The effectiveness of
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/52ed/52edfaee-89de-44c4-893b-15a22e85d034.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 5: Influence of Client Number to RecFormer-bas PPLR and FedAvg in Games.
+</div>
+the two parts is consistent across different datasets and backend models, further demonstrating their robustness and generalizability.
+
+4.4.2 Client Performance (RQ2). To assess whether PPLR mitigates the performance imbalance among various clients, we conduct client evaluation experiment, as detailed in Table 3. Similar results are seen with the Book dataset, but figures are omitted for brevity. That the imbalance degree is calculated as follows: Imbalance Degree = (𝑚 best − 𝑚 worst)/ 𝑚 worst, where 𝑚 best is the Recall@10 of the best client, and 𝑚 worst is the Recall@10 of the worst client. The results indicate that: 1) PPLR effectively mitigates the performance imbalance issue among clients compared to FedAvg, primarily due to the effectiveness of the dynamic balance strategy, which customizes dynamic parameter aggregation and learning speed for different clients. 2) The imbalance degree in the MicroLens dataset is more pronounced under FedAvg, which is potentially caused by the data distribution among clients being much more diverse than others. Such diversity may lead to conflict optimization objectives among clients, thus exacerbating the imbalance.
+
+4.4.3 Influence of Client Number (RQ3). To demonstrate the scalability of our approach with an increased number of clients, we expanded the client count from 5 to 100 and reported the comparative results of PPLR and FedAvg in Figure 5. The findings indicate that: 1) With the escalation in client numbers, there is a noticeable decline in the performance of both PPLR and FedAvg, likely due to the amplified diversity acorss client data distribution, which in turn aggravates the imbalance and adversely affects overall performance. 2) Nevertheless, PPLR consistently outperforms FedAvg in every client count scenario. This enhanced performance is attributed to the dynamic aggregation strategy employed by PPLR, effectively countering the imbalances stemming from the varied data distributions among clients.
+
+# 4.4.4 Hyper-parameter analysis (RQ3). We se tive hyper-parameters, adjusting them within the r
+
+tive hyper-parameters, adjusting them within the ranges delineated in Section 4.1. The experiment outcomes are visually represented in Figure 6. From our observations: The settings of the speedrelated warm-up factor 𝛼 and the time-related warm-up factor 𝛽 significantly affect the warm-up speed. Generally, enhancing the values of 𝛼 and 𝛽 leads to improved performance, facilitating the integration of parameters from other clients to aid the learning process of the current client once it has adequately learned from its data. Nevertheless, overly aggressive acceleration in warm-up may prematurely incorporate parameters from other clients before the current client is prepared, potentially disrupting the learning trajectory and adversely affecting performance.
+
+Table 3: Client evaluation results of the centralized method, FedAvg and PPLR. Bold represents the lowest degree of imbalance
+among the methods evaluated, using the same backend model.
+Recall@10
+Games
+MicroLens
+Client 1
+Client 2
+Client 3
+Client 4
+Client 5
+Imbalance
+Client 1
+Client 2
+Client 3
+Client 4
+Client 5
+Imbalance
+BIGRec
+0.0227
+0.0338
+0.0144
+0.0163
+0.0153
+1.35
+0.0148
+0.0275
+0.0059
+0.0050
+0.0031
+4.50
++FedAvg
+0.0157
+0.0208
+0.0235
+0.0085
+0.0127
+1.76
+0.0010
+0.0047
+0.0017
+0.0001
+0.0004
+46.00
++PPLR
+0.0171
+0.0211
+0.0163
+0.0136
+0.0152
+0.55
+0.0170
+0.0120
+0.0066
+0.0042
+0.0062
+3.04
+evaluation results of the centralized method, FedAvg and PPLR. Bold represents the lowest degree of imbalanc hods evaluated, using the same backend model.
+
+<div style="text-align: center;">Table 3: Client evaluation results of the centralized method, FedAvg and PPLR. Bold represents the lowest degree of among the methods evaluated, using the same backend model.
+</div>
+<div style="text-align: center;">Table 3: Client evaluation results of the centralized method, FedAvg and PPLR among the methods evaluated, using the same backend model.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1fb4/1fb49364-27ad-4d3d-b10b-dc77f6b6e8a3.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 6: Hyper-parameters analysis of Games.
+</div>
+# 5 RELATED WORK 5.1 LLM-based Recommendation
+
+# 5 RELATED WORK 5.1 LLM-based Recom
+
+Recent developments in leveraging Large Language Models (LLMs) for recommendation systems have garnered significant attention due to their advanced contextual understanding and pre-trained global knowledge [22]. The initial stage of LLM-based recommendation systems primarily emphasizes performance, exemplified by pioneering efforts such as P5 [13], TALLRec [3], and M6-Rec [9], which concentrate on fine-tuning LLM with designed prompts and recommendation data. Subsequent advancements, notably BIGRec [2] and TIGER [29], extend this approach by grounding LLM outputs with actual item spaces or leveraging semantic information to refine the generative recommendation process. This evolution marks a shift from merely integrating recommendation data into LLMs frameworks to exploring how to maximize the potential of LLMs in recommendation tasks for enhancing performance. Recognizing the notable achievements in performance, the focus now expands to include trustworthiness elements, such as fairness, robustness, and explainability [31, 43]. An empirical study by [36] explores the implicit user unfairness in LLM-based recommendation systems. Additionally, LLMHG [8] introduces an innovative explainable recommendation framework that combines the reasoning power of LLMs with the structural benefits of hypergraph neural networks. Despite these advances, the aspect of privacy preservation in LLM-based recommendations has not been explored.
+
+# 5.2 Federated Recommendation
+
+Federated recommendation offers a viable approach for enhancing data privacy [14] in recommendation systems through federated learning [39, 41]. There are two major communication frameworks of Fed4Rec, including: 1) Peer-Peer Framework [24, 25, 33, 38]: During each communication round, each client broadcasts the updated intermediate parameters to some other specific clients within the peer-to-peer network. Subsequently, these received parameters are then aggregated into the client’s model. For example, SemiDFEGL [28] proposes a novel semi-decentralized federated ego graph learning framework for recommendation which introduces device-to-device collaborations to improve scalability. DGRec [44]
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a689/a68937dd-eaf1-49c8-b2c9-27f251eb5221.png" style="width: 50%;"></div>
+proposes a novel decentralized GNN for privacy-preserving recommendations, where users can choose to publicize their interactions. However, this framework often entails a high communication cost, particularly within the context of LLMs when dealing with a substantial number of model parameters, making client-server framework the preferred choice. 2) Client-Server Framework [18, 23, 32, 40]: This framework features a central server in a crucial role. Clients transmit their locally computed model parameters to this server, which then aggregates these parameters and redistributes the updated model back to each client. For instance, FedPerGNN [34] presents a federated GNN framework and introduces a privacy-preserving graph expansion protocol to incorporate high-order information under privacy protection. LightFR [42] proposes a lightweight and privacy-preserving federated matrix factorization (MF) framework, which enjoys both fast online inference and economic memory and communication consumption for MF. The Client-Server Framework is more efficient in terms of communication overhead, especially in scenarios involving large-scale model parameters and many clients, thus demonstrating superior performance in the context of LLMs. However, directly adopting client-server framework into LLM-based recommendation poses challenges of exacerbated performance imbalance and client resource costs. PPLR addresses these two challenges, and safeguards data privacy for LLM-based recommendations more equitably and efficiently.
+
+# 6 CONCLUSION
+
+In this work, we proposed a Privacy-Preserving LLM-based Recommendation (PPLR) framework. Firstly, we emphasized directly adopting Fed4Rec in the LLM-based recommendation will meet two issues: exacerbated client performance imbalance and substantial client resource costs. PPLR designs two key strategies to tackle the issues through: 1) dynamic balance strategy, which designs dynamic parameter aggregation and learning speed for different clients during training, aims to ensure relatively equitable performance across clients. 2) Flexible storage strategy, which selectively retains certain sensitive LLM layers on the client side, while offloading other layers to the server, aims to save resources. Overall, PPLR offers an equitable and resource-efficient approach to safeguard
+
+data privacy in LLM-based recommendations. Its effectiveness has been proven across three datasets and two LLM backend models, demonstrating its superior ability. This work introduces a privacy-preserving task for fine-tuning LLM-based recommendation models. Future enhancements for PPLR may involve: 1) designing a more fine-grained aggregation strategy (e.g., layer-based aggregation), 2) and exploring adaptations of PPLR for a broader range of LLM-based recommendation tasks, such as explainable and cross-domain recommendations.
+
+# REFERENCES
+
+[1] Jingmin An, Guanyu Li, and Wei Jiang. 2024. NRDL: Decentralized user preference learning for privacy-preserving next POI recommendation. Expert Systems with Applications 239 (2024), 122421.
+[2] Keqin Bao, Jizhi Zhang, Wenjie Wang, Yang Zhang, Zhengyi Yang, Yancheng Luo, Fuli Feng, Xiangnaan He, and Qi Tian. 2023. A bi-step grounding paradigm for large language models in recommendation systems. arXiv:2308.08434 (2023).
+[3] Keqin Bao, Jizhi Zhang, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. 2023. TALLRec: An Effective and Efficient Tuning Framework to Align Large Language Model with Recommendation. In RecSys. ACM.
+[4] Robin Burke, Nasim Sonboli, and Aldo Ordonez-Gauger. 2018. Balanced neighborhoods for multi-sided fairness in recommendation. In Conference on fairness, accountability and transparency. PMLR, 202–214.
+[5] Di Chai, Leye Wang, Kai Chen, and Qiang Yang. 2020. Secure federated matrix factorization. IEEE Intelligent Systems 36, 5 (2020), 11–20.
+[6] Chaochao Chen, Xiaohua Feng, Jun Zhou, Jianwei Yin, and Xiaolin Zheng. 2023. Federated large language model: A position paper. arXiv:2307.08925 (2023).
+[7] Hong Chen, Yudong Chen, Xin Wang, Ruobing Xie, Rui Wang, Feng Xia, and Wenwu Zhu. 2021. Curriculum disentangled recommendation with noisy multifeedback. Advances in Neural Information Processing Systems 34 (2021), 26924– 26936.
+[8] Zhixuan Chu, Yan Wang, Qing Cui, Longfei Li, Wenqing Chen, Sheng Li, Zhan Qin, and Kui Ren. 2024. LLM-Guided Multi-View Hypergraph Learning for Human-Centric Explainable Recommendation. arXiv preprint arXiv:2401.08217 (2024).
+[9] Zeyu Cui, Jianxin Ma, Chang Zhou, Jingren Zhou, and Hongxia Yang. 2022. M6-rec: Generative pretrained language models are open-ended recommender systems. arXiv:2205.08084 (2022).
+[10] Tao Fan, Yan Kang, Guoqiang Ma, Weijing Chen, Wenbin Wei, Lixin Fan, and Qiang Yang. 2023. Fate-llm: A industrial grade federated learning framework for large language models. arXiv:2310.10049 (2023).
+[11]  Zeno Gantner, Lucas Drumond, Christoph Freudenthaler, and Lars SchmidtThieme. 2011. Personalized Ranking for Non-Uniformly Sampled Items. In KDDCUP. JMLR, 231–247.
+[12] Yunfan Gao, Tao Sheng, Youlin Xiang, Yun Xiong, Haofen Wang, and Jiawei Zhang. 2023. Chat-rec: Towards interactive and explainable llms-augmented recommender system. arXiv:2303.14524 (2023).
+[13] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In RecSys. 299–315.
+[14] Yael Gertner, Yuval Ishai, Eyal Kushilevitz, and Tal Malkin. 1998. Protecting data privacy in private information retrieval schemes. In Proceedings of the thirtieth annual ACM symposium on Theory of computing. 151–160.
+[15] Xiangnan He, Kuan Deng, Xiang Wang, Yan Li, Yongdong Zhang, and Meng Wang. 2020. Lightgcn: Simplifying and powering graph convolution network for recommendation. In SIGIR. 639–648.
+[16] Chris Jay Hoofnagle, Bart Van Der Sloot, and Frederik Zuiderveen Borgesius. 2019. The European Union general data protection regulation: what it is and what it means. Information & Communications Technology Law 28, 1 (2019), 65–98.
+[17] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2021. Lora: Low-rank adaptation of large language models. arXiv:2106.09685 (2021).
+[18] Mubashir Imran, Hongzhi Yin, Tong Chen, Quoc Viet Hung Nguyen, Alexander Zhou, and Kai Zheng. 2023. ReFRS: Resource-efficient federated recommender system for dynamic and diversified user preferences. TOIS 41, 3 (2023), 1–30.
+[19] Jiacheng Li, Ming Wang, Jin Li, Jinmiao Fu, Xin Shen, Jingbo Shang, and Julian McAuley. 2023. Text Is All You Need: Learning Language Representations for Sequential Recommendation. arXiv:2305.13731 (2023).
+[20] Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar Sanjabi, Ameet Talwalkar, and Virginia Smith. 2020. Federated optimization in heterogeneous networks. Proceedings of Machine learning and systems 2 (2020), 429–450.
+
+[21] Xinyu Lin, Wenjie Wang, Yongqi Li, Fuli Feng, See-Kiong Ng, and Tat-Seng Chua. 2023. A multi-facet paradigm to bridge large language model and recommendation. arXiv:2310.06491 (2023).
+[22]  Xinyu Lin, Wenjie Wang, Yongqi Li, Shuo Yang, Fuli Feng, Yinwei Wei, and TatSeng Chua. 2024. Data-efficient Fine-tuning for LLM-based Recommendation. arXiv:2401.17197 (2024).
+[23] Ruixuan Liu, Yang Cao, Yanlin Wang, Lingjuan Lyu, Yun Chen, and Hong Chen. 2023. PrivateRec: Differentially Private Model Training and Online Serving for Federated News Recommendation. In SIGKDD. 4539–4548.
+[24] Jing Long, Tong Chen, Quoc Viet Hung Nguyen, Guandong Xu, Kai Zheng, and Hongzhi Yin. 2023. Model-agnostic decentralized collaborative learning for on-device POI recommendation. In SIGIR. 423–432.
+[25] Jing Long, Tong Chen, Quoc Viet Hung Nguyen, and Hongzhi Yin. 2023. Decentralized collaborative learning framework for next POI recommendation. TOIS 41, 3 (2023), 1–25.
+[26] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Arcas. 2017. Communication-efficient learning of deep networks from decentralized data. In Artificial intelligence and statistics. PMLR, 1273–1282.
+[27] Khalil Muhammad, Qinqin Wang, Diarmuid O’Reilly-Morgan, Elias Tragos, Barry Smyth, Neil Hurley, James Geraci, and Aonghus Lawlor. 2020. Fedfast: Going beyond average for faster training of federated recommender systems. In KDD. 1234–1242.
+[28] Liang Qu, Ningzhi Tang, Ruiqi Zheng, Quoc Viet Hung Nguyen, Zi Huang, Yuhui Shi, and Hongzhi Yin. 2023. Semi-decentralized Federated Ego Graph Learning for Recommendation. arXiv:2302.10900 (2023).
+[29] Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan H Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Q Tran, Jonah Samost, et al. 2023. Recommender Systems with Generative Retrieval. In NeurIPS. Curran Associates, Inc.
+[30] Zehua Sun, Yonghui Xu, Yong Liu, Wei He, Lanju Kong, Fangzhao Wu, Yali Jiang, and Lizhen Cui. 2022. A survey on federated recommendation systems. arXiv:2301.00767 (2022).
+[31] Lei Wang, Songheng Zhang, Yun Wang, Ee-Peng Lim, and Yong Wang. 2023. LLM4Vis: Explainable visualization recommendation using ChatGPT. arXiv:2310.07652 (2023).
+[32] Qinyong Wang, Hongzhi Yin, Tong Chen, Junliang Yu, Alexander Zhou, and Xiangliang Zhang. 2022. Fast-adapting and privacy-preserving federated recommender system. The VLDB Journal 31, 5 (2022), 877–896.
+[33] Zhangyang Wang, Xianming Liu, Shiyu Chang, Jiayu Zhou, Guo-Jun Qi, and Thomas S Huang. 2015. Decentralized recommender systems. arXiv:1503.01647 (2015).
+[34] Chuhan Wu, Fangzhao Wu, Lingjuan Lyu, Tao Qi, Yongfeng Huang, and Xing Xie. 2022. A federated graph neural network framework for privacy-preserving personalization. Nature Communications 13, 1 (2022), 3091.
+[35] Chen Xu, Sirui Chen, Jun Xu, Weiran Shen, Xiao Zhang, Gang Wang, and Zhenhua Dong. 2023. P-MMF: Provider Max-min Fairness Re-ranking in Recommender System. In Proceedings of the ACM Web Conference 2023 (Austin, TX, USA) (WWW ’23). Association for Computing Machinery, New York, NY, USA, 3701–3711.
+[36] Chen Xu, Wenjie Wang, Yuxin Li, Liang Pang, Jun Xu, and Tat-Seng Chua. 2023. Do llms implicitly exhibit user discrimination in recommendation? an empirical study. arXiv:2311.07054 (2023).
+[37] He Yang, Wei Xi, Zizhao Wang, Yuhao Shen, Xinyuan Ji, Cerui Sun, and Jizhong Zhao. 2023. FedRich: Towards efficient federated learning for heterogeneous clients using heuristic scheduling. Information Sciences 645 (2023), 119360.
+[38] Xu Yang, Yuchuan Luo, Shaojing Fu, Ming Xu, and Yingwen Chen. 2022. DPMF: Decentralized Probabilistic Matrix Factorization for Privacy-Preserving Recommendation. Applied Sciences 12, 21 (2022), 11118.
+[39] Hongzhi Yin, Liang Qu, Tong Chen, Wei Yuan, Ruiqi Zheng, Jing Long, Xin Xia, Yuhui Shi, and Chengqi Zhang. 2024. On-Device Recommender Systems: A Comprehensive Survey. arXiv:2401.11441 (2024).
+[40] Chunxu Zhang, Guodong Long, Tianyi Zhou, Peng Yan, Zijian Zhang, Chengqi Zhang, and Bo Yang. 2023. Dual Personalization on Federated Recommendation. arXiv:2301.08143 (2023).
+[41] Honglei Zhang, He Liu, Haoxuan Li, and Yidong Li. 2024. TransFR: Transferable Federated Recommendation with Pre-trained Language Models. arXiv:2402.01124 (2024).
+[42] Honglei Zhang, Fangyuan Luo, Jun Wu, Xiangnan He, and Yidong Li. 2023. LightFR: Lightweight federated recommendation with privacy-preserving matrix factorization. TOIS 41, 4 (2023), 1–28.
+[43] Jizhi Zhang, Keqin Bao, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. 2023. Is ChatGPT Fair for Recommendation? Evaluating Fairness in Large Language Model Recommendation. In RecSys. ACM.
+[44] Xiaolin Zheng, Zhongyu Wang, Chaochao Chen, Jiashu Qian, and Yao Yang. 2023. Decentralized graph neural network for privacy-preserving recommendation. In CIKM. 3494–3504.
+

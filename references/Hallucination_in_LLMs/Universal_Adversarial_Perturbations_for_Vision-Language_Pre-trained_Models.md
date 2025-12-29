@@ -1,0 +1,1297 @@
+# Universal Adversarial Perturbations for Vision-Language Pre-trained Models
+Peng-Fei Zhang, Zi Huang, Guangdong Bai The University of Queensland
+Peng-Fei Zhang, Zi Huang, Guangdong Bai The University of Queensland mima.zpf@gmail.com,huang@itee.uq.edu.au,g.bai@uq.edu.au
+The University of Queensland mima.zpf@gmail.com,huang@itee.uq.edu.au,g.bai@uq.edu.au
+# ABSTRACT
+ABSTRACT
+Vision-language pre-trained (VLP) models have been the foundation of numerous vision-language tasks. Given their prevalence, it becomes imperative to assess their adversarial robustness, especially when deploying them in security-crucial real-world applications. Traditionally, adversarial perturbations generated for this assessment target specific VLP models, datasets, and/or downstream tasks. This practice suffers from low transferability and additional computation costs when transitioning to new scenarios. In this work, we thoroughly investigate whether VLP models are commonly sensitive to imperceptible perturbations of a specific pattern for the image modality. To this end, we propose a novel black-box method to generate Universal Adversarial Perturbations (UAPs), which is so called the Effective and Transferable Universal Adversarial Attack (ETU), aiming to mislead a variety of existing VLP models in a range of downstream tasks. The ETU comprehensively takes into account the characteristics of UAPs and the intrinsic cross-modal interactions to generate effective UAPs. Under this regime, the ETU encourages both global and local utilities of UAPs. This benefits the overall utility while reducing interactions between UAP units, improving the transferability. To further enhance the effectiveness and transferability of UAPs, we also design a novel data augmentation method named ScMix. ScMix consists of self-mix and cross-mix data transformations, which can effectively increase the multi-modal data diversity while preserving the semantics of the original data. Through comprehensive experiments on various downstream tasks, VLP models, and datasets, we demonstrate that the proposed method is able to achieve effective and transferrable universal adversarial attacks.
+arXiv:2405.05524v1
+# CCS CONCEPTS • Security and privacy; • Information systems;
+KEYWORDS
+Vision-language Pre-training; Universal Adversarial Perturbations; Multi-modal Learning; Transferrable Attack
+# Vision-language Pre-training; Universal Adversarial Perturbations; Multi-modal Learning; Transferrable Attack
+ACM Reference Format: Peng-Fei Zhang, Zi Huang, Guangdong Bai. 2024. Universal Adversarial Perturbations for Vision-Language Pre-trained Models. In Proceedings of
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. Conference’17, July 2017, Washington, DC, USA © 2024 Association for Computing Machinery. ACM ISBN 978-x-xxxx-xxxx-x/YY/MM...$15.00 https://doi.org/10.1145/nnnnnnn.nnnnnnn
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. Conference’17, July 2017, Washington, DC, USA © 2024 Association for Computing Machinery. ACM ISBN 978-x-xxxx-xxxx-x/YY/MM...$15.00 https://doi.org/10.1145/nnnnnnn.nnnnnnn
+ACM Conference (Conference’17). ACM, New York, NY, USA, 10 pages. https: //doi.org/10.1145/nnnnnnn.nnnnnnn
+# 1 INTRODUCTION
+Vision-language pre-trained models like CLIP [24], ALBEF [13], and TCL [33], have emerged as essential tools for understanding intricate relationships between visual and textual elements. These models are pre-trained on large-scale unlabelled datasets and finetuned for downstream tasks. Due to their promising performance, they have been widely applied to various vision-language tasks, ranging from information retrieval [17] to image captioning [41]. Despite their success, VLP models still face a notable limitation in their ability to withstand adversarial examples, which are crafted by adding imperceptible perturbations to original data. Additionally, when these models are fine-tuned for downstream tasks, the potential vulnerability would also be inherited. In response to the adversarial vulnerability, several studies have been conducted to assess the adversarial robustness of VLP models [18, 30, 35, 42]. For example, Co-Attack [35] learns adversarial examples by enlarging the gap between them with the original paired data in different modalities. SGA [18] and SA-Attack [9] adopt data augmentation strategies to increase the input diversity for better disruption of intrinsic cross-modal interactions. However, there are several limitations within previous research. Existing methods typically learn to generate specific adversarial perturbations for each data instance, which might not generalize well to unseen data with different characteristics. In such cases, adversarial perturbations have to be learned from scratch, resulting in extra computational costs. Few studies, such as AdvCLIP [42], have started investigating this issue, yet they are either specific to particular models or limited in the imperceptibility. The research problem of learning universal adversarial perturbations (UAPs) that can be applied to different unseen models, datasets and tasks without additional specialized computation remains largely open. In this paper, we investigate effective and transferrable attacks against VLP models by crafting UAPs for the modality of image. The key challenges of learning effective UAPs are at least three-fold. First, compared to learning sample-specific adversarial perturbations, learning UAPs has to be independent of the specific characteristics of individual samples. Second, conventional universal adversarial attacks in uni-modal cases only need to consider relationships between single instances and their associated labels. In contrast, in multi-modal scenarios, which VLP models focus on, the interactions between different modalities need to be engaged, and their relations are often many-to-many [9]. Data from different modalities come in different formats and describe the same object from different perspectives, containing diverse and supplementary information. Consequently, complex interactions between different modalities along with the heterogeneity issue cause significant
+challenges to effective universal adversarial attacks. The third challenge is the transferability. During pre-training, VLP models are customized with various architectures, learning objectives, and even training datasets tailored to specific applications. They could be further fine-tuned in response to different downstream tasks [13, 24, 33]. The resulting intrinsic divergence between models makes the learning of transferrable UAPs even more challenging. To tackle these challenges, we propose a novel black-box UAP generation method, named Effective and Transferable Universal Adversarial Attack (ETU). The ETU focuses on attacking various VLP models without prior knowledge of model details such as architectures, downstream tasks and training datasets. It thoroughly considers the characteristics of UAPs and intrinsic data interactions across different modalities. Specifically, in addition to optimizing the entire space of UAPs, the ETU is designed to improve the utility of the local regions of UAPs, decreasing the interactions between different UAP units. Simultaneous global and local optimizations are expected to enhance the effectiveness of UAPs while boosting their universality. In the meanwhile, a novel data augmentation algorithm named ScMix is proposed, which performs both self-mix and cross-mix data transformations to increase the multi-modal data diversity while preserving the original semantics. Thus, it can help comprehensively exploit cross-modal interactions. UAPs are learned to maximize the dissimilarity between diverse multi-modal data pairs, disrupting cross-modal interactions. As a result, the effectiveness and transferability of UAPs are ensured. The main contributions of this work are summarized as follows: • It is the first attempt to learn UAPs in black-box settings to test the robustness of vision-language pre-trained models. It also characterizes key challenges for launching an effective universal attack in multi-modal scenarios, which can serve as the foundation for future research in this area. • A novel effective and transferrable UAP generation method is designed, which improves the utility and transferability of UAPs by comprehensively considering multi-modal interactions. A novel local UAP reinforcement technique and an ScMix data augmentation method are proposed to boost the effectiveness and transferability of adversarial attacks. • The proposed ETU is tested on a wide range of VLP models, downstream tasks and datasets, where promising results demonstrate its superiority.
+# 2 RELATED WORK
+# 2.1 Vision-Language Pre-training
+Vision-language models form the cornerstone of a wide range of tasks, e.g., multi-modal retrieval [38, 40], zero-shot learning [5, 24], image captioning [4], visual question answering [1], and visual entailment [32]. To advance the capability, vision-language pretraining has been introduced. It harnesses large amounts of unlabelled multi-modal data (e.g., image-text pairs) to develop models via self-supervised learning, e.g., multi-modal contrastive learning [12, 13, 24, 33]. For instance, the groundbreaking CLIP [24] is proposed to learn aligned VLP models that generate embeddings of images and texts with corresponding unimodal encoders. Contrastive learning is utilized to train unimodal encoders by maximizing the similarity between embeddings of matched image-text pairs
+while simultaneously enlarging the embedding distance between unmatched pairs. BLIP [12] leverages the dataset bootstrapping method to improve the quality of the training set by synthesizing captions for web images while sieving out noisy captions. Three contrastive learning objectives, i.e., image-text contrastive learning, image-text matching, and image-conditioned language modelling, are utilized to jointly pre-train the model. ALBEF [13] first aligns unimodal representations of image-text pair and then fuses them with cross-modal attention to obtain joint representations. TCL [33] utilizes contrastive learning to perform both inter- and intra-modal alignment and preserve mutual information between global and local representations in each modality. Vision-language pre-trained models exhibit outstanding generalizability and transferability in representation learning. Consequently, they have been widely used for downstream tasks through fine-tuning.
+# 2.2 Adversarial Attack
+Conventional adversarial attack. Adversarial attack aims to mislead target models to make wrong predictions by crafting imperceptible perturbations to inject into original data (i.e., adversarial perturbations)[27, 36, 39]. It is mainly utilized to test the robustness of DNNs. Thereinto, adversarial perturbations can be roughly divided into instance-specific adversarial perturbations [19] and universal adversarial perturbations (UAPs) [20]. As the name implies, instance-specific adversarial perturbations are tailored to particular instances, while UAPs refer to perturbations that are applicable across various instances. Compared to instance-specific adversarial perturbations, UAPs are more applicable for real-world applications as they can deceive different instances of a modal without additional training, even if those instances were not seen during the perturbation crafting process. Representative methods for producing adversarial perturbations include optimization-based methods [3, 26], gradient-based methods [8, 19] and generative methods [2, 23, 37]. Early attack methods generate adversarial perturbations in the white-box settings, where information regarding the victim models, tasks, and data is available. Iterative optimization methods, e.g., I-FGSM, and PGD, that apply multiple-time gradient ascent are utilized for better attack performance [11, 19]. However, in real-world applications, it is often the case that target information is often not available, which is referred to as the grey/black-box setting. While adversarial perturbations especially UAPs show certain adversarial transferability across different data and models [21], such transferability is limited as iterative optimization would incur severe overfitting problems. After some training steps, the perturbations would fit into target models excessively and can hardly transfer to another different model. To handle this case, various works have been proposed to enhance the transferability of adversarial perturbations. Taking an ensemble of networks as the target can promote transferability [16]. The drawback is that using multiple models comes with computation overhead. Momentum-based methods are designed to accumulate the previous gradients in order to avoid being trapped in poor local maxima [6]. Another line of work proposes to increase the input diversity via data augmentation to prevent overfitting,
+e.g., data mixing operations [28], data scaling [14] and random transformations (e.g., resizing, cropping and rotating) [31]. Adversarial attack against VLP models. Recently, with the proliferation of VLP models, research has started to investigate the robustness of VLP models. Attacking VLP models is different from those in DNNs. Adversarial attack in DNNs usually concentrates on the classification task. It is a unimodal task that only considers the relation between a single instance and its label, while VLP models focus on multi-modalities. One needs to consider multi-modal data relationships when implementing an attack. For example, Zhang et al. [35] propose Collaborative Multimodal Adversarial Attack (CoAttack) to attack various pre-trained models including CLIP, ALBEF, and TCL. Co-Attack generates multi-modal adversarial perturbations by enlarging the embedding distance between adversarial examples and the original data pairs. As VLP models are usually fine-tuned for downstream tasks, improving the transferability of adversarial perturbations is particularly important to comprehensively evaluate the robustness of VLP models. To this end, Set-level Guidance Attack (SGA) [18] is proposed to apply data augmentation to increase data diversity and accordingly craft multi-modal adversarial perturbations by minimizing the similarity between them and their matched data from another modality. Self-augment-based transfer attack (SA-Attack) [9] applies more data augmentations on both original data and adversarial examples to further improve transferability. Co-Attack, SGA and SA-Attack learn multi-modal adversarial perturbations one by one, i.e., first generating adversarial perturbations for one modality and then learning adversarial perturbations for the other. Wang et al. [30] propose to learn multimodal adversarial perturbations simultaneously. Despite the progress made, these methods commonly consider data-specific perturbations, suffering from limited generalization ability and transferability. Tailoring perturbations for specific instances makes it challenging to generalize to new data. In addition, it requires additional training for generating perturbations for new data, incurring huge computational costs for large-scale applications. Although AdvCLIP [42] studies to craft universal adversarial patches, it only concentrates on CLIP. Furthermore, the adversarial patch is not strictly constrained in terms of the perturbation magnitude, making it prone to be identified. To address it, we present the first attempt to learn effective universal adversarial perturbations.
+# 3 PROPOSED METHOD
+# 3.1 Preliminaries
+In this work, we aim to learn universal adversarial perturbations that are able to transfer across different VLP models, datasets, and downstream tasks. This means that the VLP models, target datasets, and downstream tasks remain unknown or unavailable during learning. To handle this black-box setting, we train the attack model by utilizing a surrogate dataset and model. The surrogate multi-modal dataset is denoted as D𝑠= {(𝑥𝑖,𝑡𝑖)}𝑛 𝑖=1 where (𝑥𝑖,𝑡𝑖) is the image and text pair and 𝑛is the number of pairs. For the surrogate VLP model, we denote the image encoder and the text encoder as 𝑓𝑥and 𝑓𝑡, respectively. The goal here is to learn a universal adversarial perturbation ∥𝛿∥∞≤𝜖for the modality of images, where 𝜖is the magnitude of the perturbation and 𝑙∞is the perturbation constraint. The learned UAP can mislead VLP models
+to wrongly associate images and texts in the target dataset D𝑡at the reference time, thus making wrong predictions. For example, in the image-text retrieval, it would make models return incorrect retrieved results.
+# 3.2 Overview
+To enable successful black-box attacks, we propose a novel Effective and Transferable Universal Adversarial Attack (ETU) method. As illustrated in Figure 1, the proposed ETU learns UAPs by taking a surrogate model as the victim, which consists of an image encoder and a text encoder. During the learning procedure, the ETU increases the multi-modal input diversity using ScMix data augmentation strategy. UAPs are learned to attack the model by disrupting intra- and inter-modal relationships between original data pairs. Both global and local regions of the UAP would be optimized to improve the effectiveness and transferability.
+# 3.3 Effective and Transferable Universal Adversarial Attack
+VLP models endeavor to learn the interactions between images and texts for effective multi-modal representation. To achieve successful attacks in multi-modal scenarios, it is necessary to consider multi-modal relationships. An intuitive method is to consider the relationships between the matched pairs, and the UAP is learned by enlarging the embedding distance between the original image and its matched text: ∑︁
+(1)
+where ℓis a loss function to quantify the difference between representations of two samples, e.g., the KL-divergence loss. The objective deters the model from correctly perceiving perturbed images and associating them with their paired texts. Iterative methods such as PGD [11, 19] are then used to solve the optimization problem given their promising performance. This scheme might work in white-box attack settings, where the target information is available, including target models, data and tasks. However, in real-world applications, such information is largely unknown to the attacker. A common alternative is to utilize a substitute model as the victim target. However, perturbations learned through iterative optimization methods would suffer from low transferability. During the multi-round optimization, perturbations would gradually overfit the victim model. As a result, it can hardly be used to effectively attack another model with different architectures and parameters. This situation will be exacerbated by intrinsic crossmodal interactions in multi-modal application scenarios. To alleviate these, the ETU leverages two key novel techniques, i.e., local utility reinforcement, and ScMix data augmentation. Local utility reinforcement. This technique enhances the utility of the UAP’s local regions for two benefits. First, boosting the local regions can naturally help improve the utility of the entire UAP. Second, it decreases interactions between different local regions, thereby improving the transferability [29]. To achieve this, during the UAP learning process, in addition to optimizing the entire UAP, we randomly crop subregions and resize them to the same as the
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/0e26/0e2665eb-2902-4fc2-a5e8-59a096f54615.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+Figure 1: An illustration of the proposed ETU method. The ETU exploits the characteristics of UAPs and diverse cross-modal interactions to improve the utility and transferability of UAPs. Specifically, it generates a variety of similarity-preserving image-text pairs through the ScMix augmentation, which consists of self-mix and cross-mix operations. The ETU optimizes both the entire space and local regions of UAPs by disturbing the similarity between diverse multi-modal data pairs. In light of this, the utility and transferability of UAPs are ensured.
+size of the original images. For brevity, we denote this transformation process as A𝑠. Similar to optimizing the entire UAP, the local regions of the UAP are learned by enlarging the embedding distance between the perturbed images and original pairs:
+(2)
+∑︁ + ℓ(𝑓𝑥(𝑥𝑖+ A𝑠(𝛿)), 𝑓𝑡(𝑡𝑖))).
+ScMix augmentation. A representative method for enhancing the transferability is to leverage the data augmentation strategy to increase the input diversity. Learning with diverse inputs can effectively prevent adversarial perturbations from overfitting to specific patterns [9, 18]. In addition, in multi-modal scenarios, employing data augmentation can help further exploit the intrinsic crossmodal interactions. In light of these, we design a novel semanticpreserving data augmentation technique. Specifically, a proper data transformation for augmentation should satisfy the following criteria: diversity and semantic preservation. This means the augmentation should increase the visual difference between the original data and the augmented data. In the meantime, the augmentation should not significantly alter the semantics, which would deter the model from recognizing the data and thus harm the effectiveness of generated UAPs. Under this regime, we propose a novel semantic-preserving ScMix method. As illustrated in Figure 2, the proposed ScMix is a high-order data transformation strategy, which performs self-mix and cross-mix operations to enhance data diversity while preserving semantics. Self-mix constructs new data by mixing up the same original data of different transformations. Specifically, in the self-mix process, two subregions of the original image 𝑥𝑖would be randomly cropped and resized to the same size as the original image. Denote the two rescaled subregions as 𝑥1 𝑖and 𝑥2 𝑖. They would be mixed to construct a new data instance ˆ𝑥𝑖. Finally, the mixed data instance would be interpolated with another data 𝑥𝑗instance that is randomly selected from the mini-batch to craft the final instance ˜𝑥𝑖. Formally, the
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2e29/2e2942c5-130b-49f9-b1b3-42252da33a17.png" style="width: 50%;"></div>
+Figure 2: An illustration of the ScMix method, which consists of self-mix operation and cross-mix operations. During self-mix, two local regions of the original image would be randomly cropped and resized to the same size as the original image. Then two rescaled patches would be mixed into a new image. During cross-mix, the self-mixed image would be mixed with another image in a master-slave relation.
+whole process can be formulated as follows:
+(3)
+������������������������������������ where 𝛽1 > 𝛽2 ∈[0, 1) to ensure that the cross-mix would not significantly change the semantics of the original image when injecting the image from another class. 𝑝is the prediction for the data after ScMix. Beta(·, ·) represents a Beta distribution. 𝛼∈(0, ∞).
+Table 1: Attack success rate (%) on the image-text retrieval task. The CLIP with the ViT-B/16 and Flickr30K are adopted as the source model and dataset for training. The grey background indicates the white-box attack results.
+Test Dataset
+Flickr30K
+Task
+Image-to-Text
+Text-to-Image
+Target Model
+Method
+R@1
+R@5
+R@10
+R@1
+R@5
+R@10
+ETUL
+88.96
+76.43
+70.43
+93.49
+88.27
+85.32
+ETUS
+93.13
+88.16
+83.84
+96.13
+93.83
+92.37
+CLIP−ViT-B/16
+ETU
+88.47
+78.61
+73.07
+92.69
+87.5
+84.89
+Test Dataset
+MSCOCO
+ETUL
+29.21
+14.32
+9.57
+27.79
+14.35
+10.28
+ETUS
+24.65
+12.2
+8.6
+25.58
+12.92
+9.22
+ALBEF
+ETU
+32.43
+15.76
+11.28
+29.82
+16.25
+11.83
+With the ScMix, we can augment the original data to create diverse multi-modal data pairs. This helps effectively prevent overfitting and exploit cross-modal interactions to learn more effective and transferrable UAPs. Moreover, in datasets, e.g., Flickr30K [22] and MSCOCO [15], there are often diverse captions to describe an image for different perspectives or language styles. We capture the most matched captions for each image to further increase the multi-modal data diversity. Specifically, denote the caption set for the image 𝑥𝑖is {𝑡𝑖1,𝑡𝑖2, ...,𝑡𝑖𝑘}. The augmented multi-modal data pairs are {( ˜𝑥𝑖1,𝑡𝑖1, 𝑝𝑖1), ( ˜𝑥𝑖2,𝑡𝑖2, 𝑝𝑖2), ..., ( ˜𝑥𝑖𝑘,𝑡𝑖𝑘, 𝑝𝑖𝑘)}, where ˜𝑥𝑖1, ˜𝑥𝑖2, ..., ˜𝑥𝑖𝑘are obtained by applying ScMix on 𝑥𝑖. As a result, an enriched dataset would be obtained for learning. Cross-modal interaction disruption. The UAP learned to disrupt the cross-modal interactions by breaking the similarity between diverse paired data in the enriched dataset. Different from current data-specific attack methods that use augmented data to optimize the entire area of UAPs [9, 18], we propose to leverage them to enhance the local utility of the UAP. The reason is that UAP is learned over the whole dataset instead of on a single instance as data-specific adversarial perturbation generation. Simply increasing the number of data to optimize the entire UAP would encourage it to overfit the victim model. Instead, utilizing augmented data to optimize local regions of the UAP can further encourage the effectiveness of the UAP while relieving the overfitting problem. Table 1 lists some black-box results, where we can observe that ETUS that leverages the ScMix to optimize the entire area of the UAP achieve worse performance than that does not use the ScMix, i.e., ETUL. And the ETU that uses ScMix to optimize the local utility of the UAP can achieve better transferrable attacks. In light of this, the objective of learning UAP based on ScMix is:
+(4)
+where 𝑛𝑡is the caption number. The overall objective for learning UAP is defined as:
+Algorithm 1: Universal Adversarial Perturbations for
+Vision-Language Pre-trained Models
+Require: Training data D = {(𝑥𝑖,𝑡𝑖)}𝑛
+𝑖=1, mini-batch size 𝑚,
+iteration times 𝑇, parameters 𝜖, 𝛼, 𝛽1, 𝛽2;
+Require: Randomly initialize 𝛿;
+// Training;
+// Exploit diverse matching captions for each image to
+augment the dataset;
+for 𝑒𝑝𝑜𝑐ℎ= 1 →𝑇do
+{(𝑥𝑖,𝑡𝑖)}𝑙
+𝑖=1 ∼D // Sample mini-batch from the dataset;
+{( ˜𝑥𝑖,𝑡𝑖)}𝑙
+𝑖=1 ←{(𝑥𝑖,𝑡𝑖)}𝑙
+𝑖=1 // Augment each image-text
+pair via ScMix;
+A𝑠(𝛿) // Randomly crop and resize the UAP;
+𝛿←Eq.(5) // Update the UAP by optimizing Eq.(5);
+end
+return 𝛿;
+<div style="text-align: center;">Algorithm 1: Universal Adversarial Perturbations for Vision-Language Pre-trained Models</div>
+where data in L1 and L2 would also be augmented with different captions for each image. To solve the optimization problem, we leverage the commonly used projected gradient descent (PGD) [19]. The detailed algorithm is summarized in Algorithm 1.
+# 4 EXPERIMENTS
+# 4.1 Settings
+Downstream tasks and datasets. To comprehensively evaluate the performance of the proposed method, we conduct experiments on three vision-language tasks with three datasets. The first is the image-text retrieval task. Two widely used datasets, i.e., Flickr30K [22] and MSCOCO [15], are selected. The Flickr30K data consists of 31,783 images, with each image accompanied by five descriptive captions. The MSCOCO dataset released in 2014 is composed of 164k images, each annotated with approximately five captions. The second is the image captioning tasks, where Flickr30K and MSCOCO are used for the training and testing in the experiments. The third is the visual grounding task. The Flickr30K is used for training. And we choose the RefCOCO+ dataset [34] for the performance evaluation, which contains 141,564 expressions corresponding to 49,856 objects found in 19,992 images. For all experiments, in line with previous research [18, 35], we use the test set in these datasets for both training and testing purposes. Models. Four widely-used VLP models are utilized to test the proposed method, i.e., CLIP [24], ALBEF [13], TCL [33] and BLIP [12]. For CLIP, different image encoders are utilized, including vision transformers (i.e., ViT-B/16, ViT-B/32, and ViT-L/14[7]) and CNNs (i.e., ResNet50, and ResNet101 [10]). The text encoder is a 6-layer transformer. For BLIP, we choose the one that consists of a ViTB/16 and a 6-layer transformer as the image and text encoder to attack. In addition, BLIP is mainly used for experiments on the image captioning task. ALBEF and TCL take ViT-B/16 as the image encoder and adopt a 6-layer transformer for both the text encoder and multimodal encoder.
+<div style="text-align: center;">le 2: Attack success rate (%) on the image-text retrieval task. The CLIP with the ViT-B/16 is adopted as the source model for ining. The grey background indicates the white-box attack results. Bold indicates the best results.</div>
+Table 2: Attack success rate (%) on the image-text retrieval task. The CLIP with the ViT-B/16 is adopted  training. The grey background indicates the white-box attack results. Bold indicates the best results.
+Test Dataset
+Flickr30K
+MSCOCO
+Task
+Image-to-Text
+Text-to-Image
+Image-to-Text
+Text-to-Image
+Target Model
+Method
+R@1
+R@5
+R@10
+R@1
+R@5
+R@10
+R@1
+R@5
+R@10
+R@1
+R@5
+R@10
+UniA
+91.9
+82.87
+78.66
+91.14
+81.65
+79.96
+95.5
+91.42
+88.82
+94.24
+90.11
+87.65
+MulA
+92.02
+82.04
+76.62
+94.85
+90.42
+86.22
+95.5
+91.6
+88.87
+96.13
+93.5
+91.76
+ETUL
+88.96
+76.43
+70.43
+93.49
+88.27
+85.32
+93.78
+88.85
+85.17
+95.34
+92.21
+90.49
+ETUS
+93.13
+88.16
+83.84
+96.13
+93.83
+92.37
+96.8
+94.35
+92.68
+97.25
+95.7
+94.99
+CLIP−ViT-B/16
+ETU
+88.47
+78.61
+73.07
+92.69
+87.5
+84.89
+93.55
+89.01
+85.88
+94.25
+91.3
+89.31
+UniA
+32.82
+19.34
+14.42
+43.77
+26.3
+19.31
+58.85
+43.32
+36.91
+64.29
+47.74
+40.59
+MulA
+42.53
+25.58
+20.19
+48.37
+29.74
+22.63
+66.73
+51.81
+44.21
+69.5
+53.13
+45.62
+ETUL
+46.74
+28.01
+21.94
+50.19
+31.47
+23.99
+71.27
+56.16
+49.6
+70.89
+55.94
+48.9
+ETUS
+47.25
+30.76
+24.1
+55.61
+39.13
+32.1
+72.21
+58.58
+51.71
+74.28
+60.89
+54.49
+CLIP−ResNet50
+ETU
+56.83
+38.9
+32.54
+61.27
+43.11
+36.59
+78.55
+66.85
+61.13
+79.37
+67.18
+60.72
+UniA
+28.35
+13.64
+9.17
+33.93
+18.17
+14.14
+50.27
+35.14
+29.22
+54.32
+39.79
+33.39
+MulA
+35.89
+18.08
+13.08
+38.46
+22.42
+17.03
+59.13
+44.03
+37.39
+60.51
+45.84
+39.52
+ETUL
+37.29
+20.82
+14.01
+40.99
+24.62
+17.62
+61.59
+47.43
+40.72
+62.03
+47.91
+41.33
+ETUS
+41.51
+24.0
+17.82
+48.51
+32.34
+26.25
+65.47
+52.43
+45.79
+68.71
+55.13
+49.19
+CLIP−ResNet101
+ETU
+52.49
+33.83
+26.57
+54.27
+37.29
+30.29
+72.01
+60.05
+53.8
+73.59
+60.79
+54.4
+UniA
+19.75
+6.85
+3.35
+29.16
+14.41
+9.27
+40.75
+23.6
+17.56
+46.39
+28.98
+23.04
+MulA
+21.84
+7.13
+4.47
+31.12
+14.97
+10.05
+41.32
+24.18
+18.67
+47.08
+30.48
+24.47
+ETUL
+22.21
+7.68
+4.07
+31.83
+16.02
+10.49
+43.49
+26.74
+21.07
+49.22
+32.41
+25.98
+ETUS
+20.74
+7.54
+4.78
+32.28
+15.95
+10.95
+42.92
+25.98
+20.16
+49.27
+32.04
+25.99
+CLIP−ViT-B/32
+ETU
+22.58
+7.89
+5.39
+33.7
+16.35
+11.4
+45.14
+27.5
+21.98
+50.51
+33.13
+26.82
+UniA
+14.48
+4.57
+2.54
+21.81
+8.99
+5.91
+35.22
+20.96
+16.61
+39.22
+24.41
+19.26
+MulA
+20.6
+8.93
+5.28
+27.93
+13.9
+10.25
+43.42
+29.49
+24.16
+45.93
+31.33
+25.89
+ETUL
+16.69
+5.3
+2.7
+22.39
+8.81
+6.02
+38.23
+23.36
+18.19
+38.72
+23.99
+18.83
+ETUS
+19.26
+7.48
+4.78
+33.76
+18.48
+13.96
+45.21
+29.57
+23.19
+53.38
+39.15
+33.54
+CLIP−ViT-L/14
+ETU
+20.86
+9.1
+5.49
+28.54
+14.34
+9.25
+43.49
+28.31
+22.77
+47.35
+32.31
+26.56
+UniA
+6.36
+2.1
+1.3
+11.3
+3.79
+2.12
+20.8
+8.7
+5.41
+21.86
+10.37
+6.95
+MulA
+8.86
+3.11
+1.9
+13.52
+4.8
+3.09
+25.93
+11.75
+7.64
+24.92
+12.36
+8.22
+ETUL
+10.11
+4.01
+2.8
+15.32
+5.7
+3.36
+29.21
+14.32
+9.57
+27.79
+14.35
+10.28
+ETUS
+8.76
+3.21
+1.9
+13.26
+4.12
+2.71
+24.65
+12.2
+8.6
+25.58
+12.92
+9.22
+ALBEF
+ETU
+13.14
+4.81
+3.3
+17.28
+6.54
+4.21
+32.43
+15.76
+11.28
+29.82
+16.25
+11.83
+UniA
+8.54
+2.31
+1.3
+13.71
+4.49
+2.7
+22.41
+9.83
+6.41
+23.05
+11.12
+7.55
+MulA
+13.38
+4.5
+2.6
+17.19
+6.02
+3.88
+27.28
+13.02
+8.42
+25.68
+13.06
+9.12
+ETUL
+14.65
+6.03
+3.81
+19.48
+6.97
+4.59
+31.4
+15.37
+10.18
+27.26
+14.37
+9.87
+ETUS
+12.43
+4.12
+3.01
+17.33
+6.49
+4.06
+27.14
+13.54
+9.37
+26.5
+13.49
+9.42
+TCL
+ETU
+18.55
+7.94
+5.71
+21.57
+8.64
+5.91
+34.02
+17.57
+11.85
+30.28
+15.89
+11.23
+Evaluation metric. In line with prior research [18, 35], we utilize the Attack Success Rate (ASR) as a metric to quantify the effectiveness of the proposed attack and all compared baselines. ASR is calculated as the percentage of adversarial examples that successfully deceive the model, providing a reliable measure of the attackers’ effectiveness. Implementation details. For fundamental experiments, the perturbation magnitude 𝜖is uniformly set as 12/255. Additionally, we evaluate the proposed method under varying perturbation magnitudes. PGD is utilized to solve the optimization problem, with the number of iterations 𝑇as 100 and the step size as 𝜖/𝑇∗1.25. The batch size is set as 16. 𝛼= 4, 𝛽1 = 0.8, 𝛽2 = 0.2. For ℓ, we
+leverage the KL-divergence loss to measure the difference between two samples. Baselines. As the proposed method is the first endeavor to learn UAPs against VLP models, there are no existing benchmarks for comparison. To address this, we construct baselines based on prior works that focus on sample-specific attacks against VLP models [35], along with variants of our proposed method. These can help verify the efficacy of each component and demonstrate the superiority of our overall algorithm in learning UAPs. (1) Unimodal attack (UniA), which learns UAPs by directly enlarging the embedding distance between the adversarial images and their original counterparts;
+Table 3: Attack success rate (%) regarding the average of R@1 on the image-text retrieval task. The grey background indicate the white-box attack results. Bold indicates the best results.
+Test Dataset
+Flickr30K
+Target Model
+CLIP
+ALBEF
+TCL
+ResNet50
+ResNet101
+ViT-B/16
+ViT-B/32
+ViT-L/14
+Source Model
+Method
+I2T
+T2I
+I2T
+T2I
+I2T
+T2I
+I2T
+T2I
+I2T
+T2I
+I2T
+T2I
+I2T
+T2I
+UniA
+94.13
+96.78
+16.86
+21.2
+8.22
+14.5
+17.79
+25.97
+7.85
+16.98
+3.86
+9.33
+8.54
+13.71
+MulA
+96.3
+97.67
+18.9
+24.36
+8.34
+13.85
+16.56
+25.04
+8.83
+16.3
+5.11
+8.49
+13.38
+17.19
+ETUL
+95.79
+97.8
+27.08
+34.44
+7.48
+16.72
+14.72
+25.81
+9.45
+18.27
+4.1
+9.29
+14.65
+19.48
+ETUS
+96.81
+98.66
+28.22
+34.55
+9.69
+15.82
+15.54
+24.58
+10.43
+19.46
+4.8
+9.57
+12.43
+17.33
+CLIP-ResNet50
+ETU
+95.79
+98.63
+37.04
+44.94
+9.33
+17.49
+16.58
+27.74
+9.82
+18.65
+5.42
+10.59
+18.55
+21.57
+UniA
+18.65
+27.65
+12.77
+17.5
+7.36
+13.11
+17
+23.36
+9.08
+18.4
+79.35
+85.85
+20.76
+22.38
+MulA
+19.16
+28.87
+11.88
+16.5
+7.12
+12.56
+15.91
+25.26
+9.2
+17.53
+82.33
+87.35
+25.29
+27.0
+ETUL
+31.33
+31.05
+15.07
+20.17
+9.71
+15.14
+17.06
+25.29
+11.78
+19.68
+79.98
+85.97
+21.75
+26.45
+ETUS
+18.14
+25.28
+11.37
+17.26
+6.99
+12.79
+16.69
+23.71
+8.1
+15.59
+74.87
+72.99
+18.65
+19.62
+ALBEF
+ETULS
+26.56
+35.03
+20.31
+25.08
+10.06
+17.72
+17.18
+26.22
+13.01
+21.55
+83.0
+87.07
+32.98
+31.5
+UniA
+17.58
+32.08
+14.18
+21.2
+8.22
+14.2
+17.42
+26.48
+10.18
+18.46
+21.58
+22.57
+90.38
+82.26
+MulA
+17.31
+29.16
+14.3
+18.94
+7.26
+13.72
+14.85
+25.77
+10.55
+17.56
+17.52
+21.75
+93.68
+87.98
+ETUL
+24.27
+35.68
+17.62
+22.74
+8.22
+16.33
+17.18
+28.16
+11.41
+19.78
+23.15
+24.58
+93.72
+88.1
+ETU
+20.56
+30.15
+13.67
+19.76
+7.48
+15.17
+16.07
+26.68
+8.59
+18.07
+18.87
+20.65
+87.67
+83.64
+TCL
+ETULS
+27.59
+39.69
+20.82
+26.96
+9.2
+17.94
+17.44
+28.61
+12.64
+20.59
+23.25
+25.44
+94.1
+87.6
+Test Dataset
+MSCOCO
+UniA
+93.75
+96.2
+32.28
+37.28
+21.21
+26.31
+31.61
+38.77
+24.38
+28.82
+14.43
+17.37
+17.78
+20.63
+MulA
+93.83
+95.5
+33.14
+38.92
+21.48
+25.77
+29.99
+38.13
+24.72
+28.84
+14.44
+16.77
+16.98
+20.27
+ETUL
+93.87
+95.07
+46.26
+53.08
+21.79
+28.15
+30.71
+38.43
+28.58
+32.99
+16.65
+18.68
+17.46
+20.97
+ETUS
+96.61
+96.92
+51.98
+55.84
+24.84
+28.39
+30.74
+39.04
+29.11
+32.34
+17.35
+19.45
+19.89
+21.77
+CLIP-ResNet50
+ETU
+96.64
+97.3
+61.26
+64.95
+25.79
+31.7
+31.63
+40.27
+30.52
+33.09
+17.99
+20
+20.97
+23.1
+UniA
+37.64
+43.3
+24.52
+31.68
+18.81
+23.47
+29.91
+38.44
+27.36
+30.74
+79.71
+83.18
+37.22
+31.12
+MulA
+37.88
+44.46
+25.75
+32
+20.18
+24.28
+31.1
+38.15
+26.17
+30.89
+82.57
+84.88
+45
+37.58
+ETUL
+44.34
+49.89
+31.71
+38.41
+22.87
+27.56
+31.4
+40.14
+32.51
+35.17
+79.82
+83.34
+45.56
+37.24
+ETUS
+36.9
+41.82
+23.54
+30.94
+18.58
+24.37
+30.87
+38.2
+22.36
+28.2
+78.68
+75.79
+32.54
+27.62
+ALBEF
+ETU
+49.9
+56.11
+40.42
+45.16
+25.6
+31.95
+33.57
+41.47
+34.38
+37.32
+82.99
+85.19
+50.9
+42.04
+UniA
+41.64
+49.62
+31.19
+37.21
+21.75
+27.28
+32.62
+41.05
+30.14
+32.05
+43.57
+36.87
+92.01
+86.87
+MulA
+38.46
+47.08
+28.16
+33.58
+21.33
+26.19
+30.68
+38.09
+26.78
+31.21
+38.7
+32.01
+92.43
+87.36
+ETUL
+47.32
+54.57
+36.04
+42.29
+24.8
+29.74
+33.31
+41.69
+29.11
+32.26
+45.13
+37.25
+93.89
+89
+ETUS
+39.4
+47.89
+24.38
+34.33
+20.03
+21.75
+30.83
+41.35
+27.05
+30.69
+42.92
+36.91
+92.28
+88.57
+TCL
+ETU
+53.25
+57.99
+42.3
+46.58
+26.4
+31.9
+33.88
+41.78
+31.48
+33.83
+45.42
+37.93
+93.28
+89.45
+(2) Multi-modal attack (MulA), which pulls adversarial images away from the original images and paired texts in the embedding space. The objective is max𝛿L1; (3) ETUL, which is a variant of the ETU that only considers local utility reinforcement. The objective is max𝛿(L1 + L2); (4) ETUS, which is a variant of the proposed method that utilizes the ScMix augmentation to increase the input diversity. The augmented data are utilized to optimize the entire area of UAPs without considering the local utility.
+# 4.2 Results on the Image-Text Retrieval
+We assess the transferability of the proposed method by launching attacks against a range of VLP models, i.e., CLIP models with different backbones, ALBEF and TCL, in black-box settings. Given that different VLP models may accept inputs of varying sizes, the learned UAPs are resized accordingly before initiating attacks. For instance, the UAPs learned based on CLIP would be resized to 384×384 when attacking ALBEF or TCL. Conversely, when conducting transfer
+attacks from ALBEF or TCL to CLIP, the UAPs are resized from 384 × 384 to 224 × 224. Table 2 presents the attack results by taking ViT-B/16-based CLIP and the Flickr30K dataset as the source model and training set, respectively. The averages of R@1, R@5, and R@10 for both image-to-text retrieval and text-to-image retrieval are recorded. From these results, we can draw the following observations. First, all methods achieve promising white-box attack performance. However, when transferring to unseen models, methods that do not consider transferability, i.e., UniA and MulA, lose their efficacy. This means the two methods overfit the source model during training. In contrast, by considering the local utility and multi-modal data diversity, the proposed method can significantly improve black-box attack performance. Interestingly, increasing the diversity of the input to optimize the entire area of UAPs, i.e., ETUS, would improve attack performance on CLIP while harming the transferability on other models, i.e., ALBEF, and TCL. The reason may be that UAPs are learned based on the whole dataset. Increasing the number of inputs would make UAPs overfit the source
+Table 4: Performance under different attacks on the visual grounding task. The training dataset and test dataset are Flickr30K and RefCOCO+, respectively. The CLIP with the ViT-B/16 is set as the source model and ALBEF is taken as the target model. The “Baseline” denotes the performance of the target model on the original data. Lower values represent better adversarial transferability. Bold indicates the best results.
+Test Dataset
+RefCOCO+
+Method
+Val
+TestA
+TestB
+Baseline
+51.2
+56.7
+44.8
+UniA
+49.6
+53.4
+42.9
+MulA
+49.6
+53.1
+42.6
+ETUL
+48.7
+52.4
+42.1
+ETUS
+49.2
+53.1
+42.5
+ETU
+48.5
+51.5
+41.7
+Table 5: Performance under different attacks on image captioning. The training dataset and test dataset are Flickr30K and MSCOCO, respectively. The CLIP with the ViT-B/16 is adopted as the source model and BLIP is taken as the target model. “Baseline” denotes the performance of the target model on original data. Lower values represent better adversarial transferability. Bold indicates the best results.
+Test Dataset
+MSCOCO
+Method
+B@4
+METEOR
+ROUGE_L
+CIDEr
+SPICE
+Baseline
+39.3
+30.7
+59.6
+131.4
+23.5
+UniA
+36.8
+29.3
+57.6
+122.3
+22.0
+MulA
+35.6
+28.7
+56.9
+118.1
+21.6
+ETUL
+35.5
+28.4
+56.6
+117.1
+21.4
+ETUS
+36.0
+28.8
+57.1
+119.4
+21.7
+ETU
+34.8
+28.1
+56.3
+114.8
+21.0
+model. This might not influence the transferability across models with the same learning objective but influences performance on models with different learning objectives. Second, compared to UniA, MulA achieves better performance, which further demonstrates the necessity of considering cross-model interactions when implementing multi-modal attacks. Third, different architectures show different levels of robustness to UAPs. The models with ViT backbones show stronger robustness to the attack. ALEBF and TCL are less sensitive to the universal adversarial attack that targets CLIP. The reason may be that they adopt different learning objectives and architectures, thus introducing different representation spaces and multi-modal interactions. We further test the effectiveness of the proposed method by adopting different source models, where the results are summarized in Table 3. The promising performance achieved consistently demonstrates the superior performance of our approach in generating effective and transferable universal adversarial perturbations.
+Table 6: Comparison with different augmentation methods. Attack success rate (%) on image-text retrieval task are reported. The CLIP with the ViT-B/16 and Flickr30K are adopted as the source model and dataset for training.
+Test Dataset
+MSCOCO
+Task
+Image-to-Text
+Text-to-Image
+Target Model
+Method
+R@1
+R@5
+R@10
+R@1
+R@5
+R@10
+ETUSI
+68.38
+54.72
+45.74
+71.24
+53.74
+45.08
+ETUSM
+73.85
+62.14
+55.37
+76.33
+63.85
+51.17
+ETUAdmix
+75.56
+64.21
+56.96
+77.24
+66.18
+56.1
+CLIP−ResNet50
+ETU
+78.55
+66.85
+61.13
+79.37
+67.18
+60.72
+ETUSI
+39.11
+22.79
+17.39
+46.18
+28.88
+22.47
+ETUSM
+42.2
+27.32
+20.71
+48.4
+31.61
+25.56
+ETUAdmix
+44.14
+27.29
+21.27
+50.03
+32.66
+26.34
+CLIP−ViT-B/32
+ETU
+45.14
+27.5
+21.98
+50.51
+33.13
+26.82
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/322c/322cbe86-7bbe-48c4-93dc-9ff7904b0984.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Image-to-Text</div>
+Figure 3: Test accuracy on MSCOCO under different magnitudes of the UAP. The source model is ViT-B/16-based CLIP and the target model is ResNet50-based CLIP. The attack success rate in terms of the average of R@1 is reported.
+<div style="text-align: center;">Figure 3: Test accuracy on MSCOCO under different magnitudes of the UAP. The source model is ViT-B/16-based CLIP and the target model is ResNet50-based CLIP. The attack success rate in terms of the average of R@1 is reported.</div>
+# 4.3 Results on the Visual Grounding and Image Captioning
+# 4.3 Results on the Visual Grounding and Image Captioning
+To test the transferability of the proposed method across different tasks, we propose to conduct experiments on the visual grounding task and the image captioning task. For two tasks, we use the UAP generated based on Flickr30K and ViT-B/16-based CLIP in the image-text retrieval to attack target models. For the visual grounding task, we take ALBEF and RefCOCO+ as the target model and dataset. While on the image captioning, we use the learned UAP to attack BLIP on MSCOCO. The performance of target models under different attacks is reported in Table 4 and 5. From the results, we can have the consistent observation that the proposed method achieves the best universal adversarial attack. In addition, each component contributes to the effectiveness and transferability of the proposed method.
+# 4.4 Comparison with Different Augmentations
+We compare the proposed ScMix with various data augmentation methods, including scale-invariant augmentation (ETU_SI) [18], self-mix (ETU_SM), and Admix (ETU_Admix) [28], where results on image-text retrieval are reported in Table 6. From the table, it can be observed that the proposed augmentation method is the most superior.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ce17/ce17ad85-a891-47b7-8398-bdb3f3d4a599.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/815e/815e8322-7b60-4312-b2fc-c86a1ce0eaff.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/006c/006c03f6-97a9-4382-b529-703ceae17791.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/548c/548c0ef3-dae8-4058-aa5f-4f57a3457304.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;">Figure 4: Examples of top-5 image-text retrieval results.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/20c8/20c8f329-bc45-4a8a-9a70-195adb98825b.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;">Figure 5: The Grad-CAM visualizations of the original images and the perturbed images by ETU.</div>
+# Figure 5: The Grad-CAM visualizations of the original images and the perturbed images by ETU.
+# 4.5 Results on Varying Perturbation Budgets
+We test all methods under various perturbation magnitudes, with results on image-text retrieval presented in Figure 3. From the figure, we can observe that the proposed method achieves the overall best performance, further confirming its superiority. It is worth noting that as the magnitude increases, the performance of all methods
+<div style="text-align: center;"></div>
+improves. It is quite normal as larger perturbations typically lead to better attack performance. However, large perturbations would significantly influence data quality, making them easier to identify.
+# 4.6 Visualization
+In Figure 4, we showcase some examples of image-text retrieval under the proposed attack. From the figure, it is evident that the proposed method can effectively mislead the target model to return incorrect retrieved data. Additionally, we present some Grad-CAM [25] visualization examples in Figure 5, where it can be seen that the UAP can significantly change the attention of the target model. These further confirm the effectiveness of the proposed method.
+# 5 CONCLUSIONS
+In this paper, we investigate to learn universal adversarial perturbations that are capable of transferring across different VLP models, datasets and downstream tasks. To this end, we thoroughly study the factors that might influence the utility and transferability of the UAPs. Based on the findings, we propose a novel Effective and Transferable Universal Adversarial Attack (ETU) method. The proposed method achieves effective attacks by comprehensively considering the characteristics of UAPs and complex multi-modal interactions. Local utility enhancement of UAPs and a novel ScMix data augmentation are designed to ensure the performance of the proposed method. We test the proposed methods across different VLP models, downstream tasks and datasets, where promising results demonstrate the superiority of the proposed method.
+# 6 ACKNOWLEDGMENTS
+This work was partially supported by Australian Research Council Discovery Project (DP230101196, CE200100025).
+# REFERENCES
+[1] Stanislaw Antol, Aishwarya Agrawal, Jiasen Lu, Margaret Mitchell, Dhruv Batra, C Lawrence Zitnick, and Devi Parikh. 2015. Vqa: visual question answering. In Proceedings of the IEEE International Conference on Computer Vision. 2425–2433. [2] Shumeet Baluja and Ian Fischer. 2018. Learning to attack: adversarial transformation networks. In Proceedings of the AAAI Conference on Artificial Intelligence, Vol. 32. [3] Nicholas Carlini and David Wagner. 2017. Towards evaluating the robustness of neural networks. In Proceedings of the IEEE Symposium on Security and Privacy. 39–57. [4] Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedantam, Saurabh Gupta, Piotr Dollár, and C Lawrence Zitnick. 2015. Microsoft coco captions: data collection and evaluation server. arXiv preprint arXiv:1504.00325 (2015). [5] Zhi Chen, Pengfei Zhang, Jingjing Li, Sen Wang, and Zi Huang. 2023. Zeroshot learning by harnessing adversarial samples. In Proceedings of the ACM International Conference on Multimedia. 4138–4146. [6] Yinpeng Dong, Fangzhou Liao, Tianyu Pang, Hang Su, Jun Zhu, Xiaolin Hu, and Jianguo Li. 2018. Boosting adversarial attacks with momentum. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 9185–9193. [7] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, et al. 2020. An image is worth 16x16 words: transformers for image recognition at scale. In Proceedings of the International Conference on Learning Representations. [8] Ian J Goodfellow, Jonathon Shlens, and Christian Szegedy. 2014. Explaining and harnessing adversarial examples. arXiv preprint arXiv:1412.6572 (2014). [9] Bangyan He, Xiaojun Jia, Siyuan Liang, Tianrui Lou, Yang Liu, and Xiaochun Cao. 2023. SA-Attack: improving adversarial transferability of vision-Language pretraining models via self-augmentation. arXiv preprint arXiv:2312.04913 (2023). [10] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. 2016. Deep residual learning for image recognition. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 770–778. [11] Alexey Kurakin, Ian J Goodfellow, and Samy Bengio. 2016. Adversarial examples in the physical world. arXiv preprint arXiv:1607.02533 (2016). [12] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi. 2022. Blip: bootstrapping language-image pre-training for unified vision-language understanding and generation. In Proceedings of the International Conference on Machine Learning. PMLR, 12888–12900. [13] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare, Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi. 2021. Align before fuse: vision and language representation learning with momentum distillation. Advances in neural information processing systems 34 (2021), 9694–9705. [14] Jiadong Lin, Chuanbiao Song, Kun He, Liwei Wang, and John E Hopcroft. 2019. Nesterov accelerated gradient and scale invariance for adversarial attacks. In Proceedings of the International Conference on Learning Representations. [15] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Dollár, and C Lawrence Zitnick. 2014. Microsoft coco: common objects in context. In Proceedings of the European Conference on Computer Vision. 740–755. [16] Yanpei Liu, Xinyun Chen, Chang Liu, and Dawn Song. 2016. Delving into transferable adversarial examples and black-box attacks. In Proceedings of the International Conference on Learning Representations. [17] Zheyuan Liu, Cristian Rodriguez-Opazo, Damien Teney, and Stephen Gould. 2021. Image retrieval on real-life images with pre-trained vision-and-language models. In Proceedings of the IEEE International Conference on Computer Vision. 2125–2134. [18] Dong Lu, Zhiqiang Wang, Teng Wang, Weili Guan, Hongchang Gao, and Feng Zheng. 2023. Set-level guidance attack: boosting adversarial transferability of vision-language pre-training models. In Proceedings of the IEEE International Conference on Computer Vision. 102–111. [19] Aleksander Madry, Aleksandar Makelov, Ludwig Schmidt, Dimitris Tsipras, and Adrian Vladu. 2018. Towards deep learning models resistant to adversarial attacks. In Proceedings of the International Conference on Learning Representations. [20] Seyed-Mohsen Moosavi-Dezfooli, Alhussein Fawzi, Omar Fawzi, and Pascal Frossard. 2017. Universal adversarial perturbations. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 1765–1773. [21] Nicolas Papernot, Patrick McDaniel, and Ian Goodfellow. 2016. Transferability in machine learning: from phenomena to black-box attacks using adversarial samples. arXiv preprint arXiv:1605.07277 (2016).
+[22] Bryan A Plummer, Liwei Wang, Chris M Cervantes, Juan C Caicedo, Julia Hockenmaier, and Svetlana Lazebnik. 2015. Flickr30k entities: collecting region-to-phrase correspondences for richer image-to-sentence models. In Proceedings of the IEEE International Conference on Computer Vision. 2641–2649. [23] Omid Poursaeed, Isay Katsman, Bicheng Gao, and Serge Belongie. 2018. Generative adversarial perturbations. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 4422–4431. [24] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. 2021. Learning transferable visual models from natural language supervision. In Proceedings of the International Conference on Machine Learning. PMLR, 8748– 8763. [25] Ramprasaath R Selvaraju, Michael Cogswell, Abhishek Das, Ramakrishna Vedantam, Devi Parikh, and Dhruv Batra. 2017. Grad-cam: visual explanations from deep networks via gradient-based localization. In Proceedings of the IEEE International Conference on Computer Vision. 618–626. [26] Christian Szegedy, Wojciech Zaremba, Ilya Sutskever, Joan Bruna, Dumitru Erhan, Ian Goodfellow, and Rob Fergus. 2013. Intriguing properties of neural networks. arXiv preprint arXiv:1312.6199 (2013). [27] Christian Szegedy, Wojciech Zaremba, Ilya Sutskever, Joan Bruna, Dumitru Erhan, Ian Goodfellow, and Rob Fergus. 2014. Intriguing properties of neural networks. In Proceedings of the International Conference on Learning Representations. [28] Xiaosen Wang, Xuanran He, Jingdong Wang, and Kun He. 2021. Admix: enhancing the transferability of adversarial attacks. In Proceedings of the IEEE International Conference on Computer Vision. 16158–16167. [29] Xin Wang, Jie Ren, Shuyun Lin, Xiangming Zhu, Yisen Wang, and Quanshi Zhang. 2020. A unified approach to interpreting and boosting adversarial transferability. In Proceedings of the International Conference on Learning Representations. [30] Youze Wang, Wenbo Hu, Yinpeng Dong, and Richang Hong. 2023. Exploring transferability of multimodal adversarial samples for vision-language pre-training models with contrastive learning. arXiv preprint arXiv:2308.12636 (2023). [31] Cihang Xie, Zhishuai Zhang, Yuyin Zhou, Song Bai, Jianyu Wang, Zhou Ren, and Alan L Yuille. 2019. Improving transferability of adversarial examples with input diversity. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. 2730–2739. [32] Ning Xie, Farley Lai, Derek Doran, and Asim Kadav. 2019. Visual entailment: a novel task for fine-grained image understanding. arXiv preprint arXiv:1901.06706 (2019). [33] Jinyu Yang, Jiali Duan, Son Tran, Yi Xu, Sampath Chanda, Liqun Chen, Belinda Zeng, Trishul Chilimbi, and Junzhou Huang. 2022. Vision-language pre-training with triple contrastive learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. 15671–15680. [34] Licheng Yu, Patrick Poirson, Shan Yang, Alexander C Berg, and Tamara L Berg. 2016. Modeling context in referring expressions. In Proceedings of the European Conference on Computer Vision. Springer, 69–85. [35] Jiaming Zhang, Qi Yi, and Jitao Sang. 2022. Towards adversarial attack on visionlanguage pre-training models. In Proceedings of the ACM International Conference on Multimedia. 5005–5013. [36] Peng-Fei Zhang, Guangdong Bai, Hongzhi Yin, and Zi Huang. 2023. Proactive privacy-preserving learning for cross-modal retrieval. ACM Transactions on Information Systems 41, 2 (2023), 1–23. [37] Peng-Fei Zhang, Zi Huang, and Xin-Shun Xu. 2021. Proactive privacy-preserving learning for retrieval. In Proceedings of the AAAI Conference on Artificial Intelligence, Vol. 35. 3369–3376. [38] Peng-Fei Zhang, Yang Li, Zi Huang, and Xin-Shun Xu. 2021. Aggregation-based graph convolutional hashing for unsupervised cross-modal retrieval. IEEE Transactions on Multimedia 24 (2021), 466–479. [39] Peng-Fei Zhang, Yang Li, Zi Huang, and Hongzhi Yin. 2021. Privacy protection in deep multi-modal retrieval. In Proceedings of the International ACM SIGIR Conference on Research and Development in Information Retrieval. 634–643. [40] Peng-Fei Zhang, Yadan Luo, Zi Huang, Xin-Shun Xu, and Jingkuan Song. 2021. High-order nonlocal Hashing for unsupervised cross-modal retrieval. World Wide Web 24 (2021), 563–583. [41] Luowei Zhou, Hamid Palangi, Lei Zhang, Houdong Hu, Jason Corso, and Jianfeng Gao. 2020. Unified vision-language pre-training for image captioning and vqa. In Proceedings of the AAAI conference on artificial intelligence, Vol. 34. 13041–13049. [42] Ziqi Zhou, Shengshan Hu, Minghui Li, Hangtao Zhang, Yechao Zhang, and Hai Jin. 2023. Advclip: downstream-agnostic adversarial examples in multimodal contrastive learning. In Proceedings of the ACM International Conference on Multimedia. 6311–6320.

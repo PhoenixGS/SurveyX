@@ -1,0 +1,134 @@
+# A Novel Chaos-based Light-weight Image Encryption Scheme for Multi-modal Hearing Aids
+Awais Aziz Shah∗, Ahsan Adeel†, Jawad Ahmad∗, Ahmed Al-Dubai∗, Mandar Gogate∗, Abhijeet Bishnu‡, Muhammad Diyan∗, Tassadaq Hussain∗, Kia Dashtipour∗, Tharm Ratnarajah‡, and Amir Hussain∗, ∗School of Computing, Edinburgh Napier University, UK. Email: {a.shah, j.ahmad, A.Al-Dubai, mandar.gogate, m.diyan, t.hussain, k.dashtipour, a.hussain}@napier.ac.uk †School of Mathematics and Computer Science, University of Wolverhampton, UK Email: {a.adeel@wlv.ac.uk} ‡School of Engineering, University of Edinburgh, UK Email: {abishnu@exseed.ed.ac.uk, t.ratnarajah@ed.ac.uk}
+Abstract—Multimodal hearing aids (HAs) aim to deliver more intelligible audio in noisy environments by contextually sensing and processing data in the form of not only audio but also visual information (e.g. lip reading). Machine learning techniques can play a pivotal role for the contextually processing of multimodal data. However, since the computational power of HA devices is low, therefore this data must be processed either on the edge or cloud which, in turn, poses privacy concerns for sensitive user data. Existing literature proposes several techniques for data encryption but their computational complexity is a major bottleneck to meet strict latency requirements for development of future multi-modal hearing aids. To overcome this problem, this paper proposes a novel real-time audio/visual data encryption scheme based on chaos-based encryption using the Tangent-Delay Ellipse Reflecting Cavity-Map System (TD-ERCS) map and Nonlinear Chaotic (NCA) Algorithm. The results achieved against different security parameters, including Correlation Coefficient, Unified Averaged Changed Intensity (UACI), Key Sensitivity Analysis, Number of Changing Pixel Rate (NPCR), Mean-Square Error (MSE), Peak Signal to Noise Ratio (PSNR), Entropy test, and Chi-test, indicate that the newly proposed scheme is more lightweight due to its lower execution time as compared to existing schemes and more secure due to increased key-space against modern brute-force attacks.
+# I. INTRODUCTION
+With the recent advances in the hearing aids technology, artificial intelligence and machine learning is playing a vital role to make the technology more intelligent to overcome the traditional problem of surrounding environment noise. This can be achieved through introducing a combination of audio and visual technology to gather data both through visual information and audio to generate better audio output to the user. Here, machine learning plays a vital role in processing the data and producing a refined audio output. Since the complexity of the machine learning algorithms is high and the compact audio-visual hearing aids uses micro embedded hardware does have high computational processing power, therefore the data is transmitted from the audio-visual hearing aid towards the edge or cloud where the machine learning is performed. Here, a big challenge is the data privacy in terms of audio and visual data of the user. Traditional data encryption algorithms such as Advanced Encryption Standard (AES) and Rivest–Shamir–Adleman (RSA) are performing
+better in different domains but in the case of audio-visual hearing aids devices, there are several challenges such as the complexity of these algorithms is high and running them on the micro embedded hardware is an ambitious task, moreover if the computational complexity of the encryption is high, it will take more time in processing which is not feasible in the scenario of artificially intelligent hearing-aids where the delay must be very minimal. To overcome the aforementioned challenges, this paper builds on [1] that previously proposed a light-weight chaosbased encryption scheme for audio-visual hearing-aids. The goal of this work is to reduce the processing time of the light-weight algorithm along with ensuring higher security and complexity. To achieve this goal a real-time audio/visual data encryption scheme based has been proposed based on Chaos-based Encryption using Tangent-Delay Ellipse Reflecting Cavity-Map System (TD-ERCS) map and Non-linear Chaotic (NCA) Algorithm, which was not previously used in [1]. The novelty of this work is:
+• The new chaotic maps used in this scheme are different as compared to the previous published work. • The scheme has been designed taking into account security, complexity, and execution time that would take less encryption time as compared to the previous one [1] that would enable more security in the whole framework with very low execution time thus resulting in low latency. • One of the novelties of the paper is also the use of a state of the art Sbox [2]. The paper proves the vulnerability of the previous Sboxes. • The proposed scheme also uses increased keyspace which demonstrates higher security against different kinds of brute force attacks.
+To demonstrate the effectiveness of the proposed realtime audio-visual encryption scheme for audio-visual hearing aids, comparisons have been made against different security parameters i.e., Correlation Coefficient, Key Sensitivity Analysis, Peak Signal to Noise Ratio (PSNR), Number of Changing Pixel Rate (NPCR), Unified Averaged Changed Intensity (UACI), Mean-Square Error (MSE), Entropy test, and Chi-test etc. which indicate that the newly proposed scheme is
+more lightweight due to its lower execution time as compared to existing schemes and more secure due to increased keyspace against modern brute-force attacks. The rest of the paper is organized as follows: Section 2 gives an overview of the chaotic maps used in the design of the encryption scheme, Section 3 describes the steps and working of the encryption scheme, the results obtained against different security parameters and comparison with existing methods are given in Section 4, and finally, Section 5 concludes the paper.
+The proposed framework for the Audio-visual hearing aid is given in Figure 1. The secure light-weight encryption developed in this work applies both confusion and diffusion process in addition to the substitution process. The proposed scheme takes the plaintext image as an input and after applying the encryption steps listed in Section III produces the encrypted image. This process includes applying chaotic maps TD-ERCS and NCA. The description of the used maps is given below:
+# A. Tangent-Delay Ellipse Reflecting Cavity-Map System (TDERCS)
+A. Tangent-Delay Ellipse Reflecting Cavity-Map System (TDERCS)
+TD-ERCS chaotic map performs the row-wise and columnwise shufflig in the proposed scheme. It is a two-dimensional chaotic system and developed by [3] based on a physical model of ellipse reflecting cavity. Numerous studies emphesize that this map satisfies many security features such as sensitivity dependence on initial conditions (SDIC), structure complexity, ergodicity, and deterministic pseudorandomness [4]–[6] in addition to zero correlation in total field, positive Lyapunov exponent and equiprobability distribution [7]–[11]. According to [12] the TD-ERCS map can be described as:
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2a83/2a833622-c750-4585-ad08-4fad33529198.png" style="width: 50%;"></div>
+(1)
+(2)
+(3)
+where
+Here α, X0, j and µ are denoted as the seed parameters of TD-ERCS chaotic map. where, yn are pseudo-random chaotic values, yn ∈(0, 1), and λ is the control parameter. Both λ and y0 serve as an initial condition and can called as key for chaotic pseudorandom number generation.
+# B. Non-linear Chaotic (NCA) Algorithm
+To further strengthen the encryption process, we apply the chaos-based NCA method [13] to generate the encrypted image represented by Ci,j:
+Cx,y = Nf x 2 (Nf y 1 (S0)) (1 ≤x, y ≤512)
+(7)
+# C. Secure Hash Algorithm (SHA)
+C. Secure Hash Algorithm (SHA)
+It uses a function from the plaintext message to generate the hash code. SHA has several variantions that aminly focus on the required size of the output such as SHA-1, SHA-256 and SHA-512 for the output 128 bits, 256 bits and 512 bits, respectively. Our proposed scheme uses SHA-512 such that H(m) = h(512 bits). The suggested approach makes the Secret Key SHA-512 dependant, so that a tiny change in plaintext generates a completely new hash, and hence different initial key parameters.
+# D. Affine Transformation
+The Sbox transformation has been used to apply another layer of security in the algorithm. It provides one to one mapping that is a unique plaintext symbol which is transformed to an other unique symbol. The following S-box of size 16 × 16 transformation is used in the proposed scheme [2]:
+<div style="text-align: center;">TABLE I: The Sbox used.</div>
+<div style="text-align: center;">III. IMAGE ENCRYPTION SCHEME</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/bdcc/bdccf6ae-8d71-47ee-9c50-e19ef48b8660.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 1: Proposed 5G IoT-enabled Audio/Video hearing aid framework.</div>
+ψ and save hexadecimal hash value in variable θ. Step 3: Select first 12 hash values and save in κ1 and select hash values from 13 to 24 and save value in κ2. Step 4: Convert hexadecimal values saved in κ1 and α1 to decimal values and store result in κ1, and β2, respectively. Step 5: Generate SHA-based initial conditions for TD-ERCS and NCA using below equations:
+(8)
+Step 6: Iterate TD-ERCS A times and store chaotic values in α. Randomly permute rows of gray-scale image Ig using the sequence α and save values in Irp. Step 7: Iterate NCA map B times and store chaotic values in β. Randomly permute columns of Irp using the sequence α and save values in Ipermuted. Step 8: Apply Sbox and store the random values in γ. Step 9: Apply below operations on γ:
+(10) (11)
+Step 10: Rearrange row-vector R2 in matrix form R and Bitwise XOR random matrix R with Ipermuted to get φ. Step 11: Apply affine transformation on phi and store values as a ciphertext image C. For decryption, encryption steps are followed in reverse order.
+IV. ENCRYPTION RESULTS AND SECURITY ANALYSES To evaluate the performance of proposed scheme, an image with lips as seen in Fig. 2a has been selected. On the plaintext image, the proposed chaos-based encryption algorithm is used and the obtained results are shown in Fig. 3b. The encryption results demonstrates that the proposed scheme completely conceal the plaintext information. To further analyze the results, histogram comparison is also been made in Fig. 4 and Fig. 5, which confirms that the proposed scheme has an ideal histogram for encryption i.e., flat. However, histogram alone can not justify the secureness of an algorithm, therefore several security analysis parameters
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2f88/2f88bf0b-c6c0-442e-97fb-96a78aeb2b69.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 3: Encryption Results.</div>
+are taken into account as previously defined in [12], [14], [15]. The security metrics including correlation coefficient, entropy, contrast, energy, NPCR, and UACI are applied on the encryption scheme presented in this work. Correlation is used as a metric to analyze the similarity between adjacent pixels. In a ideal situation, the correlation in all directions should be horizontal (HCC), vertical(VCC) and diagonal (DCC) directed closely towards zero. On the other hand, Entropy is an other important metric used to evaluate the resistance capability of the scheme against statical attacks. In a ideal situation, the entropy for a gray-scale encrypted image should be 8 bits. The higher values of contrast indicates higher quality of encrypted image. Sum of Squared Elements (SSE) in gray level co-occurrence matrix returns energy of an image. Low energy leve represents higher security of the image. In case of complete constant pixels, energy value is 1. Higher values of NPCR and UACI represents strong resistant against differential attacks. [12], [14], [15].
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/afe8/afe81a01-e9d8-4801-a972-576a7ec97b3e.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 5: Encrypted Image Histogram.</div>
+The plotting for correlation in vertical form is given in Fig. 6 and 7. The observation highlights that the distribution of adjacent pixels in vertical direction is uncorrelated as compared to plaintext correlation. Mathematical values of correlations in vertical, horizontal and diagonal directions are outlined in Table I. From the tables, lower correlation values can be seen and hence proves the robustness of the proposed scheme. Moreover, other security metrics are also shown in Table I. All metrics highlights the effectiveness and higher security of the proposed scheme. The required encryption/decryption time is less than 3 msec on a 8GB RAM, Ryzen 5 4600H CPU along with with 10/NVIDIA GTX 1650Ti 4GB GDDR6. Such a low processing time confirms that the proposed scheme is lightweight which is an effective solution for practical real-time applications.
+V. CROSS-COMPARISON WITH EXISTING TECHNIQUES AES is an encryption scheme used widely for the privacy preservation of data in the industry, however, due to its complexity it poses challenge for deployment in constrained environments such as the Audio-visual hearing aids. This section performs cross-comparison of AES, the real-time chaos based encryption scheme presented in this paper, and the previously proposed on in [1]. Table III presents the encryption time taken by the aforementioned algorithms against visual
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b603/b6038982-ef03-4727-98b0-ae6820674398.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 6: Original Image correlation coefficient results.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6169/61698191-adf8-4779-b7fe-00aba5cb6314.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 7: Encrypted Image correlation coefficient results.</div>
+<div style="text-align: center;">TABLE II: Security assessment of the image.</div>
+Security Parameter
+Original Frame Encrypted Frame
+DCC
+0.9677
+0.0033
+HCC
+0.9779
+-0.0018
+VCC
+0.9850
+-0.0018
+Entropy
+6.6875
+7.9681
+Contrast
+0.1160
+10.5347
+Energy
+0.2719
+0.0158
+Homogeneity
+0.9450
+0.3889
+NPCR
+N/A
+98.5537
+UACI
+N/A
+32.8331
+KeySensitivityDifference N/A
+98.5537
+data and Table IV highlights the time taken by encrypting audio data. It is evident from the results that chaos-based encryption schemes perform better in terms of processing time as compared to the traditional scheme AES, whereas the developed scheme takes less processing time as compared to the previous one in [1].
+<div style="text-align: center;">TABLE III: Comparison with existing methods for visual data.</div>
+Method
+Single Image
+75 Image frame
+Mean (Sec)
+Variance (Sec)
+Mean (Sec)
+Variance (Sec)
+AES
+0.290251
+0.000662678
+8.341109
+0.001422
+[1]
+0.00307
+0.000003346
+0.52068
+0.003867
+This work
+0.00258
+0.000002566
+0.49189
+0.003589
+<div style="text-align: center;">TABLE IV: Comparison with existing methods for Audio data</div>
+Method
+Audio (512 frames)
+Audio (38400 frames)
+Mean (Sec)
+Variance (Sec)
+Mean (Sec)
+Variance (Sec)
+AES
+0.058
+0.00036
+0.59437
+0.00027
+[1]
+0.014
+0.01580
+0.01580
+0.02437
+This work
+0.012
+0.00356
+0.01466
+0.00289
+# VI. CONCLUSION
+This paper proposed real-time chaos-based lightweight encryption scheme for state of the art audio-visual hearing aids by enhancing the security of existing encryption schemes and making them more lightweight to work in low power embedded devices such as hearing aids. To accomplish this task several steps were performed including confusion and diffusion to encrypt the data, then shuffle the plaintext using two new chaos-based maps were used i.e., TD-ERCS and NCA. Logistic map diffusion has been performed using a newly proposed Sbox. The results obtained against standard security parameters such as Correlation Coefficient, , Peak Signal to Noise Ratio, Key Sensitivity Analysis, Number of Changing Pixel Rate, Mean-Square Error ,Unified Averaged Changed Intensity, Chi-test and Entropy test highlight the effectiveness of the proposed approach. The future work of this paper will focus on evaluating the combination of audiovisual data in real-time scenarios.
+# VII. ACKNOWLEDGEMENT
+# This work is funded by the EPSRC COG-MHEAR programme grant (Grant no. EP/T021063/1)
+This work is funded by the EPSRC COG-MHEAR programme grant (Grant no. EP/T021063/1)
+# REFERENCES

@@ -1,0 +1,330 @@
+# Layer-wise Representation Fusion for Compositional Generalization
+# Yafang Zheng1,2*, Lei Lin1,2,3*, Shuangtao Li1,2, Yuxuan Yuan1,2, Zhaohong Lai1,2, Shan Liu1,2, Biao Fu1,2, Yidong Chen1,2, Xiaodong Shi1,2†
+Yafang Zheng1,2*, Lei Lin1,2,3*, Shuangtao Li1,2, Yuxuan Yuan1,2, Zhaohong Lai1,2, Shan Liu1,2, Biao Fu1,2, Yidong Chen1,2, Xiaodong Shi1,2†
+1Department of Artificial Intelligence, School of Informatics, Xiamen University 2 Key Laboratory of Digital Protection and Intelligent Processing of Intangible Cultural Heritage of Fujian and Taiwan (Xiamen University), Ministry of Culture and Tourism, China 3Kuaishou Technology, Beijing, China {zhengyafang, linlei}@stu.xmu.edu.cn, {ydchen, mandel}@xmu.edu.cn
+21 Dec 2023
+Abstract
+Existing neural models are demonstrated to struggle with compositional generalization (CG), i.e., the ability to systematically generalize to unseen compositions of seen components. A key reason for failure on CG is that the syntactic and semantic representations of sequences in both the uppermost layer of the encoder and decoder are entangled. However, previous work concentrates on separating the learning of syntax and semantics instead of exploring the reasons behind the representation entanglement (RE) problem to solve it. We explain why it exists by analyzing the representation evolving mechanism from the bottom to the top of the Transformer layers. We find that the “shallow” residual connections within each layer fail to fuse previous layers’ information effectively, leading to information forgetting between layers and further the RE problems. Inspired by this, we propose LRF, a novel Layer-wise Representation Fusion framework for CG, which learns to fuse previous layers’ information back into the encoding and decoding process effectively through introducing a fuse-attention module at each encoder and decoder layer. LRF achieves promising results on two realistic benchmarks, empirically demonstrating the effectiveness of our proposal. Codes are available at https://github.com/thinkaboutzero/LRF.
+  21 Dec 
+arXiv:2307.10799v
+arXiv:2307.1
+# Introduction
+The remarkable progress of sequence-to-sequence (seq2seq) models in language modeling has been primarily attributed to their ability to learn intricate patterns and representations from vast amounts of data (Sutskever, Vinyals, and Le 2014; Dong and Lapata 2016; Vaswani et al. 2017). However, a critical challenge that remains unsolved for neural sequence models is the ability to understand and produce novel combinations from known components (Fodor and Pylyshyn 1988; Lake et al. 2017), i.e., compositional generalization (CG). For example, if a person knows “the doctor has lunch” [Der Arzt hat Mittagessen] and “the lawyer” [Der Anwalt] where the segment in “[]” denotes the German translation, then it is natural for the person to know the translation of “the lawyer has lunch” is [Der Anwalt hat Mittagessen] even though they
+*These authors contributed equally. †Corresponding Author. Copyright © 2024, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c174/c174380b-2155-487d-92e6-70f3b41f5d12.png" style="width: 50%;"></div>
+Figure 1: Comparison between (a) Standard Transformer and (b) LRF (ours). (a) illustrates the standard architecture of the Transformer model and (b) illustrates the architecture of our method, which fuses representations from previous layers at each layer effectively.
+have never seen it before. Such nature is beneficial for models to perform robustly in real-world scenarios, as even huge training data can not cover a potentially infinite number of novel combinations. Recent studies have demonstrated that a key reason for failure on CG is that the syntactic and semantic representations of sequences in both the uppermost layer of the encoder and decoder are entangled (i.e., encoder or decoder RE problem) (Russin et al. 2019; Li et al. 2019; Raunak, Kumar, and Metze 2019; Liu et al. 2020a, 2021; Mittal et al. 2022; Zheng and Lapata 2022; Arthur, Neubig, and Nakamura 2016; Thrush 2020; Akyurek and Andreas 2021; Yao and Koller 2022; Yin et al. 2022). To alleviate it, one line of research on CG concentrates on utilizing separate syntactic and semantic representations. Specifically, they either produce two separate syntactic and semantic representations and then compose them appropriately (Li et al. 2019; Russin et al. 2019; Jiang and Bansal 2021), or design external modules and then employ a multi-stage generation process (Liu et al. 2020b, 2021; Ruis and Lake 2022; Li et al. 2022; Cazzaro et al. 2023). However, they focus on separating the learning of syntax and semantics. Different from them, we explore the rea-
+sons behind the RE problem to solve it. We get insights from the findings that the residual connections are “shallow”, and conclusions on analyzing the Transformer (Peters et al. 2018; He, Tan, and Qin 2019; Voita, Sennrich, and Titov 2019; Belinkov et al. 2020) show that the bottom layers of the Transformer contain more syntactic information while the top ones contain more semantic information. As shown in Figure 1a, the residual connections within each layer have been “shallow” themselves, and only pass through simple, one-step operations (Yu et al. 2018), which make the model “forget” distant layers and fail to fuse information from previous layers effectively (Bapna et al. 2018; Dou et al. 2018; Wang et al. 2018, 2019). Furthermore, it is clear that the nature of the RE problems are lacking effective fusion of syntactic and semantic information stored in different layers, since the representations are gradually entangled from bottom to top of the Transformer layers (Raunak, Kumar, and Metze 2019; Russin et al. 2019; Zheng and Lapata 2022). Based on the above findings, we hypothesize that “shallow” residual connections within each layer are one of the reasons resulting in the RE problems. To this end, we propose LRF, a novel Layer-wise Representation Fusion framework for CG, which learns to fuse previous layers’ information at each layer effectively. Specifically, we extend the base model by fusing previous layers’ information back into the encoding and decoding process by introducing a fuseattention module in each encoder and decoder layer. Experimental results on CFQ (Keysers et al. 2020) (semantic parsing) and CoGnition (Li et al. 2021) (machine translation, MT) empirically show that our method achieves better generalization performance, outperforming competitive baselines and other techniques. Notably, LRF achieves 20.0% and 50.3% (about 30%, 20% relative improvements) for instance-level and aggregate-level error reduction rates on CoGnition. Extensive analyses demonstrate that fusing previous layers’ information at each layer effectively leads to better generalization results, outperforming competitive baselines and more specialized techniques.
+# Methodology
+We adopt the Transformer (Vaswani et al. 2017) as an example for clarification, however, our proposed method is applicable to any seq2seq models. In the following, we first introduce the Transformer, and then our proposed LRF.
+# Transformer
+Given a sequence of a source sentence and a target sentence X = {x1, ..., xS}, Y = {y1, ..., yT }, where S, T denote the number of source and target tokens, respectively. The Transformer encoder first maps X to embedding matrix H0, and then takes H0 as input and outputs a contextualized representation HL ∈Rd×S, where d, L denote the hidden size and the number of encoder layers respectively. Similarly, the Transformer decoder maps Y to embedding matrix ˆH0 first, and then takes ˆH0 as input and outputs a contextualized representation ˆHL ∈Rd×T .
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/40d0/40d00e2f-b8a2-4162-b69c-a58a650c8264.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2: Architecture of LRF based on the Transformer. The dotted boxes denote the fuse-attention module.</div>
+Attention Mechanism. An attention function can be described as a query (Q) and a set of key-value (K-V ) pairs mapped to an output. Formally, given Q, K, and V , the scaled dot product attention mechanism is computed as:
+where dk is the dimension of K. A typical extension of the above is multi-head attention (MHA), where multiple linear projections are executed in parallel. The calculation process is as follows:
+(2) (3)
+(2)
+where W Q i ∈Rd×dk, W K i ∈Rd×dk, W V i ∈Rd×dv and W O i ∈Rhdv×d are model parameters. h denotes the number of heads. Layer Structure. The Transformer encoder has L identical layers, and each layer consists of two sub-layers (i.e., self-attention and feed-forward networks). The Transformer decoder has L identical layers, and each layer consists of three sub-layers (i.e., masked self-attention, cross-attention and feed-forward networks). In the l-th self-attention layer of the encoder, the query, key and value are all the hidden states outputted by the previous layer Hl−1. The selfattention mechanism in the decoder operates in a similar manner. The formal expression is as follows:
+(4) (5)
+In the l-th cross-attention layer of the decoder, the query is the hidden states outputted by the l-th self-attention layer ˆHl a and the key and value are all hidden states outputted by the uppermost layer of the encoder HL. The computation process is as follows:
+(6)
+The feed-forward sub-layer is a two-layer transformation with a ReLU activation function:
+The feed-forward sub-layer is a two-layer transformation with a ReLU activation function: Hl = W l 2ReLU(W l 1Hl a + bl 1) + bl 2, (7)
+(7)
+where W l 1, bl 1, W l 2, W l 3, bl 2, W l 4, bl 3 and bl 4 are all trainable model parameters. We omit the layer normalization and residual connection for brevity.
+    model parameters. We omit the layer normalization and residual connection for brevity.
+# Layer-wise Representation Fusion (LRF)
+Our proposed LRF extends the Transformer by introducing a fuse-attention module under the feed-forward module in each encoder and decoder layer, which learns to fuse information from previous layers at each encoder and decoder layer effectively. Fuse-attention Module. In the l-th encoder layer, all previous layers’ outputs are stacked as Hplo ∈Rd×l, where l is the number of previous layers (include the embedding layer). The fuse-attention module fuses different aspects of language information from previous layers effectively via the multi-head attention mechanism:
+(9)
+where Hplo = {H0, ..., Hl−1}, and the localness of fuseattention module is implemented by mask mechanisms. The output Hl p is fed into the l-th feed-forward sub-layer of the encoder (Eq. 7). In the l-th decoder layer, all previous layers’ outputs are stacked as ˆHplo ∈Rd×l, where l is the number of previous layers (include the embedding layer). The fuseattention module fuses different aspects of language information from previous layers effectively via the multi-head attention mechanism:
+(10)
+where ˆHplo = { ˆH0, ..., ˆHl−1}, and the localness of fuseattention module is implemented by mask mechanisms. The output ˆHl p is fed into the l-th feed-forward sub-layer of the decoder (Eq. 8). The differences between LRF and Transformer are illustrated by the dotted boxes in Figure 2. By introducing a fuseattention module in every encoder and decoder layer, each layer of the encoder and decoder are able to access and fuse previous layers’ information effectively. Training. Formally, D = {(X, Y )} denotes the training corpus, V denotes the vocabulary of D. LRF aims to estimate the conditional probability p(y1, ..., yT |x1, ..., xS), where (x1, ..., xS) is an input sequence and (y1, ..., yT ) is its corresponding output sequence:
+(11)
+� where t is the index of each time step, y<t denotes a prefix of Y , θ(0) denotes initial parameters of the Transformer model, θ+ denotes parameters of the fuse-attention modules and each factor p(yt|X, y1, ..., yt−1; {θ(0) ∪θ+}) is defined as a softmax distribution of V. During training, the model is optimized using crossentropy (CE) loss, which is calculated as follows:
+LCE({θ(0)∪θ+}) = − T +1 � t=1 log p(yt|y<t, X; {θ(0)∪θ+}). (12)
+# Figure 3: Examples of CFQ and CoGnition.
+# Experiments
+We mainly evaluate LRF on two comprehensive and realistic benchmarks for measuring CG, including semantic parsing (CFQ) and machine translation (CoGnition).
+# Experimental Settings
+Datasets. CoGnition is an English →Chinese (En→Zh) translation dataset, which is used to systematically evaluate CG in MT scenarios. It consists of a training set of 196,246 sentence pairs, a validation set and a test set of 10,000 samples. In particular, it also has a dedicated synthetic test set (i.e., CG-test set) consisting of 10,800 sentences containing novel compounds, so that the ratio of compounds that are correctly translated can be computed to evaluate the model’s ability of CG directly. CFQ is automatically generated from a set of rules in a way that precisely tracks which rules (atoms) and rule combinations (compounds) of each example. In this way, we can generate three splits with maximum compound divergence (MCD) while guaranteeing a small atom divergence between train and test sets, where large compound divergence denotes the test set involves more examples with unseen syntactic structures. We evaluate our method on all three splits. Each split dataset consists of a training set of 95,743, a validation set and a test set of 11,968 examples. Figure 3 shows examples of them. Data. We follow the same settings of (Li et al. 2021) and (Keysers et al. 2020) to preprocess CoGnition and CFQ datasets separately. For CoGnition, we use an open-source Chinese tokenizer1 to preprocess Chinese and apply Moses tokenizer2 to preprocess English, which is the same in (Lin, Li, and Shi 2023). For CFQ, we use the GPT2-BPE tokenizer3 to preprocess source and target English text. Setup. For CoGnition, we follow the same experimental settings and configurations of (Li et al. 2021). We build our model on top of Transformer (Vaswani et al. 2017). We use one GeForce GTX 2080Ti for training with 100,000 steps and decoding. For CFQ, we follow the same experimental settings and configurations of (Zheng and Lapata 2022). We build our model on top of RoBERTa (Liu et al. 2019). We use the base RoBERTa with 12 encoder layers, which is combined with a Transformer decoder that has 2 decoder layers with hidden size 256 and feed-forward dimension 512. We use one GeForce GTX 2080Ti for training with 45,000 steps and decoding. We implement all comparison models and LRF with an open source Fairseq toolkit (Ott et al. 2019).
+1https://github.com/fxsjy/jieba 2https://github.com/moses-smt/ mosesdecoder/blob/master/scripts/tokenizer/tokenizer.perl 3https://github.com/facebookresearch/fairseq/blob/main/examples/ roberta/multiprocessing bpe encoder.py
+Model
+Params
+Compound Translation Error Rate (CTER) ↓
+BLEU ↑
+NP
+VP
+PP
+Total
+∆
+Transformer
+35M
+24.7%/55.2%
+24.8%/59.5%
+35.7%/73.9%
+28.4%/62.9%
+-/-
+59.5
+Transformer-Rela
+35M
+30.1%/58.1%
+27.6%/61.2%
+38.5%/74.1%
+32.1%/64.5%
++3.7%/+1.6%
+59.1
+Transformer-Small
+25M
+25.1%/56.9%
+25.6%/60.3%
+39.1%/75.0%
+29.9%/64.5%
++1.5%/+1.6%
+59.0
+Transformer-Deep
+46M
+21.4%/51.4%
+23.2%/57.6%
+32.5%/71.5%
+25.7%/60.2%
+-2.7%/-2.7%
+60.2
+Bow
+35M
+22.2%47.9%
+24.8%/55.6%
+35.0%/73.2%
+27.3%/58.9%
+-1.1%/-3.0%
+-
+SeqMix
+35M
+24.5%/49.7%
+26.9%/58.9%
+34.4%/73.1%
+28.6%/60.6%
++0.2%/-2.3%
+-
+Dangle
+35M
+-/-
+-/-
+-/-
+24.4%/55.5%
+-5.0%/-7.4%
+59.7
+Proto-Transformer
+42M
+14.1%/36.5%
+22.1%/50.9%
+28.9%/68.2%
+21.7%/51.8%
+-6.7%/-11.1%
+60.1
+Transformer+CReg
+25M
+-/-
+-/-
+-/-
+20.2%/48.3%
+-8.2%/-14.6%
+61.3
+DLCL
+35M
+-/-
+-/-
+-/-
+28.4%/67.9%
++0.0%/+5.0%
+59.2
+LRF
+48M
+12.0%/34.5%
+20.9%/50.7%
+27.2%/65.8%
+20.0%/50.3%
+-8.4%/-12.6%
+61.8
+LRF-Rela
+48M
+12.9%/36.2%
+20.5%/50.6%
+26.9%/65.0%
+20.1%/50.6%
+-8.3%/-12.3%
+62.0
+LRF-Small
+33M
+14.1%/38.8%
+21.4%/51.7%
+27.9%/65.6%
+21.1%/52.1%
+-7.3%/-10.8%
+60.9
+<div style="text-align: center;">Compound Translation Error Rate (CTER) ↓</div>
+Table 1: CTERs (%) on CoGnition. We report instance-level and aggregate-level CTERs in the CG-test set, separated by “/” In addition, we also report the commonly used metric BLEU score in MT tasks. “-” denotes that the results are not provided i the original paper. Results are averaged over 6 random runs.
+Evaluation Metrics. For CoGnition, we use compound translation error rate (CTER (Li et al. 2021)) to measure the model’s ability of CG. Specifically, instance-level CTER (i.e., CTERInst) denotes the ratio of samples where the novel compounds are translated incorrectly, and aggregate-level CTER (i.e., CTERAggr) denotes the ratio of samples where the novel compounds suffer at least one incorrect translation when aggregating all 5 contexts. To calculate CTER, (Li et al. 2021) manually construct a dictionary for all the atoms based on the training set, since each atom contains different translations. We also report character-level BLEU scores (Papineni et al. 2002) using SacreBLEU (Post 2018) as a supplement. For CFQ, we use exact match accuracy to evaluate model performance, where natural language utterances are mapped to meaning representations.
+# Model Settings
+Machine Translation. We compare our method with competitive systems: (1) Transformer (Vaswani et al. 2017); (2) Transformer-Rela: only replaces absolute positional embedding with a relative one; (3) Transformer-Small: only decreases the number of encoder layers and decoder layers to 4, 4 respectively; (4) Transformer-Deep: only increases the number of encoder layers and decoder layers to 8, 8 respectively; (5) Bow (Raunak, Kumar, and Metze 2019): uses bag-of-words pre-training; (6) SeqMix (Guo, Kim, and Rush 2020): synthesizes examples to encourage compositional behavior; (7) Dangle (Zheng and Lapata 2022): adaptively reencodes (at each time step) the source input.4 (8) ProtoTransformer (Yin et al. 2022): integrates prototypes of token representations over the training set into the source encoding; (9) Transformer+CReg (Yin et al. 2023): promotes representation consistency across samples and prediction consistency for a single sample; (10) DLCL (Wang et al. 2019):
+4We use the same variant reported by (Zheng and Lapata 2022) (i.e., Dangle-EncDec (abs)) with absolute positional embedding.
+proposes an approach based on dynamic linear combination of layers (DLCL), and is one of the very popular EnocderFusion work. Our method is built on top of (1)-(3), i.e., LRF, LRF-Rela and LRF-Small. Semantic Parsing. We compare our method with competitive systems: (1) LSTM+attention: introduces attention mechanism in LSTM (Hochreiter and Schmidhuber 1997); (2) Transformer (Vaswani et al. 2017); (3) Universal Transformer (Dehghani et al. 2019): combines the parallelizability and global receptive field of feed-forward sequence models; (4) Evolved Transformer (So, Le, and Liang 2019): uses wide depth-wise separable convolutions in the early layers of both the encoder and decoder; (5) CGPS (Li et al. 2019): leverages prior knowledge of compositionality with two representations, and adds entropy regularization to the encodings; (6) NSEN (Freivalds, Ozolins, and Sostaks 2019): is derived from the Shuffle-Exchange network; (7) T5-11B (Raffel et al. 2020): treats every natural language processing task as a text-to-text problem, and is therefore suitable for the semantic parsing tasks. T5-11B is a T5 model with 11B parameters finetuned on CFQ; (8) T5-11B-mod (Furrer et al. 2020): uses masked language model (MLM) pre-training together with an intermediate representation; (9) RoBERTa (Liu et al. 2019): makes use of the RoBERTa-base model as the encoder and the randomly initialized Transformer decoder trained from scratch, where we use the same experimental settings of (Zheng and Lapata 2022); (10) HPD (Guo et al. 2020): proposes a novel hierarchical partially ordered set (poset) decoding paradigm; (11) Dangle (Zheng and Lapata 2022); (12) RoBERTa+CReg (Yin et al. 2023); (13) LRF: builds on (9) with our method.
+# Results on CoGnition
+The main results on CoGnition are shown in Table 1. We observe that: (1) LRF gives instance-level and aggregate-
+Model
+MCD1 MCD2 MCD3 MCD-Mean
+LSTM+attention
+28.9
+5.0
+10.8
+14.9
+Transformer
+34.9
+8.2
+10.6
+17.9
+Universal Transformer
+37.4
+8.1
+11.3
+18.9
+Evolved Transformer
+42.4
+9.3
+10.8
+20.8
+CGPS
+13.2
+1.6
+6.6
+7.1
+NSEN
+5.1
+0.9
+2.3
+2.8
+T5-11B
+61.4
+30.1
+31.2
+40.9
+T5-11B-mod
+61.6
+31.3
+33.3
+42.1
+RoBERTa
+60.6
+33.6
+36.0
+43.4
+HPD
+72.0
+66.1
+63.9
+67.3
+Dangle
+78.3
+59.5
+60.4
+66.1
+RoBERTa+CReg
+74.8
+53.3
+58.3
+62.1
+LRF
+68.9
+43.4
+44.7
+52.4
+Table 2: Exact-match accuracy on different MCD splits of CFQ. Results are averaged over 3 random runs.
+Table 2: Exact-match accuracy on different MCD splits of CFQ. Results are averaged over 3 random runs.
+level CTERs of 20.0% and 50.3% respectively, with a significant improvement of 8.4% and 12.6% accordingly compared to the Transformer. Moreover, LRF outperforms most baseline models under the almost same parameter settings significantly, indicating fusing the syntactic and semantic information of sequences stored in different layers effectively is more beneficial to CG. Although Transformer+CReg achieves slightly better performance and contains fewer parameters, it is more complex and costly compared with LRF; (2) LRF, LRF-Rela and LRF-Small can deliver various performance improvements, demonstrating the general effectiveness of our method; (3) Since LRF brings some extra parameters (approximately 12M), we investigate to what extent the performance improvement is derived from the increase of model parameters. Transformer-Deep performs slightly better than Transformer on the CG-test set, indicating that only increasing model parameters is slightly useful but far from sufficient. In addition, LRF-Small contains fewer parameters and better performance than Transformer. Compared to SeqMix, the improvement of LRF is more significant (2.3% vs 12.6% aggregate-level CTER). SeqMix utilizes linear interpolation in the input embedding space to reduce representation sparsity, and we suppose that the samples synthesized randomly may be unreasonable and harmful to model training; (4) It can be seen that Transformer is even slightly better than DLCL, indicating the inappropriate composition instead brings noise to significantly affect the model’s CG performance. Instead, we use the attention mechanism to fuse the most relevant parts of previous layers’ information at each layer in a flexible manner.
+# Results on CFQ
+The main results on CFQ are presented in Table 2. We observe that: (1) RoBERTa is comparable to T5-11B, T511B-mod and outperforms other baseline systems without pre-training except HPD, indicating that pre-trained language models are key to achieving good performance on CFQ, which is consistent with the conclusions in (Furrer et al. 2020); (2) LRF substantially boosts the performance of RoBERTa (43.4 →52.4), about 21% relative improvements, and is in fact superior to T5-11B and T5-11B-mod. It also
+Model
+CTERInst ↓
+CTERAggr ↓
+Transformer
+28.4%
+62.9%
++ Source Fuse-attention
+21.2% (-7.2%)
+53.3% (-9.6%)
++ Target Fuse-attention
+25.8% (-2.6%)
+58.8% (-4.1%)
++ Source & Target Fuse-attention
+20.0% (-8.4%)
+50.3% (-12.6%)
+Table 3: CTERs (%) against the fuse-attention modules at different sides on the CG-test set.
+outperforms other baseline systems without pre-training except HPD. This result demonstrates that pre-training as a solution to CG also has limitations, and also indicates that LRF is complementary to pre-trained models; (3) HPD performs better than Dangle, RoBERTa+CReg and LRF, achieving 67.3 exact match accuracy, which is highly optimized for the CFQ dataset. On the contrary, LRF, RoBERTa+CReg and Dangle are generally applicable to any seq2seq models for solving any seq2seq tasks including MT, as stated before. However, compared with the impressive performance on CoGnition, the improvements brought by LRF is relatively moderate, and even worse than Dangle. The underlying reason is connected a recent finding that compositionality in natural language is much more complex than the rigid, arithmetic-like operations (Raunak, Kumar, and Metze 2019; Li et al. 2021; Zheng and Lapata 2022; Dankers and et al. 2022). MT is paradigmatically close to the tasks typically considered for testing compositionality in natural language, while our approach is more suitable for dealing with such scenarios.
+# Analysis
+In this section, we conduct in-depth analyses of LRF to provide a comprehensive understanding of the individual contributions of each component. For all experiments, we train a LRF (6-6 encoder and decoder layers) on the CoGnition dataset, unless otherwise specified.
+# Do we need to introduce the fuse-attention module in both side?
+We argue that “shallow” residual connections with each layer of encoder or decoder lead to encoder or decoder RE problem respectively. Therefore, we are curious about whether LRF can alleviate both the encoder and decoder RE problems, and which one is more severe or affects the model’s ability of CG to a greater extent that is ignored in previous work. In this experiment, we investigate its influence on CoGnition. As shown in Table 3, we observe certain improvements (-7.2% and -2.6% CTERInst, -9.6% and -4.1% CTERAggr) when separately applying the fuseattention modules at the encoder or decoder side. It suggests that our proposed method can alleviate the encoder and decoder RE problem respectively, and fusing information from previous layers back into the encoding or decoding process at each layer effectively can improve CG performance. Furthermore, their combination brings further improvement (8.4% CTERInst, -12.6% CTERAggr), which illustrates that LRF can alleviate both the encoder and decoder RE problems and have cumulative gains. In addition, it is clear that
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/e48e/e48e2876-ff8d-4b2e-8080-f1467ae0432d.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7b34/7b34c937-c761-413c-a419-0aebe404b4a7.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) The attention probabilities for 6-layer encoder.</div>
+Figure 4: The differences between LRF and the Transformer in the process of fusing previous layers’ information. {y0, ..., yl} and {y′ 0, ..., y′ l} are the output of the encoder and decoder layers 0 ∼l respectively. {x1, ..., xl} and {x′ 1, ..., x′ l} are the input of the encoder and decoder layers 1 ∼l respectively. y0, y′ 0 and y<i, y′ <i denote the input embedding and previous layers’ outputs in the i-th encoder and decoder layer respectively. Red denotes the attention probabilities are learned by LRF.
+Model
+CTERInst ↓
+CTERAggr ↓
+Transformer
+28.4%
+62.9%
+Transformer-accu
+37.3% (+8.9%)
+71.4% (+8.5%)
+LRF-onlytop
+22.1% (-6.3%)
+52.7% (-10.2%)
+LRF
+20.0% (-8.4%)
+50.3% (-12.6%)
+<div style="text-align: center;">Table 4: CTERs (%) on the CG-test set.</div>
+Table 4: CTERs (%) on the CG-test set.
+the improvement from introducing the fuse-attention module at the encoder is more significant than that at the decoder, indicating that the encoder RE problem is more severe. The underlying reason is related to a recent finding that the encoder has a greater impact on performance than the decoder (Kasai et al. 2021; Xu et al. 2021a).
+# Do we need to fuse previous layers’ information at each layer effectively?
+We argue that it is important to introduce the fuse-attention module in each layer, since we view the emergence of RE problems as the process of gradually entangled representation from bottom to top of the Transformer layers. To validate this argument, we only introduce the fuse-attention module in the topmost layer of encoder and decoder (called LRF-onlytop). As shown in Table 4, LRF substantially boosts the performance of LRF-onlytop (-2.1% CTERInst, -2.4% CTERAggr). In addition, LRF-Small contains fewer parameters and better performance than LRF-onlytop. As mentioned above, we use the fuse-attention module to achieve the goal of fusing previous layers’ information at each layer effectively. To validate this argument, we also conduct a toy experiment on CoGnition. Specifically, each layer of the encoder and decoder accumulates corresponding previous layers’ information (called Transformer-accu),5 rather than learn to fuse it adaptively like we do. Results are listed in Table 4. Transformer-accu even obtains worse generalization results than Transformer. It suggests that the “simple” combinations will instead bring noise to affect the model’s CG performance.
+5The input of encoder and decoder layer i is xi = y0 + · · · + yi−1, x′ i = y′ 0 + · · · + y′ i−1, where 0 < i < L (see Figure 4).
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f319/f319a491-2e66-4c79-a54e-45bfdc0cb905.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) The attention probabilities for 6-layer decoder</div>
+To further demonstrate the fuse-attention module we introduced can fuse previous layers’ information effectively and understand the individual contributions of previous layers’ information for each layer, we visualize the attention probabilities of the fuse-attention modules in each encoder and decoder layer. Specifically, we train LRF on CoGnition and test on 680 (a batch) randomly selected examples of CGtest set, and then extract the attention probabilities of the fuse-attention modules. Ideally, the fuse-attention modules in different layer of the encoder and decoder should learn different and specific combinations of previous layers’ information. In Figure 4, we observe that each layer of the encoder or decoder assigns different attention weights to information from previous layers as expected. This implies that the fuse-attention module in LRF can learn to fuse representations from previous layers at each layer effectively.
+# Effects on Compositional Generalization
+Compound Length and Context Length. Longer compounds have more complex semantic information and longer contexts are harder to comprehend, making them more difficult to generalize (Li et al. 2021). We classify the test samples by compound length and context length, and calculate the CTERInst. In Figure 5, we can observe that LRF generalizes better as the compound and context grows longer compared to Transformer. In particular, LRF gives a lower CTER by 11.5% over samples when the context leangth is longer than 13 tokens. It suggests that LRF can better captures the compositional structure of human language. Complex Modifier. The postpositive modifier atom (MOD) is used to enrich the information of its preceding word (e.g., he liked in the phrase lost the dog he liked), which is challenging to translate due to word reordering from English to Chinese. We divide the test samples into two groups according to compounds with (w/) or without (wo/) MOD. In Figure 6, we observe that the advantage of LRF grows larger in translating the compounds with MOD, demonstrating its superiority in processing complex semantic composition. Case Study. We present 3 source examples containing a novel compound with MOD and 4 atoms, and their translations in Table 5. For all samples, correct translations denote that the novel compounds are translated correctly. LRF correctly translates the novel compounds across different
+Source
+Transformer
+LRF
+The waiter he liked
+wore each other’s clothes.
+(He liked to wear each other’s clothes.)
+(The waiter he liked wore each other’s clothes.)
+The waiter he liked came
+by and chased the bully off.
+(The waiter came by and chased the bully off.)
+(The waiter he liked came by and chased the bully off.)
+The waiter he liked had a goal
+to post a video every day.
+(The waiter liked to have a goal to post a video every day.)
+(The waiter he liked had a goal to post a video every day.)
+Table 5: Example translations of Transformer vs. LRF. The bold characters denote the novel compounds and correspon translations. The English in parentheses represents the meaning of the model-generated Chinese.
+able 5: Example translations of Transformer vs. LRF. The bold characters denote the novel compounds and correspondin anslations. The English in parentheses represents the meaning of the model-generated Chinese.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f979/f9793465-b5da-4b7a-adc5-1e82f8580750.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 5: Instance-level CTER of LRF and Transformer over the different compound and context lengths.</div>
+contexts for all samples, while Transformer suffers from omitting different atoms. For example, the translation of the waiter is omitted in the first example, he liked is omitted in the second example and he is omitted in the third example. Our results not only contain the correct compound translations but also achieve better translation quality, while Transformer makes various errors on unseen compositions.
+# Related Work
+Compositional Generalization. CG has long played a prominent role in language understanding, explaining why we understand novel compositions of previously observed elements. Therefore, after realizing existing neural models still struggle in scenarios requiring CG (Lake and Baroni 2018; Keysers et al. 2020; Li et al. 2021), there have been various studies attempt to improve the model’s ability of CG, including data augmentation (Andreas 2020; Aky¨urek, Aky¨urek, and Andreas 2021; Yang, Zhang, and Yang 2022; Li, Wei, and Lian 2023), modifications on model architecture (Li et al. 2019; Russin et al. 2019; Nye et al. 2020; Liu et al. 2020a, 2021; Zheng and Lapata 2021; Herzig and Berant 2021; Chaabouni, Dess`ı, and Kharitonov 2021; Wang, Lapata, and Titov 2021; Mittal et al. 2022; Lin et al. 2023), intermediate representations (Furrer et al. 2020; Herzig et al. 2021), meta-learning (Lake 2019; Conklin et al. 2021), explorations on pre-trained language models (Furrer et al. 2020; Zhou et al. 2023), auxiliary objectives (Jiang and Bansal 2021), and enriching semantic information at tokenlevel (Thrush 2020; Akyurek and Andreas 2021; Zheng and Lapata 2022; Yao and Koller 2022). One line of research exploring how to alleviate the RE problems has attracted much attention. Our work is in line with it, we examine CG from a new perspective to solve it. Neural Machine Translation. Recently, CG and robustness
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/697e/697ec851-afd8-44ac-aa5f-a3a4bd5d68c8.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 6: CTERInst on compounds w/o and w/ MOD.</div>
+of Neural Machine Translation (NMT) have gained much attention from the research community (Cheng et al. 2020; Xu et al. 2021b; Lake and Baroni 2018; Li et al. 2021). (Raunak, Kumar, and Metze 2019) propose bag-of-words pretraining for the encoder. (Guo, Kim, and Rush 2020) propose sequence-level mixup to create synthetic samples. Recently, (Li et al. 2021) introduce a practical benchmark dataset for analyzing fine-grained and systematic compositional ability of NMT, called CoGnition. (Dankers and et al. 2022) argue that MT is a suitable and relevant testing ground to test CG in natural language. Based on this, (Zheng and Lapata 2022) propose to adaptively re-encode the source input at each time step. Different from them, our method introduce a fuse-attention module in each encoder and decoder layer to fuse previous layers’ information back into the encoding and decoding process effectively, which is inspired by previous explorations about analyzing how Transformer encoder and decoder perform (Peters et al. 2018; He, Tan, and Qin 2019; Voita, Sennrich, and Titov 2019; Belinkov et al. 2020).
+# Conclusion
+In this paper, we propose LRF, which learns to fuse previous layers’ information back into the encoding and decoding process effectively through introducing a fuse-attention module at each encoder and decoder layer. Experiments on CoGnition and CFQ have shown the effectiveness of our proposal without any dataset or task-specific modification. To our knowledge, we are the first to explain why the RE problems exist and investigate how to fuse previous layers’ information at each layer effectively to alleviate it, achieving better generalization results. We hope the work and perspective presented in this paper can inspire future related work.
+# Acknowledgments
+We thank all the anonymous reviewers for their insightful and valuable comments. This work is supported by National key R&D Program of China (Grant no.2022ZD0116101), the Key Support Project of NSFC-Liaoning Joint Foundation (Grant no. U1908216), and the Project of Research and Development for Neural Machine Translation Models between Cantonese and Mandarin (No. WT135-76).
+# References
+Aky¨urek, E.; Aky¨urek, A. F.; and Andreas, J. 2021. Learning to Recombine and Resample Data For Compositional Generalization. In Proc. of ICLR. Akyurek, E.; and Andreas, J. 2021. Lexicon Learning for Few Shot Sequence Modeling. In Proc. of ACL. Andreas, J. 2020. Good-Enough Compositional Data Augmentation. In Proc. of ACL. Arthur, P.; Neubig, G.; and Nakamura, S. 2016. Incorporating Discrete Translation Lexicons into Neural Machine Translation. In Proc. of EMNLP. Bapna, A.; Chen, M.; Firat, O.; Cao, Y.; and Wu, Y. 2018. Training Deeper Neural Machine Translation Models with Transparent Attention. In Proc. of EMNLP. Belinkov, Y.; Durrani, N.; Dalvi, F.; Sajjad, H.; and Glass, J. 2020. On the linguistic representational power of neural machine translation models. Computational Linguistics. Cazzaro, F.; Locatelli, D.; Quattoni, A.; and Carreras, X. 2023. Translate First Reorder Later: Leveraging Monotonicity in Semantic Parsing. In Proc. of EACL Findings, 227– 238. Chaabouni, R.; Dess`ı, R.; and Kharitonov, E. 2021. Can Transformers Jump Around Right in Natural Language? Assessing Performance Transfer from SCAN. In Proc. of BlackboxNLP. Cheng, Y.; Jiang, L.; Macherey, W.; and Eisenstein, J. 2020. AdvAug: Robust Adversarial Augmentation for Neural Machine Translation. In Proc. of ACL. Conklin, H.; Wang, B.; Smith, K.; and Titov, I. 2021. MetaLearning to Compositionally Generalize. In Proc. of ACL. Dankers, V.; and et al. 2022. The Paradox of the Compositionality of Natural Language: A Neural Machine Translation Case Study. In Proc. of ACL. Dehghani, M.; Gouws, S.; Vinyals, O.; Uszkoreit, J.; and Kaiser, L. 2019. Universal Transformers. In Proc. of ICLR. Dong, L.; and Lapata, M. 2016. Language to Logical Form with Neural Attention. In Proc. of ACL. Dou, Z.-Y.; Tu, Z.; Wang, X.; Shi, S.; and Zhang, T. 2018. Exploiting Deep Representations for Neural Machine Translation. In Proc. of EMNLP. Fodor, J. A.; and Pylyshyn, Z. W. 1988. Connectionism and cognitive architecture: A critical analysis. Cognition. Freivalds, K.; Ozolins, E.; and Sostaks, A. 2019. Neural Shuffle-Exchange Networks - Sequence Processing in O(n log n) Time. In Proc. of NeurIPS.
+Furrer, D.; van Zee, M.; Scales, N.; and Sch¨arli, N. 2020. Compositional generalization in semantic parsing: Pretraining vs. specialized architectures. arXiv. Guo, D.; Kim, Y.; and Rush, A. 2020. Sequence-Level Mixed Sample Data Augmentation. In Proc. of EMNLP. Guo, Y.; Lin, Z.; Lou, J.-G.; and Zhang, D. 2020. Hierarchical Poset Decoding for Compositional Generalization in Language. In Proc. of NeurIPS. He, T.; Tan, X.; and Qin, T. 2019. Hard but robust, easy but sensitive: How encoder and decoder perform in neural machine translation. ArXiv. Herzig, J.; and Berant, J. 2021. Span-based Semantic Parsing for Compositional Generalization. In Proc. of ACL. Herzig, J.; Shaw, P.; Chang, M.; Guu, K.; Pasupat, P.; and Zhang, Y. 2021. Unlocking Compositional Generalization in Pre-trained Models Using Intermediate Representations. arXiv. Hochreiter, S.; and Schmidhuber, J. 1997. Long Short-Term Memory. Neural Comput. Jiang, Y.; and Bansal, M. 2021. Inducing Transformer’s Compositional Generalization Ability via Auxiliary Sequence Prediction Tasks. In Proc. of EMNLP. Kasai, J.; Pappas, N.; Peng, H.; Cross, J.; and Smith, N. A. 2021. Deep Encoder, Shallow Decoder: Reevaluating Nonautoregressive Machine Translation. In Proc. of ICLR. Keysers, D.; Sch¨arli, N.; Scales, N.; Buisman, H.; Furrer, D.; Kashubin, S.; Momchev, N.; Sinopalnikov, D.; Stafiniak, L.; Tihon, T.; Tsarkov, D.; Wang, X.; van Zee, M.; and Bousquet, O. 2020. Measuring Compositional Generalization: A Comprehensive Method on Realistic Data. In Proc. of ICLR. Lake, B.; and Baroni, M. 2018. Generalization without systematicity: On the compositional skills of sequence-tosequence recurrent networks. In Proc. of ICML. Lake, B. M. 2019. Compositional generalization through meta sequence-to-sequence learning. In Proc. of NeurIPS. Lake, B. M.; Ullman, T. D.; Tenenbaum, J. B.; and Gershman, S. J. 2017. Building machines that learn and think like people. Behavioral and brain sciences. Li, Q.; Zhu, Y.; Liang, Y.; Wu, Y. N.; Zhu, S.; and Huang, S. 2022. Neural-Symbolic Recursive Machine for Systematic Generalization. CoRR, abs/2210.01603. Li, Y.; Yin, Y.; Chen, Y.; and Zhang, Y. 2021. On Compositional Generalization of Neural Machine Translation. In Proc. of ACL. Li, Y.; Zhao, L.; Wang, J.; and Hestness, J. 2019. Compositional Generalization for Primitive Substitutions. In Proc. of EMNLP. Li, Z.; Wei, Y.; and Lian, D. 2023. Learning to Substitute Spans towards Improving Compositional Generalization. arXiv preprint arXiv:2306.02840. Lin, L.; Li, S.; and Shi, X. 2023. LEAPT: Learning Adaptive Prefix-to-Prefix Translation For Simultaneous Machine Translation. In Proc. of ICASSP.
+Lin, L.; Li, S.; Zheng, Y.; Fu, B.; Liu, S.; Chen, Y.; and Shi, X. 2023. Learning to Compose Representations of Different Encoder Layers towards Improving Compositional Generalization. In Findings of the Association for Computational Linguistics: EMNLP 2023, 1599–1614. Liu, C.; An, S.; Lin, Z.; Liu, Q.; Chen, B.; Lou, J.; Wen, L.; Zheng, N.; and Zhang, D. 2021. Learning Algebraic Recombination for Compositional Generalization. In Proc. of ACL Findings. Liu, Q.; An, S.; Lou, J.; Chen, B.; Lin, Z.; Gao, Y.; Zhou, B.; Zheng, N.; and Zhang, D. 2020a. Compositional Generalization by Learning Analytical Expressions. In Proc. of NeurIPS. Liu, Q.; An, S.; Lou, J.; Chen, B.; Lin, Z.; Gao, Y.; Zhou, B.; Zheng, N.; and Zhang, D. 2020b. Compositional Generalization by Learning Analytical Expressions. In Proc. of NeurIPS. Liu, Y.; Ott, M.; Goyal, N.; Du, J.; Joshi, M.; Chen, D.; Levy, O.; Lewis, M.; Zettlemoyer, L.; and Stoyanov, V. 2019. Roberta: A robustly optimized bert pretraining approach. arXiv. Mittal, S.; Raparthy, S. C.; Rish, I.; Bengio, Y.; and Lajoie, G. 2022. Compositional Attention: Disentangling Search and Retrieval. In Proc. of ICLR. Nye, M. I.; Solar-Lezama, A.; Tenenbaum, J.; and Lake, B. M. 2020. Learning Compositional Rules via Neural Program Synthesis. In Proc. of NeurIPS. Ott, M.; Edunov, S.; Baevski, A.; Fan, A.; Gross, S.; Ng, N.; Grangier, D.; and Auli, M. 2019. fairseq: A Fast, Extensible Toolkit for Sequence Modeling. In Proc. of NAACL. Papineni, K.; Roukos, S.; Ward, T.; and Zhu, W. 2002. Bleu: a Method for Automatic Evaluation of Machine Translation. In Proc. of ACL. Peters, M. E.; Neumann, M.; Iyyer, M.; Gardner, M.; Clark, C.; Lee, K.; and Zettlemoyer, L. 2018. Deep Contextualized Word Representations. In Proc. of NAACL. Post, M. 2018. A Call for Clarity in Reporting BLEU Scores. In Proceedings of the Third Conference on Machine Translation: Research Papers, WMT 2018, Belgium, Brussels, October 31 - November 1, 2018. Raffel, C.; Shazeer, N.; Roberts, A.; Lee, K.; Narang, S.; Matena, M.; Zhou, Y.; Li, W.; and Liu, P. J. 2020. Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer. J. Mach. Learn. Res. Raunak, V.; Kumar, V.; and Metze, F. 2019. On compositionality in neural machine translation. ArXiv. Ruis, L.; and Lake, B. M. 2022. Improving Systematic Generalization Through Modularity and Augmentation. CoRR, abs/2202.10745. Russin, J.; Jo, J.; O’Reilly, R. C.; and Bengio, Y. 2019. Compositional generalization in a deep seq2seq model by separating syntax and semantics. arXiv. So, D. R.; Le, Q. V.; and Liang, C. 2019. The Evolved Transformer. In Proc. of ICML. Sutskever, I.; Vinyals, O.; and Le, Q. V. 2014. Sequence to sequence learning with neural networks. Proc. of NeurIPS.
+Thrush, T. 2020. Compositional Neural Machine Translation by Removing the Lexicon from Syntax. arXiv. Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. Attention is all you need. Proc. of NeurIPS. Voita, E.; Sennrich, R.; and Titov, I. 2019. The Bottom-up Evolution of Representations in the Transformer: A Study with Machine Translation and Language Modeling Objectives. In Proc. of EMNLP. Wang, B.; Lapata, M.; and Titov, I. 2021. Structured Reordering for Modeling Latent Alignments in Sequence Transduction. In Proc. of NeurIPS. Wang, Q.; Li, B.; Xiao, T.; Zhu, J.; Li, C.; Wong, D. F.; and Chao, L. S. 2019. Learning Deep Transformer Models for Machine Translation. In Proc. of ACL. Wang, Q.; Li, F.; Xiao, T.; Li, Y.; Li, Y.; and Zhu, J. 2018. Multi-layer Representation Fusion for Neural Machine Translation. In Proc. of COLING. Xu, H.; van Genabith, J.; Liu, Q.; and Xiong, D. 2021a. Probing Word Translations in the Transformer and Trading Decoder for Encoder Layers. In Proc. of NAACL. Xu, W.; Aw, A. T.; Ding, Y.; Wu, K.; and Joty, S. 2021b. Addressing the Vulnerability of NMT in Input Perturbations. In Proc. of NAACL. Yang, J.; Zhang, L.; and Yang, D. 2022. SUBS: Subtree Substitution for Compositional Semantic Parsing. In Proc. of NAACL. Yao, Y.; and Koller, A. 2022. Structural generalization is hard for sequence-to-sequence models. In Proc. of EMNLP. Yin, Y.; Li, Y.; Meng, F.; Zhou, J.; and Zhang, Y. 2022. Categorizing Semantic Representations for Neural Machine Translation. In Proc. of COLING. Yin, Y.; Zeng, J.; Li, Y.; Meng, F.; Zhou, J.; and Zhang, Y. 2023. Consistency Regularization Training for Compositional Generalization. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 1294–1308. Yu, F.; Wang, D.; Shelhamer, E.; and Darrell, T. 2018. Deep layer aggregation. In Proc. of CVPR. Zheng, H.; and Lapata, M. 2021. Compositional Generalization via Semantic Tagging. In Proc. of EMNLP Findings. Zheng, H.; and Lapata, M. 2022. Disentangled Sequence to Sequence Learning for Compositional Generalization. In Proc. of ACL. Zhou, D.; Sch¨arli, N.; Hou, L.; Wei, J.; Scales, N.; Wang, X.; Schuurmans, D.; Cui, C.; Bousquet, O.; Le, Q. V.; and Chi, E. H. 2023. Least-to-Most Prompting Enables Complex Reasoning in Large Language Models. In Proc. of ICLR.

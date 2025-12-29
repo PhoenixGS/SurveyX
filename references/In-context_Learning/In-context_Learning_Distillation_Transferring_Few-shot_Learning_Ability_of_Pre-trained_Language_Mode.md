@@ -1,0 +1,309 @@
+# In-context Learning Distillation: Transferring Few-shot Learning Ability of Pre-trained Language Models
+Yukun Huang Yanda Chen Zhou Yu Kathleen McKeown Columbia University
+# Abstract
+Given the success with in-context learning of large pre-trained language models, we introduce in-context learning distillation to transfer in-context few-shot learning ability from large models to smaller models. We propose to combine in-context learning objectives with language modeling objectives to distill both the ability to read in-context examples and task knowledge to the smaller models. We perform in-context learning distillation under two different few-shot learning paradigms: Meta In-context Tuning (Meta-ICT) and Multitask In-context Tuning (Multitask-ICT). MultitaskICT performs better on multitask few-shot learning but also requires more computation than Meta-ICT. Our method shows consistent improvements for both Meta-ICT and Multitask-ICT on two benchmarks: LAMA and CrossFit. Our extensive experiments and analysis reveal that in-context learning objectives and language modeling objectives are complementary under the Multitask-ICT paradigm. In-context learning objectives achieve the best performance when combined with language modeling objectives.
+arXiv:2212.10670v1
+# 1 Introduction
+Large language models have exhibited impressive in-context learning ability, where the model performs few-shot learning by conditioning on several input-output pairs (demonstrations) without updating any parameters. Despite their remarkable fewshot learning performance, large language models always require massive computation resources, which significantly hurts the democratization of NLP for public use. Large language models like GPT3 are only deployable on extremely large-scale servers for their massive memory usage. They also can’t be used in real-time systems due to their inefficient inference. A natural question is whether few-shot learning can be transferred from a large model to a smaller
+model. Knowledge Distillation (KD) has been widely proven to be effective in knowledge transfer by teaching a student to mimic a teacher’s behavior. Zero/Few-shot KD approaches (Rashid et al., 2021, Yoo et al., 2021) usually leverage the teacher models to augment data, but few of them focus on directly transferring few-shot learning ability. In addition, their student models only specialize in a single task. They have to train and deploy several student models when facing multiple fewshot learning tasks and therefore become inefficient. How well the small model would perform multitask few-shot learning under the supervision of a large language model has not been investigated. To answer this question, we propose in-context learning distillation to transfer the multitask fewshot learning ability. We distill through both incontext learning objectives and language modeling objectives to transfer knowledge effectively. Specifically, in-context learning distillation helps the student to infer the task based on in-context examples and locate its intrinsic knowledge relevant to the task, while language modeling objectives provide supplementary information about training tasks. We investigate the transferability of few-shot learning under two different few-shot learning paradigms: Meta In-context Tuning (Meta-ICT) and Multitask In-context Tuning (Multitask-ICT). In Meta-ICT (Chen et al., 2022c, Min et al., 2022b), the language model is meta-trained on a large collection of tasks through in-context learning objectives and then adapted to unseen target tasks via in-context learning. However, in-context learning mostly relies on the knowledge obtained during the pre-training phase (Reynolds and McDonell, 2021) and doesn’t make full use of the input-label correspondence information that is given in the training data (Min et al., 2022c). To better exploit such information in the few-shot training examples, we propose another few-shot learning paradigm – Multitask In-context Tuning. Multitask-ICT first
+tunes the model through in-context learning objectives with few-shot examples from target tasks and then makes predictions via in-context learning. Multitask-ICT outperforms Meta-ICT but also requires more computation during task adaptations. There is a trade-off between performance and computation for these two few-shot learning paradigms. We experiment with in-context learning distillation under these two few-shot learning paradigms on two benchmarks: LAMA and CrossFit. In our experiments, we have 41 different factual and commonsense understanding tasks in LAMA and we have 53 real-life tasks taken from CrossFit including classification, natural language inference, question answering, and so on. We achieve consistent improvements on both benchmarks compared to in-context tuning without teacher supervision. For Multitask-ICT, we can reduce the model size by 93% while retaining the 91.4% performance of the teacher. Reducing the model size by 68% or less in fact leads to better performance than the teacher. In summary, 1) We propose In-context Learning Distillation, a teacher-student framework to transfer few-shot learning ability from a large language model to a smaller one. 2) We propose another new few-shot learning paradigm: multitask in-context tuning, which demonstrates superior performance compared to traditional few-shot supervised finetuning and Meta-ICT. 3) We conduct extensive experiments to understand the role of in-context learning objectives and language modeling objectives from a distillation point of view and find they are complementary to each other.
+# 2 Related Work
+# 2.1 Knowledge Distillation
+KD for Language Models Knowledge Distillation (KD) was first proposed by Hinton et al. (2015) to transfer knowledge from a teacher model with a high learning capacity to a lower-capacity student model through soft-targets predicted by the teacher. KD has been extensively studied for pre-trained language models. KD can be applied during pre-training (e.g., Distill-BERT, Sanh et al., 2019), fine-tuning (e.g., BERT-PKD, Sun et al., 2019), or both (e.g., Tiny-BERT, Jiao et al., 2020, Distill-GPT2, Li et al., 2021).
+Objectives of KD Traditional KD optimizes the student model on the objective consisting of the prediction loss over the task labels (hard label)
+and prediction loss over the teacher’s final layer output (soft label). Many efforts have been put into improving the distillation objective to better transfer knowledge. Some work (Haidar et al., 2022a, Sun et al., 2019, Haidar et al., 2022b, Wu et al., 2021, Xu et al., 2020) incorporate intermediate layers matching into the objective function to leverage the knowledge in the hidden layers. Several approaches (Jafari et al., 2021, Mukherjee and Hassan Awadallah, 2020, Lu et al., 2021) adjust the weights of hard label loss and soft label loss in the objective to selectively transfer knowledge. Some methods (Rezagholizadeh et al., 2022, Zhou et al., 2022) also set objectives for the teacher to better match the student. These improvements are all based on task-specific objectives and we are the first to explore in-context learning objectives in KD. Zero/Few-shot KD There are several zero/fewshot knowledge distillation methods for NLP. They (Rashid et al., 2021, Yoo et al., 2021, He et al., 2021) all focus on leveraging teacher models to generate synthetic data when task-specific data is deficient. Instead of using the teacher to generate data, we directly transfer the few-shot learning ability from the teacher to the student. Moreover, their student models specialize in one task while our student model is task-agnostic.
+# 2.2 In-context Learning
+Leveraging In-context Learning In-context learning (Brown et al., 2020) performs few-shot learning by doing inference conditioning on a concatenation of input-label examples from the task, without updating any parameters of language models. Some follow-up work (Zhao et al., 2021, Holtzman et al., 2021,Min et al., 2022a) further reformulates in-context learning to better perform few-shot learning. In addition to few-shot learning, in-context learning can also be leveraged for data augmentation (Yoo et al., 2021, Chen et al., 2022a). Improving In-context Learning In-context learning is found to be over-sensitive and unstable to the choices of in-context examples (Lu et al., 2022, Zhao et al., 2021, Chen et al., 2022b). To address this, some work explores methods to find better in-context examples as demonstrations and show decent performance gains (Rubin et al., 2022, Liu et al., 2022, Lu et al., 2022). Meanwhile,
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/132b/132bc241-1573-46a4-9447-21ca2085dd07.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 1: In-context tuning paradigms comparison between Meta In-context Tuning and Multitask In-context Tuning. In-context learning distillation with dotted lines indicates the distillation process within two paradigms.</div>
+meta in-context tuning (Chen et al., 2022c, Min et al., 2022b) is proposed to meta-train the model with explicit in-context learning objectives on a wide range of tasks to enhance the in-context learning ability and reduce the sensitivity. Our work improves models’ in-context learning ability by incorporating supervision from larger models.
+# 3 In-context Tuning Paradigms
+In this section, we first describe the background of in-context learning and in-context tuning. Then we introduce two in-context tuning paradigms for few-shot learning: Meta In-context Tuning (MetaICT) and Multitask In-context Tuning (MultitaskICT). Meta-ICT is an existing algorithm (Min et al., 2022b, Chen et al., 2022c) to meta-train LMs on in-context learning objectives to enhance their incontext learning ability. Multitask-ICT is our newly proposed method to adapt LMs to few-shot learning tasks by optimizing in-context learning objectives. Finally, we compare two paradigms.
+# 3.1 Background: In-context Learning/Tuning
+In-context learning In-context learning refers to the learning procedure where models learn to make predictions for text inputs in a target task by conditioning on a few input-label pairs. Formally, let k be the number of demonstrations, {(xi, yi)}k i=1 be training samples from a target task and (xk+1, yk+1) be the test sample, where xi is the text and yi is the label. The model is given a concatenation of x1, y1, ..., xk, yk, xk+1 as input and predicts yk+1.
+In-context tuning In-context tuning optimizes LMs with in-context learning objectives. Specifically, let {(xi, yi)}k+1 i=1 be training samples from a training task T . We feed x1, y1, ..., xk, yk, xk+1 into the model and train the model to generate yk+1 using a negative log likelihood objective. Formally, assume the number of in-context examples is k. For each input text x in a task T , Sx k are the demonstrations consisting of k input-output pairs sampled from the same task T . The in-context learning objective for a task is:
+(1)
+where θ is the model parameters
+# 3.2 Background: Meta In-context Tuning
+Meta-ICT trains the model on in-context learning objectives with a large collection of tasks. During this process, the model learns to adapt to new tasks through in-context learning. Therefore, we refer to the training process as meta-training and the training tasks as meta-training tasks Tmeta. Then the model makes predictions on unseen target tasks Ttarget via in-context learning. Figure 1 shows the procedure of Meta-ICT. The total Meta-ICT objective LICT meta sums the in-context learning objectives (1) across meta-training tasks:
+(2)
+Meta-training on the in-context objective has been proven to mitigate over-sensitivity in example ordering, example choices, and instruction wording (Chen et al., 2022c). However, in-context learning during task adaptions ignores part of the label information in the input training data (Min et al.,
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1d2f/1d2fc992-33b5-4ea9-8e49-176c400b5b26.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2: Overview of In-context Learning Distillation</div>
+2022c) and therefore doesn’t fully make use of the few-shot training examples.
+# 3.3 Proposed: Multitask In-context Tuning
+To better exploit the information in the few-shot training examples, we propose multitask in-context tuning for multitask few-shot learning. As shown in Figure 1, multitask-ICT directly adapts the model to target tasks Ttarget in two steps. First, it updates model parameters with a few examples from target tasks in an in-context tuning manner. Then it makes predictions via in-context learning. The objective for each task is also Equation (1), which is the same as Meta-ICT. The difference is that the total Multitask-ICT objective sums the objective across target tasks instead of meta-training tasks:
+where Ttarget are target few-shot tasks to evaluate. Due to the limitation on the input sequence length of LMs, a single input sequence sometimes can’t fit all the few-shot training samples as incontext examples. In other words, the number of training examples n can be larger than the number of in-context examples k. To address this inconsistency, we propose majority voting inference. We randomly select k in-context examples from n training samples for m times and choose the most common one from m predictions as the final prediction. We find majority voting can further mitigate the over-sensitivity to the choice of in-context examples and improve the performance.
+# 3.4 Paradigm Comparison
+As shown in Figure 1, both Meta-ICT and Multitask-ICT paradigms optimize the in-context
+learning objectives and perform predictions via incontext learning. However, they differ in why and how they perform in-context tuning. The goals of in-context tuning for the two paradigms are different. MetaICT performs incontext tuning to prepare the model for adapting to target tasks while Multitask-ICT performs incontext tuning to directly learn the target tasks. The two paradigms also differ significantly in their treatment of training and target tasks. 1) the training tasks for Multitask-ICT are the target tasks Ttarget, while the training tasks for Meta-ICT are the meta-training tasks Tmeta not overlapping with Ttarget. 2) The training examples to update the model for Multitask-ICT are limited, while for Meta-ICT are abundant.
+# 4 In-context Learning Distillation
+We propose in-context learning distillation to distill the few-shot learning ability from the teacher to the student. Figure 2 shows the framework of our approach. We distill through both in-context learning objectives and language modeling objectives. Our approach is compatible with both Meta-ICT and Multitask-ICT paradigms. As shown in Figure 1, we perform in-context learning distillation at the in-context tuning stage for both Meta-ICT and Multitask-ICT paradigms. The student learns from the teacher by imitating the teacher’s predictions (soft labels). The student learns to perform in-context learning as well as language modeling from the teacher. The soft label loss Lsoft measures the discrepancy between the teacher’s predictions and the student’s predictions, which consists of the in-context learning objective
+LICT soft and the language modeling objective LLM soft
+(4)
+where β is the hyper-parameter that balances the in-context learning and language modeling. The in-context learning objective is formulated as
+(5)
+where Ttrain represents the training tasks in incontext learning. Ttrain is Tmeta in Meta-ICT and Ttarget in Multitask-ICT.
+(6)
+where DLM is a supplemental open domain web text dataset providing general information. In addition to learning from the teacher’s predictions, the student also learns from the ground truths (hard label). The hard loss measures the student’s performance compared to ground truths, which also consists of both in-context learning objectives and language modeling objectives
+(7)
+(8)
+(9)
+The final objective function for in-context learning distillation can be formulated as:
+(10)
+We linearly decrease the weight of hard-label loss α(t) and linearly increase the weight of soft-label loss during training.
+# 5 Experiments 5.1 Datasets and metrics
+We utilize two different collections of datasets in this work. The first collection is LAMA (Petroni et al., 2019b), consisting of 41 tasks for factual and
+commonsense knowledge understanding. The second collection of datasets includes real-life tasks taken from CrossFit (Ye et al., 2021), a few-shot open gym consisting of 160 diverse few-shot NLP tasks. We take 53 unique tasks including text classification, question answering, natural language inference, and paraphrase detection. For LAMA, we adopt mean precision at one and mean precision at ten as our evaluation metrics and report the average scores across tasks. For CrossFit, we adopt Macro-F1 and Accuracy as evaluation metrics for classification tasks and non-classification tasks respectively. In addition to the above datasets for in-context learning distillation, we also have auxiliary datasets for language modeling to provide supplemental knowledge. We leverage WikiText (Merity et al., 2016) as the auxiliary dataset for LAMA and OpenWebText (Gokaslan et al., 2019) for CrossFit. See Appendix B for details of the datasets.
+# 5.2 Few-shot Learning Settings
+We experiment with two paradigms (Meta-ICT, Multi-ICT) on two benchmarks (LAMA, CrossFit), resulting in four different few-shot learning settings in total. Setting 1: Meta-ICT on LAMA We randomly partition 41 tasks into 30 training tasks, 5 validation tasks, and 6 test tasks. We meta-train the model with 30 meta-train tasks and test on 6 target tasks. Setting 2: Meta-ICT on CrossFit We follow the classification to classification setting in Min et al. (2022b), where 43 meta-training tasks and 20 target tasks are all classification tasks. But there are some target tasks where both teacher’s and the student’s performances are close to random guesses. Therefore, we select 11 out of 20 tasks on which both teacher and student perform better than random guesses as our target tasks. Setting 3: Multitask-ICT on LAMA We utilize 41 LAMA tasks as target tasks. We randomly select 60% of the data for test. Then we randomly select 32 training samples and 32 validation samples from the rest of 40% of the data. Setting 4: Multitask-ICT on CrossFit We select 18 different tasks as our target tasks, which cover classification, question answering, natural language inference, and paraphrasing. Table 1 shows detailed comparisons among four settings. For Setting 2, we follow the Min et al. (2022b) to utilize channel in-context learning,
+Setting
+1
+2
+3
+4
+Data
+LAMA
+CROSSFIT LAMA
+CROSSFIT
+Arch
+BERT
+GPT2
+BERT
+GPT2
+Paradigm
+Meta
+Meta
+Multitask
+Multitask
+#Taskstrain 30
+43
+41
+18
+#Taskstest 6
+11
+41
+18
+Overlap
+×
+×
+✓
+✓
+k
+5
+4
+5
+4
+#Fewshot
+5
+4
+32
+32
+Order
+direct
+channel
+direct
+direct
+Table 1: Comparison among four different few-shot settings. Overlap: If the training tasks and target tasks overlap. k: the number of in-context examples in each input to the model. #Few-shot: the number of available training samples for each task. Order: the order of the text x and the label y for in-context learning formulation.
+Model
+MultitaskF T
+MetaICT
+MultitaskICT
+GPT2lg
+59.8
+58.7
+63.9
+GPT2md
+59.7
+53.6
+62.6
+GPT2sm
+56.5
+52.9
+57.3
+Table 2: Results of three different few-shot learning paradigms. MultitaskF T : multitask fine-tuning with few-shot examples. MetaICT : meta in-context tuning. MultitaskICT : multitask in-context tuning. Experiments are conducted on setting 2. We randomly select 32 training samples and 32 validation samples from each of the nine target tasks. We report the average F1 scores and mark the best performance as bold.
+where the order of the input text and the label is reversed. See Appendix C for setting details and Appendix D for more information about channel in-context learning.
+# 5.3 Experiment Details
+All implementation is done with PyTorch and Transformers. To show our method is effective in different architectures, we use BERT as backbone models for experiments on LAMA datasets (BERT-small [25M parameters], BERTbase[110M], BERT-large[336M]) and GPT2 for experiments on Crossfit datasets (GPT2-small [124M], GPT2-medium [355M], GPT2-large [774M]. The hyperparameters and training details can be found in Appendix A.
+# 6 Results
+We first compare three few-shot learning paradigms in Section 6.1. Then we present results for incontext learning distillation in Section 6.2. Finally, we discuss the ablation study in Section 6.3.
+# 6.1 Few-shot learning paradigm comparison
+We compare three few-shot learning paradigms: Multitask-ICT, Meta-ICT, and Multitask supervised-finetuning (Multitask-FT).
+Multitask-ICT outperforms Meta-ICT in accuracy As shown in Table 2, Multitask-ICT outperforms Meta-ICT across all three scales. The score difference between Multitask-ICT and Meta-ICT can even be as large as 9% on the GPT2-medium. Multitask-ICT adapts the model to target tasks by tuning the model parameters with a few training samples, while Meta-ICT adapts the model only via inference. The significant advantage of the Multitask-ICT over Meta-ICT indicates that it’s still better to update the model even if the model has limited access to the target training samples.
+Multitask-ICT outperforms Multitask-FT with few-shot training samples From Table 2, MultitaskICT is better than MultitaskFT across all three scales, which suggests that tuning the in-context learning objectives can better exploit limited training examples. We suspect that tuning the in-context objectives encourages the model to utilize the relationships among the datapoints in the same task. In Multitask-ICT, different datapoints from the same task are concatenated in a single input to the model. Therefore, the model can capture the relations between datapoints from the same task. On the contrary, in traditional multitask fine-tuning, the model only learns one datapoint at each time and overlooks the relations between these datapoints.
+# 6.2 Distillation Results
+In-context learning distillation improves incontext learning As shown in Table 3 and Table 4, in-context learning distillation consistently improves both in-context tuning paradigms on both LAMA and CrossFit datasets. ICL-D outperforms ICT in all the settings, indicating that the teacher indeed can transfer helpful knowledge through in-context learning objectives.
+Stronger students gain relatively more The student with larger capacities gets relatively more benefits from the teacher under the Meta-ICT paradigm. Considering the teacher-student performance gap, the medium-size model(BERT-base,
+Data
+Teacher
+ICT
+Student
+ICT(Baseline)
+ICL-D
+ICL-D(LM)
+Setting 1
+LAMA
+BERT-large
+28.3/58.7
+BERT-base
+23.9/53.8
+25.2/56.2
+24.3/55.4
+BERT-small
+14.9/47.7
+16.8/49.1
+15.6/48.8
+BERT-base
+23.9/53.8
+BERT-small
+14.9/47.7
+16.2/49.2
+15.4/48.8
+Setting 2
+CrossFit
+GPT2-large
+57.0
+GPT2-med
+51.4
+53.6
+53.6
+GPT2-small
+50.2
+51.3
+51.1
+GPT2-med
+51.4
+GTP2-small
+50.2
+50.8
+52.1
+Table 3: Distillation results under Meta-ICT paradigms. ICT(baseline): In-context tuning without the teacher. ICL-D: In-context knowledge distillation which only distills through in-context learning objectives. ICL-D(LM): In-context knowledge distillation which distills through both in-context learning objectives and language modeling objectives. Two numbers on LAMA datasets indicate the average precision@1 and precision@10 of all target tasks. The number on CrossFit indicates the average macro F1 score of all target tasks. The number of in-context examples for setting 1 is k=5, while for setting 2 is k=4, therefore setting 1 is 5-shot, and setting 2 is 4-shot. Bold indicates the best score.
+Data
+Teacher
+ICT
+Student
+ICT(Baseline)
+ICL-D
+ICL-D(LM)
+Setting 3
+LAMA
+BERT-large
+25.6/57.3
+BERT-base
+22.3/53.2
+23.7/55.4
+27.2/61.2
+BERT-small
+12.1/43.0
+13.6/45.8
+18.5/52.4
+BERT-base
+22.3/53.2
+BERT-small
+12.1/43.0
+13.7/45.8
+18.5/52.3
+Setting 4
+CrossFit
+GPT2-large
+66.2
+GPT2-med
+64.3
+65.5
+65.8
+GPT2-small
+58.4
+59.9
+61.2
+GPT2-med
+64.3
+GTP2-small
+58.4
+59.0
+60.5
+Table 4: Distillation results under the Multitask-ICT paradigm. Definitions of ICT, ICL-D and ICL-D(LM) are the same as Table 3. We randomly select 32 training samples and 32 validation samples. The evaluation metric and abbreviation is the same as Table 3. Though the number of in-context examples is k=5 for LAMA and k=4 for CrossFit, we have access to 32 training samples for each task. Hence both settings are 32-shot learning.
+GPT2-medium) gains relatively more than the small-size model (BERT-small, GPT2-small) when taught by a large-size teacher. In Setting 2 of Table 3, GPT2-medium improves +2.2/5.6 (where 5.6 is the teacher-student gap) while GPT2-small only improves +1.1/6.8. In Setting 1 of Table 3, BERT-base improves +2.5/4.9 at precision@10, while BERT-small improves +1.4/11.0. We hypothesize that larger models have a larger room for in-context learning ability improvement since strong in-context learning ability usually emerges in large models (Shin et al., 2022).
+Language modeling distillation helps Multitask-ICT Incorporating language modeling distillation brings compelling improvement to the Multitask-ICT paradigm. As shown in Table
+4, the improvement of ICL-D(LM) over ICT in LAMA datasets is especially prominent: +4.9/+8.0 for BERT-base and +6.4/9.4 for BERT-small. ICL-D(LM) also shows effectiveness on CrossFit datasets. Improvements of ICL-D(LM) over ICT for GPT2-medium (+1.5) and GPT2-small (+2.8) are both larger than improvements of ICL-D over ICT. In contrast, under the Meta-ICT paradigm, rather than improving results, language modeling distillation even hurts performance to some extent. As shown in Table 3, the ICL-D(LM) gets comparable or even worse results than ICL-D in 5 out of 6 teacher-student pairs. We conjecture that language modeling distillation only contributes to the tasks seen during training, and meta-training tasks and target tasks don’t overlap in Meta-ICT. Learning too much content of meta-training tasks
+Stronger Teachers don’t necessarily lead to better students When the teacher changes from the medium size to the large size, the difference between the small size students’ performances is negligible. Take Setting 2 in Table 3 as an example, when we increase the teacher from GPT2-medium to gpt2-large (parameter number from 355M to 774M, teacher accuracy from 51.4 to 57.0), the change of GPT2-small’s performance is within one point. We observe similar phenomena in all other three settings. This observation is in line with other knowledge distillation research (Sun et al., 2019, Yuan et al., 2019). Presumably, the knowledge from the large teacher might be too "hard" for the student to learn and therefore the student can’t get further improvement.
+# 6.3 Ablation Study
+We explore how Meta-ICT generalizes to unseen tasks by examining the influence of the number of datapoints and the number of tasks for meta-training tasks. Then, we investigate why language modeling objectives help Multitask-ICT by distilling only through language modeling objectives.
+Number of training samples We investigate how the number of samples for each meta-training task affects our method. We sub-sample [1/8, 1/4, 1/2, 1] of the training samples from each meta-training task to train the model (See Appendix B for the number of total training samples for each task). According to Figure 3(a), ICL-D consistently outperforms ICT when the number of training samples varies. Surprisingly, the performance of Meta-ICT doesn’t decrease much when we only utilize 1/8 of the training samples to train the model. This finding suggests that Meta-ICT doesn’t rely much on the contents of each meta-training task. We suspect that the model is more likely to learn to read the in-context format instead of learning the contents of meta-tasks during meta-training.
+Number of meta-training tasks To further explore how the number of meta-training tasks influences performance, we vary the number of meta-train tasks from 3 to 30 in the LAMA
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/bae6/bae6efea-3f00-4bea-8503-492b30fed0cc.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c3a2/c3a25582-75af-48dd-ade2-dfcedee152fc.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) #meta-training tasks</div>
+<div style="text-align: center;">(a) #training samples</div>
+Figure 3: (a) Meta-ICT results on 12.5%, 25%, 50% and 100% training datapoints sub-sample levels. The experiment is conducted on Setting 1. We run experiments with five random seeds and report average scores along with standard deviation (b) Results of Meta-ICT trained with n meta-training tasks, where n is in [3, 7, 15, 30]. For each n, we sample n meta-training tasks five times with different random seeds and report average scores along with standard deviation. The green line denotes in-context tuning while the purple line represents in-context learning distillation
+settings. We run our experiments with five different random sets of meta-training tasks because the Meta-ICT is sensitive to the distributions of selected meta-training tasks. As shown in Figure 3(b), our method consistently improves the baseline no matter how many meta-training tasks we include. ICL-D improves more when the number of meta-training tasks is smaller, which suggests that teacher supervision can make up for the deficiency of meta-training tasks to some extent. It should be noted that in-context tuning relies more on the number of tasks than the number of data points for each task. When we use only 1/8 of tasks, the performance drops more than 10%, while the performance only drops around 2% when we use 1/8 of the data points for each task. This result indicates that the model learned mainly from the distributions of tasks instead of the exact contents of each task.
+# Language-modeling-only distillatio
+# Language-modeling-only
+guage modeling distillation brings significant improvement to Multitask-ICT. To understand language modeling’s role in our approach, we run experiments with only language modeling distillation without in-context learning objectives on Setting 3. From Table 5, language modeling distillation has a similar performance to the raw pre-trained language model without any training, which lags far behind other in-context tuning
+Method
+P@1/P@10
+Raw
+1.7/21.5
+LM-KD
+1.6/21.5
+ICT
+12.1/43.0
+ICL-D
+13.7/45.8
+ICL-D(LM)
+18.5/52.4
+methods. This observation is in line with the finding that language modeling ability doesn’t always correlate with in-context learning (Shin et al., 2022). This result suggests that the student can’t extract useful knowledge for target tasks from the rich but ill-assorted information provided by the teacher only through language modeling objectives. Language modeling distillation only helps when combined with in-context learning distillation. Our results imply that in-context learning objectives and language modeling objectives are complementary to each other during knowledge distillation under the Multitask-ICT paradigm. On the one hand, in-context learning distillation guide language modeling distillation. The in-context learning objectives allow the model to learn to locate the relevant task knowledge given the in-context examples. Therefore, the model can locate and absorb useful knowledge from the rich but ill-assorted information contained in language modeling data and the teacher. On the other hand, language modeling distillation enriches the in-context learning distillation. The in-context examples for target tasks are deficient under few-shot settings, thereby limiting the improvement brought by in-context learning distillation. Language modeling objectives serve as a carrier to transfer rich information from the teacher to the student.
+# 7 Conclusion
+In this paper, we present an in-context learning distillation framework to transfer the few-shot learning ability from the large language model to the smaller one. Specifically, we distill knowledge through both in-context learning objectives and lan-
+guage modeling objectives. We apply this method to two few-shot learning paradigms: Meta-ICT and Multitask-ICT. Multitask-ICT is a few-shot learning paradigm proposed by us to further improve Meta-ICT but at the cost of computation. Incontext learning distillation consistently improves both LAMA and CrossFit benchmarks under two few-shot learning paradigms. For Multitask-ICT, one of our models achieves better performance while being 3.4× smaller and 1.7× faster than the teacher, and another one retains 91.4% performance while being 13.4× smaller and 3.6× faster than the teacher. In the ablation study, we find that 1) Meta-ICT learns more from the distributions of meta-training tasks than the contents of each metatraining task. 2) In-context learning distillation performs best when combined with language modeling distillation under the Multitask-ICT paradigm.
+# References
+Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, T. J. Henighan, Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeff Wu, Clemens Winter, Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language models are few-shot learners. ArXiv, abs/2005.14165.
+Md Akmal Haidar, Nithin Anchuri, Mehdi Rezagholizadeh, Abbas Ghaddar, Philippe Langlais, and
+Xuanli He, Islam Nassar, Jamie Ryan Kiros, Gholamreza Haffari, and Mohammad Norouzi. 2021. Generate, annotate, and learn: Generative models advance self-training and knowledge distillation. ArXiv, abs/2106.06168.
+Geoffrey Hinton, Oriol Vinyals, Jeff Dean, et al. 2015. Distilling the knowledge in a neural network. arXiv preprint arXiv:1503.02531, 2(7).
+Yao Lu, Max Bartolo, Alastair Moore, Sebastian Riedel, and Pontus Stenetorp. 2022. Fantastically ordered prompts and where to find them: Overcoming few-shot prompt order sensitivity. In Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 8086–8098, Dublin, Ireland. Association for Computational Linguistics.
+Processing and the 9th International Joint Conference on Natural Language Processing (EMNLPIJCNLP), pages 2463–2473, Hong Kong, China. Association for Computational Linguistics.
+Processing and the 9th International Joint Conference on Natural Language Processing (EMNLPIJCNLP), pages 2463–2473, Hong Kong, China. Association for Computational Linguistics. Ahmad Rashid, Vasileios Lioutas, Abbas Ghaddar, and Mehdi Rezagholizadeh. 2021. Towards zero-shot knowledge distillation for natural language processing. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, pages 6551–6561, Online and Punta Cana, Dominican Republic. Association for Computational Linguistics. Laria Reynolds and Kyle McDonell. 2021. Prompt programming for large language models: Beyond the few-shot paradigm. Extended Abstracts of the 2021 CHI Conference on Human Factors in Computing Systems. Mehdi Rezagholizadeh, Aref Jafari, Puneeth S.M. Saladi, Pranav Sharma, Ali Saheb Pasand, and Ali Ghodsi. 2022. Pro-KD: Progressive distillation by following the footsteps of the teacher. In Proceedings of the 29th International Conference on Computational Linguistics, pages 4714–4727, Gyeongju, Republic of Korea. International Committee on Computational Linguistics. Ohad Rubin, Jonathan Herzig, and Jonathan Berant. 2022. Learning to retrieve prompts for in-context learning. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, pages 2655–2671, Seattle, United States. Association for Computational Linguistics. Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. 2019. Distilbert, a distilled version of bert: smaller, faster, cheaper and lighter. ArXiv, abs/1910.01108. Seongjin Shin, Sang-Woo Lee, Hwijeen Ahn, Sungdong Kim, HyoungSeok Kim, Boseop Kim, Kyunghyun Cho, Gichang Lee, Woomyoung Park, Jung-Woo Ha, and Nako Sung. 2022. On the effect of pretraining corpora on in-context learning by a large-scale language model. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, pages 5168– 5186, Seattle, United States. Association for Computational Linguistics. S. Sun, Yu Cheng, Zhe Gan, and Jingjing Liu. 2019. Patient knowledge distillation for bert model compression. In EMNLP. Yimeng Wu, Mehdi Rezagholizadeh, Abbas Ghaddar, Md Akmal Haidar, and Ali Ghodsi. 2021. UniversalKD: Attention-based output-grounded intermediate layer knowledge distillation. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, pages 7649–7661, Online and Punta Cana, Dominican Republic. Association for Computational Linguistics.
+Wangchunshu Zhou, Canwen Xu, and Julian McAuley. 2022. BERT learns to teach: Knowledge distillation with meta learning. In Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 7037–7049, Dublin, Ireland. Association for Computational Linguistics.
+# A Training Details
+Our implementations are based on PyTorch. We also refer to other open-source codes (Min et al., 2022b, Chen et al., 2022c, Yang et al., 2020). To show our method is effective in different architectures, we use BERT as backbone models for experiments on LAMA datasets (BERT-small [25M parameters], BERT-base[110M], BERTlarge[336M]) and GPT2 for experiments on Crossfit datasets (GPT2-small [124M], GPT2-medium [355M], GPT2-large [774M]. We provide training details for all four settings.
+Meta-ICT on LAMA: Our hyperparameters for Meta-ICT and Multitask-ICT are the same. For all methods (ICT, ICL-D, ICL-D(LM)), we choose adamw optimizer with the learning rate 3e-6. We have a linear scheduler for the learning rate with 100 warmup steps. For ICT and ICL-D, we set epochs to 60, and batch size to 48. We evaluate validation sets every epoch and use the precision@10 on the validation set as an early stopping indicator. We set patience to 2. For ICL-D(LM), we set the max steps to 30000 and evaluate every 5000 steps. We keep the batch size to 48 and set gradient accumulation steps to 5 so that model can see more language modeling data for each update. We combine the language modeling distillation with in-context learning distillation by randomly sampling from in-context learning data and language modeling model data in the weight of [0.1, 0.9] at each step. For ICL-D and ICL-D(LM), we set the temperature for knowledge distillation to 2. We linearly grow hard label weight from 0 to 1 and linear decay soft label weight from 1 to 0. Meta-ICT on CrossFit We apply adamw optimizer with the learning rate 1e-5. We set the total batch (batch size × gradient accumulation steps) to 16 for all methods across all scales. But the exact number of batch size and gradient accumulation steps varies across different scales due to the memory limitation (GPT2-small is 8×2, GPT2-medium is 4×4, and GPT2-large is 2×8). For ICT and ICLD, We set the max steps to 5000. For ICL-D(LM), we set the max steps to 30000 and sample the incontext learning data and language modeling in the weight of [0.1, 0.9] at each step. For ICL-D and ICL-D(LM), we set the temperature for knowledge distillation to 2. We linearly grow hard label weight from 0 to 1 and linear decay soft label weight from 1 to 0. Multitask-ICT on LAMA We apply the same parameters as Meta-ICT on LAMA. We randomly select 32 validation samples from each target tasks as our validation set. Multitask-ICT on CrossFit Most parameters are the same as Meta-ICT on CrossFit. We randomly select 32 validation samples from each target task as our validation set. We set the patience to be 2. For ICT and ICL-D, we set the max steps to 2000 and evaluate every 500 steps. For ICL-D(LM) we set the max steps to 20000 and evaluate every 5000 steps. All the models in our work can be fit in a single
+All the models in our work can be fit in a single
+NVIDIA RTX A6000.
+# B Datasets
+# B.1 In-context Learning Datasets
+LAMA Language Model Analysis is an entity prediction dataset for measuring the factual commonsense knowledge learned by LMs. We utilize the TREx-UHN portion of LAMA consisting of (subject, relation, object) triples from Wikidata. The LM is asked to predict the object entity given the subject entity and relation. We treat each relation as a single task (Perez et al., 2021), resulting in 41 tasks and 16K examples in total. Following (Petroni et al., 2019a), the object entity is predicted from a pre-defined vocabulary set of 21K words and therefore each task is 21K-way classification. We adopt mean precision at one and mean precision at ten as our evaluation metrics and report the average scores across tasks. CrossFit CrossFit is a few-shot gym containing 160 diverse few-shot NLP tasks in a unified text-to-text format. We take 53 unique tasks which are closely related to real-life scenarios to evaluate our methods. We adopt Macro-F1 and Accuracy as evaluation metrics for classification tasks and non-classification tasks respectively.
+# B.2 Language Modeling Datasets
+We leverage WikiText (Merity et al., 2016) as the auxiliary dataset for LAMA and OpenWebText (Gokaslan et al., 2019) for CrossFit. WikiText is extracted from the set of verified good and featured articles on Wikipedia, which contains much factual information. Therefore, we use the Wikitext-103v1 as auxiliary language modeling data for experiments on LAMA. OpenWebText is another opendomain web text dataset collected by the scraper used to train GPT2. We sample 0.5GB of data from it as auxiliary language modeling data for experiments conducted on CrossFit.
+# C Few-shot Settings
+We have four different few-shot settings in total. Setting 1: Meta-ICT on LAMA. Setting 2: MetaICT on CrossFit. Setting 3: Multitask-ICT on LAMA. Setting 4: Multitask-ICT on CrossFit. Table 6 shows the details for the tasks for different settings.
+Setting
+Tasks
+Setting 1 train
+P159, P1376, P27, P1412, P530, P108, P1303, P1001, P19, P30, P463, P413, P264, P740, P31,
+P39, P407, P279, P527, P495, P101, P17, P127, P20, P276, P36, P106, P176, P136, P937
+Setting 1 target
+P140, P37, P138, P449, P361, P190
+Setting 2 train
+superglue-rte, tweet_eval-sentiment, discovery, glue-rte, superglue-wsc, glue-mrpc,
+tweet_eval-stance_hillary, tweet_eval-offensive, emotion, hat- explain, glue-cola, sick, paws,
+ethos-sexual_orientation, glue-qqp, tweet_eval-emotion, sms_spam, health_fact, glue-mnli,
+imdb, ethos-disability, glue-wnli, sc-itail, trec-finegrained, yahoo_answers_topics, liar, glue-sst2,
+tweet_eval-stance_abortion, circa, tweet_eval-stance_climate, glue-qnli, tweet_eval-emoji, ethos-
+directed_vs_generalized, ade_corpus_v2-classification, hate _speech_offensive, superglue-wic,
+google_wellformed_query, tweet_eval-irony, ethos-gender, on-estop_english, trec,
+rotten_tomatoes, kilt_fever
+Setting 2 target
+tweet_eval-stance_feminist, ethos-national_origin, tweet_eval-hate, ag_news, amazon_polarity,
+hate_speech18, poem_sentiment, climate_fever, medical_questions_pairs,
+tweet_eval-stance_atheism, superglue-cb, dbpedia_14, wiki_qa, emo, yelp_polarity,
+ethos-religion, financial_phrasebank, tab_fact, anli, ethos-race
+Setting 3 train&target
+P19, P20, P279, P37, P413, P449, P47, P138, P364, P463, P101, P106, P527, P530, P176, P27,
+P407, P30, P178, P1376, P131, P1412, P108, P136, P17, P39, P264, P276, P937, P140, P1303,
+P127, P103, P190, P1001, P31, P495, P159, P36, P740, P361
+Setting 4 train&target
+ag_news, amazon_polarity, dbpedia_14, emo, tweet_eval-stance_feminist, tweet_eval-hate,
+superglue-cb, wiki_qa, yelp_polarity, quarel, glue-mrpc, qasc, commonsense_qa, hate_speech18,
+superglue-copa, sciq, glue-sst2, ethos-religion
+# D In-context Learning
+There are two types of in-context learning depending on the order of input texts and labels. Direct In-context Learning In direct in-context learning, the model is given a concatenation of x1, y1, ..., xk, yk, xk+1 as input and predicts yk+1. More formally, the model computes argmaxc∈CP(c|x1, y1, ..., xk, yk, xk+1) to do inference, where C is a set of label candidates. Channel In-context Learning There is another noisy channel variant of in-context learning objective called channel in-context learning (Min et al., 2022b), in which the input xi and yi is flipped. Channel in-context learning converts P(y|x) into P(x|y)P(y) P(x) ∝P(x|y)P(y). We let P(y) be constant and aim at modeling P(x|y). During inference time, the model computes argmaxc∈CP(xk+1|y1, x1, ..., yk, xk, c) where C is a set of candidates. Then the model returns the label with the maximum conditional probability as the prediction.

@@ -1,0 +1,299 @@
+# On the growth of the parameters of approximating ReLU neural networks
+Martin Holler ∗ Erion Morina †
+June 24, 2024
+Abstract
+# Abstract
+This work focuses on the analysis of fully connected feed forward ReLU neural networks as they approximate a given, smooth function. In contrast to conventionally studied universal approximation properties under increasing architectures, e.g., in terms of width or depth of the networks, we are concerned with the asymptotic growth of the parameters of approximating networks. Such results are of interest, e.g., for error analysis or consistency results for neural network training. The main result of our work is that, for a ReLU architecture with state of the art approximation error, the realizing parameters grow at most polynomially. The obtained rate with respect to a normalized network size is compared to existing results and is shown to be superior in most cases, in particular for high dimensional input.
+Keywords: Neural networks, approximation, complexity, growth of parameter MSC Codes: 41A25, 41A65
+# 1 Introduction
+It is well known that certain neural network architectures have a universal ap proximation property, i.e., functions of certain regularity may be approximated arbitrarily well with respect to appropriate norms. This can be achieved by in creasing the complexity of the underlying neural networks, where complexity i
+∗Department of Mathematics and Scientific Computing, University of Graz. MH further is a member of NAWI Graz (www.nawigraz.at) and of BioTechMed Graz (biotechmedgraz.at) (martin.holler@uni-graz.at) †Department of Mathematics and Scientific Computing, University of Graz. (erion.morina@uni-graz.at).
+usually described by the network size in terms of width, depth, or number of weights and neurons when it comes to fully connected feed forward neural networks. In the classical work [13], shallow approximations of Sobolev functions with respect to Lp-norms are studied. See also [6] for deep ReLU approximation of Sobolev functions with respect to general Sobolev norms and the references therein. For the (nearly) optimal approximation of (piecewise) smooth functions by ReLU networks see [12, 14]. The works in [3, 4, 5] together with their references give a comprehensive overview of the approximation theory based on neural networks. A question that has not been given much attention in the current literature is how the parameters realizing the approximating networks behave asymptotically, see Section 2 for an overview of related works. This question is of particular interest, e.g., in view of a full error analysis or consistency results for neural network training. As an example for the former, let us consider the results of [8, 9], where a full error analysis of deep learning for empirical risk minimization is provided. There, the underlying networks are trained based on Stochastic Gradient Descent (SGD) with random initializations and the results hold in the probabilistic sense. A simplification of the result in [8, Theorem 1.1] is given as follows. For some d ∈N let f : [0, 1]d →[0, 1] be Lipschitz continuous. Assume that (fN,L)N,L∈N is a sequence of networks such that fN,L is a network of width N and depth L with parameters bounded by c(N, L), minimizing the empirical risk over M given i.i.d. training samples. Let further A(N, L) denote some upper bound on the approximation error of f in terms of N and L, approaching zero for increasing N and L (Note that A depends on the approximating architecture and in general stronger regularity assumptions of f than Lipschitz-continuity are required). Furthermore, let O(N, L, K)c(N, L)L+1 be some upper bound on the optimization error, where K is the number of random initializations of SGD, and let G(N, L, M)c(N, L) be some upper bound on the generalization error. Explicit characterizations of G and O in terms of N, L, M, K, respectively, are given in [8, Theorem 1.1]. The error functions G and O approach zero for fixed N, L ∈N as K and M increase. Under these assumptions it holds true by [8, Theorem 1.1] that E(∥fN,L −f∥L1([0,1]d,P)) ≤A(N, L) + O(N, L, K)c(N, L)L+1 + G(N, L, M)c(N, L). This shows that in order to bound the left hand side, one does not only require estimates on A(N, L), O(N, L, K), and G(N, L, M), but also on the bound c(N, L) of the parameters of the approximating neural network. It is clear that bounds on the parameters of approximating neural networks must always be analyzed jointly with the network depth and width. Indeed, networks with large parameter bounds may be expanded in width and depth such that they
+describe the same function, but such that the modified parameters are considerably smaller. On the other hand. fixing the architecture in terms of width and depth can obviously not allow the approximation of arbitrary complex but smooth functions. In order to account for this, our strategy is to consider networks that achieve optimal or nearly optimal approximation results with respect to width and depth, and analyze the asymptotic behavior of parameters realizing those networks. Specifically, we analyze the asymptotic behavior of the parameters realizing the approximating network architectures studied in [12] and [13]. An advantage with these works is that they are based on explicit constructions which allow for successive estimation of the occurring parameters. The approximation scheme in [13] provides an optimal approximation error for single-hidden-layer neural networks whereas [12] establishes the optimal order of approximation in terms of width and depth. Note that we do not make any statement on optimality of the asymptotical behavior of the realizing parameters. The goal is to get an insight in the asymptotic behavior of the parameters realizing the approximating schemes in [12, 13], compared to the current state in literature. For the shallow approximation with smooth activation functions introduced in [13] based on trigonometric polynomials, we show exemplarily the negative result that, for the Gaussian and logistic activation function, the parameters realizing the approximating neural networks grow at least exponentially under mild assumptions. For the deep approximation introduced in [12] based on the ReLU activation function we provide a small modification with slightly increased depth, such that the realizing parameters of the modified approximating networks grow at most polynomially. A simplified version of our main result in this context, which is based on [12, Theorem 1.1], is given as follows.
+# Theorem (Simplification of Theorem 4). Let d, q ∈N and f ∈Cq([0, 1]d). Then for any N, L ∈N there exists a ReLU feed forward neural network fN,L with width of order N log N and depth of order L2 log L such that
+∥f −fN,L∥L∞([0,1]d) = O(N−2q/dL−2q/d).
+The parameters of the fN,L grow asymptotically as O(max(N(6q−3)/dL(6q−2)/d, N2L3)).
+Scope of the paper. In Section 2 we compare the result above to existing results in the literature. In Section 3 we provide our main results, in particular the analysis on the asymptotical behavior of the parameters of the approximation with deep networks introduced in [12]. In Appendix A we provide the proof of our negative result on the asymptotic behavior of the parameters for the approximation with single-hidden-layer introduced in [13].
+# 2 Comparison to existing literature
+This section provides works that also deal with the asymptotic behavior of realizing parameters of approximating networks and compares their result with ours. The work [2] considers the approximation of certain Sobolev-regular functions by shallow feed-forward tanh-type neural networks. In particular, the approximation result in [2, Theorem 5.1] is provided under parameters that grow at most polynomially in terms of the width. The work [1] deals with the approximation of H¨older-smooth functions by feed forward neural networks with piecewise polynomial activation functions amongst others. In [1, Theorem 2] the approximation result is achieved with uniformly bounded weights. For so-called (p, C)−smooth functions (see e.g. [11, Definition 1]) an approximation result with sigmoidal activation functions is provided in [11, Theorem 1] for at most polynomially growing parameters in terms of the width. In [7, Proposition 4.8] an approximation result for Sobolev-regular functions under activation functions enabling the construction of exact/exponential/polynomial partitions of unity (see [7, Definition 4.1]) is established with parameters bounded polynomially in terms of the number of non-zero weights. For comparing the above approximation result to ours, it is important that the functions that are approximated attain the same regularity, that the norm which measures the approximation error is the same or at least comparable, and that the hyperparameter of the approximating architecture with respect to which the approximation error decreases (e.g. width) is transformed to the same order of complexity. Consequently, we compare the approximation results for functions f ∈Cq([0, 1]d), since they meet the regularity requirements of [12] (smoothness), [2, 7] (Sobolevregularity) and [1, 11] (H¨older-regularity since the derivative of order q −1 is Lipschitz-continuous). A comparable norm for the approximation error in [1, 2, 7, 11, 12] is the supremum norm. A summary of the approximation results of the different works and of Theorem 4 is provided in Table 1 and Table 2. Note that the asymptotical bound for the approximation error of Theorem 4 in Table 1 holds for any δ ∈(0, 1) (as the logarithm of N grows slower than any positive power of N) and that the result in [1] is valid for q ≥3. Also note that, in Theorem 4, it is possible to vary the depth of the approximating architecture as opposed to the results in [1, 2, 11], but for the sake of comparison we consider a constant depth. The approximation error in Table 1 relative to the width of Theorem 4 is better than in [1, 2] but slightly worse than in [11]. Regarding the growth of parameters, in case 6q < 2d + 3, one can observe that the bound for Theorem 4 grows slower than of [2] except for the case q = 1, d = 2. In case 6q ≥2d + 3, the bound for Theorem 4 grows slower than of [2] except for d = 2 with q ∈{2, 3, 4} and d = 1
+For comparing the above approximation result to ours, it is important that the functions that are approximated attain the same regularity, that the norm which measures the approximation error is the same or at least comparable, and that the hyperparameter of the approximating architecture with respect to which the approximation error decreases (e.g. width) is transformed to the same order of complexity. Consequently, we compare the approximation results for functions f ∈Cq([0, 1]d), since they meet the regularity requirements of [12] (smoothness), [2, 7] (Sobolevregularity) and [1, 11] (H¨older-regularity since the derivative of order q −1 is Lipschitz-continuous). A comparable norm for the approximation error in [1, 2, 7, 11, 12] is the supremum norm. A summary of the approximation results of the different works and of Theorem 4 is provided in Table 1 and Table 2. Note that the asymptotical bound for the approximation error of Theorem 4 in Table 1 holds for any δ ∈(0, 1) (as the logarithm of N grows slower than any positive power of N) and that the result in [1] is valid for q ≥3. Also note that, in Theorem 4, it is possible to vary the depth of the approximating architecture as opposed to the results in [1, 2, 11], but for the sake of comparison we consider a constant depth. The approximation error in Table 1 relative to the width of Theorem 4 is better than in [1, 2] but slightly worse than in [11]. Regarding the growth of parameters, in case 6q < 2d + 3, one can observe that the bound for Theorem 4 grows slower than of [2] except for the case q = 1, d = 2. In case 6q ≥2d + 3, the bound for Theorem 4 grows slower than of [2] except for d = 2 with q ∈{2, 3, 4} and d = 1
+Result
+Width
+Depth
+Approximation
+Growth of parameters
+Activation
+Th. 4
+O(N)
+O(L)
+O(N
+−2q
+d(1+δ)L
+−q
+d(1+δ))
+O(N
+6q−3
+d L
+3q−1
+d
+∨N2L
+3
+2)
+ReLU
+[1]
+O(N)
+O(1)
+O(N−q/d)
+O(1)
+ReQU
+[2]
+O(N)
+3
+O(N−q/d)
+O(N(d+q2)/2)
+tanh
+[11]
+O(N)
+O(1)
+O(N−2q/d)
+O(N(16q+2d+9)/d)
+1
+1+exp(−x)
+<div style="text-align: center;">Table 1: Comparison of state of the art results on growth of parameters realizing approximations to f ∈Cq([0, 1]d) with normalized width.</div>
+Result
+Nonzero weights
+Approximation
+Growth of parameters
+Activation
+Th. 4
+O(W)
+O(W −q/d)
+O(W
+9q−4
+2d ∨7
+4)
+ReLU
+[7]
+O(W)
+O(W −q/d)
+O(W 4+2q/d)
+RePU, soft+
+Table 2: Comparison of state of the art result on growth of parameters realizing approximations to f ∈Cq([0, 1]d) with normalized number of nonzero weights.
+Table 2: Comparison of state of the art result on growth of parameters realizing approximations to f ∈Cq([0, 1]d) with normalized number of nonzero weights. with q ≤11. Regarding [11], one can observe that the growth of parameters in Theorem 4 is always slower than the one of [11]. Regarding a comparison to [1], it is interesting to see that [1] even yields uniformly bounded parameters in [−1, 1] (though with slightly worse approximation error compared to Theorem 4). In the following, we detail the main differences between the result of [1] and Theorem 4. One difference is that Theorem 4 allows for adjusting the depth of the approximating architecture, yielding a better approximation error. Furthermore, different regularity assumptions are required, in [1] a form H¨older-regularity whereas Theorem 4 requires smoothness of certain degree. Moreover, a key difference is that the result in [1] is based on the ReQU activation function σReQU(x) = (x ∨0)2 which is capable of approximating several higher order derivatives simultaneously. The approximation in [1] is essentially based on tensor-product splines, which are certain piecewise polynomials. The crucial point here is that the coefficients of corresponding normalized basis splines are a priori uniformly bounded in terms of the approximated function. The choice of the ReQU in [1] is therefore crucial as it can represent piecewise polynomials exactly, thus, in particular also the identity mapping and products. Expanding the approximating architecture yields that the parameters, which are contained in a compact set, can be restricted to the interval [−1, 1], respectively. The usage of ReQU in [1] is essential, as for the ReLU activation function, used in [12], approximability is only achievable in spaces W q,p([0, 1]d) for 0 ≤q ≤1 and 1 ≤p ≤∞(see [6]) due to the first order irregularity of the ReLU in zero. In ad-
+ition, the ReLU is only capable of approximating multiplications with decreasing rror and increasing architectures (see [12, Lemma 4.2]) as opposed to the ReQU.
+Finally, we compare the result in Theorem 4 to [7, Proposition 4.8] summarized in Table 2. Again we consider the approximation of some f ∈Cq([0, 1]d). As a consequence, the result in [7] yields that for ǫ > 0 and the number of nonzero weights being of order O(ǫ−d/q), the approximation error equals ǫ and the parameters are of order O(ǫ−2(1+2d/q)). Thus, if the number of nonzero weights is of order O(W) then the approximation error is of complexity O(W −q/d) and the parameters of order O(W 4+2q/d). The approximation result in Theorem 4 is formulated in terms of width N and depth L. Thus, the number of nonzero weights is of order O(NL). Identifying the product NL by W under N ≈L (and hence N, L ≈W 1/2) we derive that the growth of parameters in Theorem 4 given in Table 1 is of order O(W 9q−4 2d ∨7 4). As a consequence, for 18q ≤7d + 8 the upper bound of the parameters in Theorem 4 grows slower than that of [7]. In case 18q > 7d + 8 this applies only if 5q ≤8d + 4.
+In summary, compared to state of the art results, except for [1] where uniform boundedness is achieved by using ReQU activations, the bound on the parameter of Theorem 4 grows slower in most cases, depending on the input dimension an regularity of the approximated function.
+# 3 Growth of parameters of approximating neural networks
+# 3 Growth of parameters of approximating neural
+In this section we provide analytical results on the asymptotic behavior of the supremum norm of the parameters of two approximating fully connected feed forward neural network architectures based on [12]. For completeness, we first provide the definition of a fully connected feed forward neural network.
+Definition 1. Given L ∈N and nl ∈N for 0 ≤l ≤L, a fully connected feed forward neural network Nθ with activation function σ is defined as Nθ = LθL ◦ · · · ◦Lθ1 for Lθl : Rnl−1 →Rnl with Lθl(z) := σ(wlz + βl) for 1 ≤l ≤L −1 and LθL(z) := wLz + βL where θl = (wl, βl) with wl ∈L(Rnl−1, Rnl) ≃Rnl×nl−1, βl ∈Rnl for 1 ≤l ≤L. Further we define the depth of the network by D(N ) = L and width W(N ) = N = maxl nl. Denoting by FN N the class of fully connected feed forward neural networks and by Θ the class of parameter configurations θ =
+where ∥θ∥∞is the corresponding supremum norm for θ ∈�L l=1 Rnl×nl−1 × Rnl.
+� Note that it follows by standard arguments that the minimum in (1) is attained and hence the map P is well-defined. Furthermore, given N ∈FN N and a ˜θ ∈Θ with R(˜θ) = N it holds true that P(N ) ≤∥˜θ∥∞.
+The main goal of this work is to study the following problem: Given f ∈X , e.g. X = Cq([0, 1]d), assume that there exists c > 0 such that for all N, L ∈N there exists φN,L ∈FN N with width W(φN,L) = w(N) and depth D(φN,L) = d(L) fulfilling
+∥φN,L −f∥Y ≤c∥f∥XαX(N, L)
+with X ֒→Y, α : N2 →[0, ∞) monotonically decreasing in both components, and decreasing to zero in at least one component. In case the constant c is independent of f, N and L we write ∥φN,L −f∥Y ≲∥f∥XαX(N, L) for (2). Given this kind of approximation result, the question is how P(φN,L) behaves asymptotically for φN,L approximating f via the width N and/or the depth L going to infinity. Note that, in contrast to most works that deal with approximability in terms of width and depth of neural networks, we take such results as given and rather focus on the worst-case growth of the supremum of the parameters of the approximating neural network. As first example, we consider the classical approximation result of [13, Theorem 2.1] using single-hidden-layer neural networks. As the following (negative) result shows, the asymptotic growth of the network parameters highly depends on the way the neural-network approximation is constructed, and may even be exponential in some cases.
+Theorem 2. Let 1 ≤q ≤∞and f ∈W 1,∞([−1, 1]) be given as in (25). Then the single hidden layer feed forward neural networks (fN)N∈N as constructed in [13, Theorem 2.1] (see also (23)) with width of order O(N) and activation function given by either φ(x) = exp(−x2) or φ(x) = (1 + exp(−x))−1 fulfill
+Furthermore, there exists some c > 1 such that the realizing parameters of the (fN)N grow asymptotically as Ω(cN).
+(1)
+(2)
+Now we move to the case of deep-neural-network approximation and the main result of this paper. An important result in this context is provided in [12], which shows via an explicit construction, that fully connected feed forward neural networks with ReLU activation functions, with width of order N log(8N) and depth of order L log(4L), can approximate functions f ∈Cq([0, 1]d) with an error of order ∥f∥Cq([0,1]d)(NL)−2q/d. That is in (2) it holds X = Cq([0, 1]d), Y = L∞([0, 1]d) and αX(N, L) = (NL)−2q/d. The main result in [12] reads as follows Theorem 3. [12, Theorem 1.1] For f ∈Cq([0, 1]d) with q ∈N+ there exists some ReLU generated neural network φ with width W(φ) = O(N log N) and depth D(φ) = O(L log L) such that
+∥ −∥∥∥ Based on this approximation, the main result of this section is as follows. Theorem 4. Let d, q ∈N and f ∈Cq([0, 1]d). Then for any N, L ∈N there exists a ReLU feed forward neural network fN,L with width C1N log(8N) and depth C2L2 log(4L) such that
+∥ −∥∥∥ with C1, C2 > 0 independent of f, N and L. The parameters of the fN,L grow asymptotically as
+O(max(N(6q−3)/dL(6q−2)/d, NL(N + L2))).
+O In order to prove Theorem 4, we follow the construction for the proof of Theorem 3, which is based on the two main auxiliary results [12, Theorem 2.1 and Theorem 2.2] as follows. 1. The result in [12, Theorem 2.2] gives a constructive proof for approximating a given, sufficiently regular function on [0, 1]d with an approximation error of order (NL)−2q/d with a ReLU-neural-network with width O(N log N) and depth O(L log L) outside a trifling region
+2. The result [12, Theorem 2.1] then shows how such an approximation can be extended to approximate the function on all of [0, 1]d.
+3. Finally, in the main result [12, Theorem 1.1], the trifling region is chosen small enough, which infers the final asymptotic behavior of the network parameters in terms of N and L. Accordingly, our proof of Theorem 4 is divided into three subsections corresponding to the steps 1) - 3) above, where the main effort lies in the first step.
+(3)
+# 3.1 Estimation of P(φ) in [12, Theorem 2.2]: The approximating neural network of [12, Theorem 2.2] is given by
+ P The approximating neural network of [12, Theorem 2.2] is given by
+φ(x) := � ∥α∥1≤q−1 ϕ( 1 α!φα(Ψ(x)), Pα(x −Ψ(x)))
+for x ∈Rd, where the role of the subnetworks Ψ, Pα, φα, ϕ is as follows:
+• The ReLU FNN Ψ realizes projections of subcubes of [0, 1]d to exactly one corner of the subcube based on one-dimensional step functions ψ (see considerations on [12, Proposition 4.3] for ψ) • The ReLU FNN Pα achieves an approximation of multinomials of order at most q −1 (see [12, Proposition 4.1]). • The ReLU FNN φα achieves fitting partial derivatives of f of order at most q −1 at the corners of the subcubes to which Ψ projects to (see [12, Proposition 4.4]).
+The approximation error for φ as above is estimated in [12, Step 3, p. 25 ff], which essentially relies on the triangle inequality and the approximation properties of the single components. Figure 1 provides an overview of the relevant subresults derived in [12, 15, 16] for constructing φ as above. In the following we will not give and explain each of these subresults in detail, but rather refer to the original references [12, 15, 16]. Now we estimate the growth of the parameters in each of these subresults to finally estimate P(φ). In accordance with the chain of dependencies depicted in Figure 1, we start by analyzing [15, Lemma 2.1].
+Complexity estimation in [15, Lemma 2.1]: The result in [15, Lemma 2.1] shows that the set of continuous piecewise linear functions with N pieces mapping an interval to R is expressible by a single-hidden-layer ReLU network φ of width W(φ) = O(N). We restrict ourselves to two cases that occur in the subsequent results in [12, 15, 16], i.e., the general estimation of the growth of the parameters of the interpolating networks is not necessary. These two cases are covered by the following two lemmata.
+Lemma 5. Let ˜R ∈N, R > 0 and yk ∈R for 0 ≤k ≤˜R be given. Then there exists a single-hidden-layer ReLU network φ with width W(φ) = ˜R such that
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c72e/c72edd3a-b766-4ef7-95d5-a8501aed7945.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 1: Overview of structure of results in [12]</div>
+<div style="text-align: center;">φ(xk) = yk where xk = k/R for 0 ≤k ≤˜R, i.e., the xk are equidistantly distributed in the interval [0, ˜R/R]. Furthermore, the network φ fulfills</div>
+Proof. The network φ may be realized by φ(x) = W2 ReLU(W1x + b1) + b2 where by [15, Lemma 2.1] the parameters W1, b1, b2 can be chosen as W1 = (1, . . . , 1)T ∈ R ˜R×1, b1 = (−x0, . . . , −x ˜R−1)T. It remains to determine b2 and W2 and finally the asymptotical behavior of the parameters of φ. It is straightforward to show that, with b2 = y0 and for W2 = (w0, . . . , w ˜R−1) with
+and, for 1 ≤j ≤˜R −1,
+wj = 1 xj+1 −xj (yj+1−y0− j−1 � l=0 wl(xj+1−xl)) = R(yj+1−y0)− j−1 � l=0 wl(j−l+1) (4
+(4)
+we obtain in the previous Lemma that
+P(φ) ≲max(X, RY ).
+Next we consider a similar result generalized to certain inequidistant grids {xk}k of the interval [0, ˜R/R]. Note that the following Lemma is general enough to cover the instances in [12] used by [15, Lemma 2.1]. Lemma 6. Let ˜R ∈N, R > 0 and δ = 1 (c+1)R for some c ∈N be such that there exist m, n ∈N with 2 ˜R = m(n + 1) where n + 1 = 2p for some p ∈N. Let further the grid points {xk}k be given as x2k = k R for 0 ≤k ≤˜R and x2k−1 = k R −δ for 1 ≤k ≤˜R.
+Next we consider a similar result generalized to certain inequidistant grids {xk}k of the interval [0, ˜R/R]. Note that the following Lemma is general enough to cover the instances in [12] used by [15, Lemma 2.1].
+Lemma 6. Let ˜R ∈N, R > 0 and δ = 1 (c+1)R for some c ∈N be such that the exist m, n ∈N with 2 ˜R = m(n + 1) where n + 1 = 2p for some p ∈N. Let furth the grid points {xk}k be given as
+(5)
+
+(6)
+Assume that yk ∈R for 0 ≤k ≤2 ˜R are given. Then there exists a single-hidden layer ReLU network φ with width W(φ) = 2m such that φ(xj(n+1)) = yj(n+1) fo j = 0, . . . , m and φ(xj(n+1)+n) = yj(n+1)+n for j = 0, . . . , m −1. Furthermore, th network φ fulfills
+where X := max 0≤k≤2 ˜R |xk| and Y := |y0| + max 0≤k≤2 ˜R−1 |yk+1 −yk|.
+    Proof. We recall that interpolation is considered only in the points xj(n+1) fo j = 0, . . . , m and xj(n+1)+n for j = 0, . . . , m −1. Define
+z2j = xj(n+1), v2j = yj(n+1), for j = 0, . . . , m z2j−1 = xj(n+1)−1, v2j−1 = yj(n+1)−1, for j = 1, . . . , m.
+Then the network φ, realized in form of φ(x) = W2 ReLU(W1x + b1) + b2, has to fulfill the conditions φ(zk) = vk for 0 ≤k ≤2m. The parameters W1, b1, b2 may be chosen similarly as in the proof of Lemma 5 by W1 = (1, . . . , 1)T ∈R2m, b1 = (−z0, . . . , −z2m−1)T and b2 = y0. Then W2 = (w0, . . . , w2m−1)T is the unique solution of the linear system
+where Zij = zi −zj−1 if 1 ≤j ≤i ≤2m and 0 else, and Vi = vi −v0 fo i, j = 1, . . . , 2m. As it holds true that
+Noting that z2j+1−z2j = p R −δ = p(c+1)−1 R(c+1) and z2j −z2j−1 = δ under the assumption that δ = 1 (c+1)R for some c ∈N (yielding in particular, that cδ = 1 R −δ) the system may be extended to an equidistant system with linearly interpolated target data such that the considerations in the proof of Lemma 5 are applicable yielding
+Noting that z2j+1−z2j = p R −δ = p(c+1)−1 R(c+1) and z2j −z2j−1 = δ under the assumption that δ = 1 (c+1)R for some c ∈N (yielding in particular, that cδ = 1 R −δ) the system may be extended to an equidistant system with linearly interpolated target data such that the considerations in the proof of Lemma 5 are applicable yielding w2j+1 = (c + 1)R(v2j+2 −(1 + 1 p(c + 1) −1)v2j+1 + 1 p(c + 1) −1v2j), w2j = (c + 1)R( 1 (c + 1)p −1v2j+1 −(1 + 1 (c + 1)p −1)v2j + v2j−1). (11)
+(7)
+for
+(8)
+(9)
+(10)
+(11)
+Indeed, it is straightforward to verify that the explicit representations in (11) resolve the recursion in (10) and hence, solve (8). Consequently, we derive that
+This follows as w2j+1 and w2j for j = 0, . . . , m −1 given in (11) are bounded by (c+1)R( 1 p(c + 1) −1 max 0≤j≤m−1 |yj(n+1)+n−yj(n+1)|+ max 0≤i≤2 ˜R−1 |yi+1−yi|) ≤2(c+1)RY. For the last inequality note that maxj |yj(n+1)+n −yj(n+1)| ≤n maxi |yi+1 −yi| and
+Thus, using (12) together with the definition of X, Y in (7) we derive that P(φ) ≲max(X, cRY ).
+<div style="text-align: center;">Thus, using (12) together with the definition of X, Y in (7) we derive that P(φ) ≲max(X, cRY ).</div>
+Complexity estimation in [12, Lemma 5.4]: The result in [12, Lemma 5.4] is the same as [15, Lemma 2.2]. It shows that the set of continuous piecewise linear functions with m(n + 1) pieces mapping an interval (with increasing breakpoints xi and corresponding values yi ≥0 for 0 ≤i ≤m(n + 1)) to R is expressible by a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively. The underlying neural network φ may be realized in the form φ(x) = W3 ReLU(W2 ReLU(W1x+b1)+b2)+b3 where W1 ∈R2m×1, W2 ∈R(2n+1)×2m, W3 ∈ R1×(2n+1), b1 ∈R2m, b2 ∈R2n+1, b3 ∈R fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Our result on the growth of parameters of this network is as follows. Lemma 7. In the situation of Lemma 6 with yi ≥0 there exists a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively, fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Furthermore, it holds true that
+Complexity estimation in [12, Lemma 5.4]: The result in [12, Lemma 5.4] is the same as [15, Lemma 2.2]. It shows that the set of continuous piecewise linear functions with m(n + 1) pieces mapping an interval (with increasing breakpoints xi and corresponding values yi ≥0 for 0 ≤i ≤m(n + 1)) to R is expressible by a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively. The underlying neural network φ may be realized in the form φ(x) = W3 ReLU(W2 ReLU(W1x+b1)+b2)+b3 where W1 ∈R2m×1, W2 ∈R(2n+1)×2m, W3 ∈ R1×(2n+1), b1 ∈R2m, b2 ∈R2n+1, b3 ∈R fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Our result on the growth of parameters of this network is as follows. Lemma 7. In the situation of Lemma 6 with yi ≥0 there exists a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively, fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Furthermore, it holds true that P(φ) ≲max(X, c3nRY ) with X and Y defined as in (7). Inspecting the proof of [15, Lemma 2.2] one sees that the asymptotics of the parameter supremum of the parameters of φ is governed by the parameters W2 and b2. The reason is that W1, W3, b1, b3 can be chosen as W1 = (1, . . . , 1)T ∈R2m×1, b1 = (−x0, −xn, −xn+1, −x2n+1, . . . , −xm(n+1)−1) ∈R2m, W3 = (1, 1, −1, 1, −1, . . ., 1, −1) ∈R1×(2n+1),
+Lemma 7. In the situation of Lemma 6 with yi ≥0 there exists a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively, fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Furthermore, it holds true that
+with X and Y defined as in (7). Inspecting the proof of [15, Lemma 2.2] one sees that the asymptotics of the parameter supremum of the parameters of φ is governed by the parameters W2 and b2. The reason is that W1, W3, b1, b3 can be chosen as W1 = (1, . . . , 1)T ∈R2m×1,
+with X and Y defined as in (7). Inspecting the proof of [15, Lemma 2.2] one sees that the asymptotics of the parameter supremum of the parameters of φ is governed by the parameters W2 and b2. The reason is that W1, W3, b1, b3 can be chosen as W1 = (1, . . . , 1)T ∈R2m×1, b1 = (−x0, −xn, −xn+1, −x2n+1, . . . , −xm(n+1)−1) ∈R2m, R1×(2n+1)
+Inspecting the proof of [15, Lemma 2.2] one sees that the asymptotics of the parameter supremum of the parameters of φ is governed by the parameters W2 and b2. The reason is that W1, W3, b1, b3 can be chosen as W1 = (1, . . . , 1)T ∈R2m×1,
+b1 = (−x0, −xn, −xn+1, −x2n+1, . . . , −xm(n+1)−1) ∈R2m, W3 = (1, 1, −1, 1, −1, . . ., 1, −1) ∈R1×(2n+1),
+(12)
+# 
+b3 = 0 and contribute to the asymptotical behavior of P(φ) only in terms of X defined as in (6). Hence, in order to prove Lemma 7, we need to consider the construction of the
+b3 = 0 and contribute to the asymptotical behavior of P(φ) only in terms of X defined as in (6). Hence, in order to prove Lemma 7, we need to consider the construction of the parameters W2 and b2 in detail. These parameters are given in terms of the parameters of inductively constructed single-hidden-layer ReLU-networks g+ k , g− k for 1 ≤k ≤n and g0 via
+g+ k (x) = (W2)2k ReLU(W1x+b1)+(b2)2k, g− k (x) = (W2)2k+1 ReLU(W1x+b1)+(b2)2k+ for 1 ≤k ≤n, where (W2)j denotes the j-th row of W2. The single-hidden-layer ReLU networks are constructed to be linear on the intervals [xj(n+1), xj(n+1)+n] for 0 ≤j ≤m −1 and [xj(n+1)−1, xj(n+1)] for 1 ≤j ≤m such that, in the breakpoints xj(n+1) for 0 ≤j ≤m and xj(n+1)−1 for 1 ≤j ≤m, certain, in the following described, interpolation conditions are met. Let f0 be the piecewise linear continuous function fitting the data yi at xi for 0 ≤i ≤m(n + 1), which is linear on each of the subintervals [xi−1, xi] for 1 ≤ i ≤m(n + 1). The network g0 is constructed such that g0(xj(n+1)) = yj(n+1) for 0 ≤j ≤m and g0(xj(n+1)+n) = yj(n+1)+n for 0 ≤j ≤m −1. Given f0 and g0 the network f1 is defined by f1 := f0 −g0. Following [15, Lemma 2.2] the networks g+ k and g− k are constructed inductively for 1 ≤k ≤n as follows. Assuming fk to be given, the networks g+ k , g− k and fk+1 are determined by the following conditions. For each 0 ≤j ≤m if fk(xj(n+1)+k) ≥0 then g+ k , g− k must attain values at xj(n+1), xj(n+1)+n such that g+ k (xj(n+1)+k) = fk(xj(n+1)+k) and g+ k (xj(n+1)+k−1) = 0 and g− k ≡0 on [xj(n+1), xj(n+1)+n]. Else it holds true that fk(xj(n+1)+k) < 0. Then g+ k , g− k must attain values at xj(n+1), xj(n+1)+n such that g− k (xj(n+1)+k) = −fk(xj(n+1)+k) and g− k (xj(n+1)+k−1) = 0 and g+ k ≡0 on [xj(n+1), xj(n+1)+n]. Also, g+ k and g− k must be linear on [xj(n+1), xj(n+1)+n]. Finally, the function fk+1 is defined by
+fk+1 := fk −ReLU(g+ k ) + ReLU(g− k ).
+We proceed by considering the following auxiliary results which provide a more explicit form of fk and will be useful later for estimating fk(xj(n+1)+k) for 0 ≤k, l ≤ n. Recall that these values essentially describe the data which is interpolated in the construction of the g+ k and g− k , hence they determine W2 and b2. Let us introduce the shorthand notation f j k,l = fk(xj(n+1)+l) for 0 ≤k, l ≤n, 0 ≤ j ≤m. Then the f j k,l fulfill the following recursion. Lemma 8. In the situation of Lemma 6 let 2 ≤k ≤l ≤n and α = Rδ. If • k is even and l is even then f j  = f j  + k−l−2 f j .
+We proceed by considering the following auxiliary results which provide a more explicit form of fk and will be useful later for estimating fk(xj(n+1)+k) for 0 ≤k, l ≤ n. Recall that these values essentially describe the data which is interpolated in the construction of the g+ k and g− k , hence they determine W2 and b2. Let us introduce the shorthand notation f j k,l = fk(xj(n+1)+l) for 0 ≤k, l ≤n, 0 ≤ j ≤m. Then the f j k,l fulfill the following recursion.
+Lemma 8. In the situation of Lemma 6 let 2 ≤k ≤l ≤n and α = Rδ. If • k is even and l is even then f j k,l = f j k−1,l + k−l−2 2(1−α)f j k−1,k−1.
+• k is even and l is odd then f j k,l = f j k−1,l + k−l−3+2α 2(1−α) f j k−1,k−1. • k is odd and l is even then f j k,l = f j k−1,l + k−l−1−2α 2α f j k−1,k−1. • k is odd and l is odd then f j k,l = f j k−1,l + k−l−2 2α f j k−1,k−1. Proof. It holds true by the construction in [15, Lemma 2.2] that
+We determine ReLU(g+ k−1(xj(n+1)+l)) and ReLU(g− k−1(xj(n+1)+l)) in terms of fk−1 based on the setup of Lemma 6. For that, we recall that for k ≥1 if fk(xj(n+1)+k) ≥0 then g+ k , g− k must attain values at xj(n+1), xj(n+1)+n such that g+ k (xj(n+1)+k) = fk(xj(n+1)+k) and g+ k (xj(n+1)+k−1) = 0 and g− k ≡0 on [xj(n+1), xj(n+1)+n]. Note that g+ k and g− k are linear on [xj(n+1), xj(n+1) In case k is even, as then
+Note that then independently of the parity of k it holds g+ k (xj(n+1)+k) = fk(xj(n+1)+k and g+ k (xj(n+1)+k−1) = 0 as g+ k is linear on [xj(n+1), xj(n+1)+n]. If fk(xj(n+1)+k) < 0 then g+ k , g− k must attain values at xj(n+1), xj(n+1)+n such that g− k (xj(n+1)+k) = −fk(xj(n+1)+k) and g− k (xj(n+1)+k−1) = 0 and g+ k ≡0 on
+Note that then independently of the parity of k it holds g+ k (xj(n+1)+k) = fk(xj(n+1)+k and g+ k (xj(n+1)+k−1) = 0 as g+ k is linear on [xj(n+1), xj(n+1)+n].
+If fk(xj(n+1)+k) < 0 then g+ k , g− k must attain values at xj(n+1), xj(n+1)+n suc that g− k (xj(n+1)+k) = −fk(xj(n+1)+k) and g− k (xj(n+1)+k−1) = 0 and g+ k ≡0 o
+(13)
+[xj(n+1), xj(n+1)+n]. Note that g+ k and g− k are linear on [xj(n+1), xj(n+1)+n]. The concrete values are similar to those for the case fk(xj(n+1)+k) ≥0 with exchanged roles of g+ k , g− k and opposite signs.
+Returning to identity (13) without loss of generality it suffices to consider the case fk−1(xj(n+1)+k−1) ≥0. The reason is that both g+ k−1(xj(n+1)+l), g− k−1(xj(n+1)+l) ≥0 as l ≥k, the terms g+ k−1, g− k−1 occur in (13) with different signs and g− k−1(xj(n+1)+l) corresponds to g+ k−1(xj(n+1)+l) when applying the interpolation formula of g+ k−1 to −f j k−1,k−1 instead of f j k−1,k−1.
+As a consequence, we may reduce (13) to
+The next step is to write g+ k−1(xj(n+1)+l) as the linear interpolation between g+ k−1(xj( and g+ k−1(xj(n+1)+n). By the previous considerations in case of even k (odd k −1) it holds true that
+The next step is to write g+ k−1(xj(n+1)+l) as the linear interpolation between g+ k−1(xj(n+1) and g+ k−1(xj(n+1)+n). By the previous considerations in case of even k (odd k −1)
+Inserting even l it yields
+whereas odd l imply
+In case of odd k (even k −1) it holds true that
+Inserting even l it yields
+whereas odd l imply
+Together with equation (14) this concludes the result.
+(14)
+
+We proceed by showing how f j k,l can be reduced to an expression containing o evaluations of the form f j 1,i. Lemma 9. In the situation of Lemma 8 let 2 ≤k ≤l ≤n. If • k is even and l is even then f j k,l = f j 1,l −l−k+2 2(1−α)f j 1,k−1 + l−k+2α 2(1−α) f j 1,k−2. • k is even and l is odd then f j k,l = f j 1,l −l−k+3−2α 2(1−α) f j 1,k−1 + l−k+1 2(1−α)f j 1,k−2. • k is odd and l is even then f j k,l = f j 1,l −l−k+1+2α 2α f j 1,k−1 + l−k+1 2α f j 1,k−2. • k is odd and l is odd then f j k,l = f j 1,l −l−k+2 2α f j 1,k−1 + l−k+2−2α 2α f j 1,k−2. Proof. We prove the assertion via bilevel induction. Induction Start: For k = 2 and even l it follows by Lemma 8 and f j 1,0 = 0 that f j 2,l = f j 1,l − l 2(1 −α)f j 1,1 = f j 1,l −l −2 + 2 2(1 −α) f j 1,1 + l −2 + 2α 2(1 −α) f j 1,0. Similarly for odd l it follows
+Similarly for odd l it follows
+For k = 3 and even l we derive
+Similarly for odd l it follows
+Induction Step: If k + 1 is even and l is even we derive by Lemma 8 and th induction hypothesis that
+ − If k + 1 is even and l is odd we derive
+  Thus, the assertion holds also for k + 1 which finishes the proof.
+
+The case k = l yields the following identities. Corollary 10. In the situation of Lemma 8 for even k it holds true that
+Corollary 10. In the situation of Lemma 8 for even k it holds true that
+and for odd k that
+Having the above auxiliary results, we are now ready to prove Lemma 7.
+Proof of Lemma 7: It suffices to estimate ∥W2∥∞and ∥b2∥∞. Recall that the rows (W2)2k and entries (b2)2k correspond to the interpolation problem of g+ k and that the rows (W2)2k+1 and entries (b2)2k+1 correspond to the interpolation problem of g− k for 1 ≤k ≤n specified in the proof of Lemma 8 in the setup of Lemma 7. As a consequence, we may apply the result in Lemma 6. Here we have to be careful regarding the term Y . It is the absolute value of the first interpolated point plus the maximal distance between two consecutive targets for g+ k and g− k , respectively. In either case f j k,k < 0 or f j k,k ≥0 for 0 ≤k, l ≤n, 0 ≤j ≤m, it holds true that the distance between two consecutive targets (for both g+ k and g− k ) corresponding to (12) is bounded by
+ − The absolute value of the first interpolated point is bounded for both g+ k , g− k by
+As 0 < α = 1 c+1 ≤1 2 we obtain the estimation
+0 < α = 1 c+1 ≤1 2 we obtain the estimation
+By Lemma 6 the entries (b2)k of the parameter b2 are bounded by the absolute value of the first interpolated point given in (15). Again, as a consequence of Lemma 6, we obtain that
+for 1 ≤k ≤n. The next step is to describe the asymptotical behavior of the rows of W2 independently of the row-index. By (12) we have that |(W2)1|∞≤cR max j (|yj(n+1)+n −yj(n+1)|, |yj(n+1) −yj(n+1)−1|) ≲cnRY.
+(15)
+(16)
+As (b2)1 = y0 the same asymptotical upper bound applies to |(b2)1|∞too. F k = 1 it holds true that f j 1,1 = yj(n+1)+1 −g0(xj(n+1)+1). Using that
+we obtain
+|(W2)2|∞, |(W2)3|∞, |(b2)2|∞, |(b2)3|∞≲c2nR max j |f j 1,1| ≲c2nRY.
+Next we show this asymptotical behavior for general k ≥2. More concretely, we verify that for k ≥2 it holds that maxj |f j k,k| ≲cY and thu by (16) that
+The estimations max( 1−α α , α 1−α) ≤c and
+infer that
+max j |f j k,k| ≤3(c + 1)Y.
+<div style="text-align: center;">max j |f j k,k| ≤3(c + 1)Y.</div>
+Recalling that for k ≥2
+|(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲c2nR max j |f j k
+(17)
+f j k,k|
+we conclude that
+# |(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲c3nRY and finally, the growth of the parameters of φ is given by P(φ) ≲max(X, c3nRY ).
+Similar arguments yield the growth of parameters of the network in [15, Lemma 2.2] for an equidistant grid. Corollary 11. In the situation of Lemma 5 with yi ≥0 assume that there exist m, n ∈N with ˜R = m(n + 1). Then there exists a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively, fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Furthermore, it holds true that
+Similar arguments yield the growth of parameters of the network in [15, Lemma 2.2] for an equidistant grid.
+Corollary 11. In the situation of Lemma 5 with yi ≥0 assume that there exist m, n ∈N with ˜R = m(n + 1). Then there exists a two hidden layer ReLU network φ whose layers have widths 2m and 2n + 1, respectively, fulfilling φ(xi) = yi for 0 ≤i ≤m(n + 1). Furthermore, it holds true that
+P(φ) ≲max(X, nRY )
+with X and Y defined as in (6).
+Proof. The arguments are essentially the same as for the proof of Lemma 7. For that reason we omit an explicit proof since the more complicated inequidistant case is dealt with in Lemma 7. Nevertheless, we give the main steps.
+The main observation is that an inequidistant grid of the form given in Lemma 6 transforms into an equidistant grid of the form given in Lemma 5 for c = 1, though scaled. As a consequence, it holds true that α = Rδ = R/(2R) = 1/2. Following the proofs of Lemma 8, Lemma 9 and Corollary 10, one obtains that f j 0,0 = yj(n+1), f j 1,1 = (yj(n+1)+1 −yj(n+1)) −1 n(yj(n+1)+n −yj(n+1)) and for k ≥2 f j k,k = f j 1,k −2f j 1,k−1 + f j 1,k−2 for 0 ≤j ≤m. By (17) it follows that maxj |f j k,k| ≤6Y . Thus, as by Lemma 5 it holds true that |(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲nR max j |f j k,k| we conclude that |(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲nRY and finally, the growth of the parameters of φ is given by P(φ) ≲max(X, nRY ).
+The main observation is that an inequidistant grid of the form given in Lemma 6 transforms into an equidistant grid of the form given in Lemma 5 for c = 1, though scaled. As a consequence, it holds true that α = Rδ = R/(2R) = 1/2. Following the proofs of Lemma 8, Lemma 9 and Corollary 10, one obtains that f j 0,0 = yj(n+1), f j 1,1 = (yj(n+1)+1 −yj(n+1)) −1 n(yj(n+1)+n −yj(n+1)) and for k ≥2
+for 0 ≤j ≤m. By (17) it follows that maxj |f j k,k| ≤6Y . Thus, as by Lemma 5 it holds true that |(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲nR max j |f j k,k|
+we conclude that
+|(W2)2k|∞, |(W2)2k+1|∞, |(b2)2k|∞, |(b2)2k+1|∞≲nRY and finally, the growth of the parameters of φ is given by P(φ) ≲max(X, nRY ).
+
+# We conclude that for the equidistant grid in Corollary 11 the growth of parameters
+# We conclude that for the equidistant grid in Corollary 11 the growth of parameters amounts to
+# We conclude that for the equidistant grid in Corollary 11 the growth of parameters amounts to
+P(φ) ≲nRY
+P(φ) ≲nRY and for the special inequidistant grid in Lemma 7 to P(φ) ≲c3nRY.
+and for the special inequidistant grid in Lemma 7 to P(φ) ≲c3nRY.
+Complexity estimation in [12, Lemma 5.5]: The result in [12, Lemma 5.5] is the same as [16, Lemma 3.4]. It shows that a two hidden layer ReLU network with d−dimensional input and layers of width N and NL, respectively, of the form ˜φ(x) = W3 ReLU(W2 ReLU(W1x + b1) + b2) + b3, can be expressed by a ReLU network φ with d−dimensional input, width W(φ) = O(N) and depth D(φ) = O(L). More concretely, for g = ReLU(W1x+b1) and h = ReLU(W2g+b2) defining the outputs of the intermediate layers of ˜φ, the L + 1 intermediate layers of the proposed deep ReLU network φ of width O(N) and depth O(L) consist of expressions of the form g, hi, ReLU(si) and ReLU(−si) for 1 ≤i ≤L. Dividing W2 ∈RNL×N and b2 ∈RNL evenly into L parts W2,i ∈RN×N and b2,i ∈RN, respectively, the hi are obtained by hi = ReLU(W2,ig + b2,i) for 1 ≤i ≤L. Similarly dividing W3 ∈R1×NL evenly into parts of length N denoted by W3,i, the si are recursively defined by s0 := 0 and si := si−1+W3,ihi for 1 ≤i ≤L. We argue that the necessary parameters for constructing these expressions, determining the intermediate layers of φ, consist of entries of the parameters of ˜φ given by Wl, bl for l = 1, 2, 3. The parameters resulting in the output of the first intermediate layer of φ given by g are W1 and b1 as g = ReLU(W1x+b1). The output of the second layer is given by h1 and g and obtained by W2,1 and b2,1 due to the definition of h1 and constants given by ±1 as g = ReLU(g)−ReLU(−g). For 3 ≤i ≤L+1 the output of the i−th intermediate layer of φ is formed by ReLU(si−2), ReLU(−si−2), hi−1 and g. As a consequence of the previous considerations and recursion formula of the si, the parameters necessary to obtain the output of the i−th layer by the previous layer are W2,i−1, b2,i−1, W3,i−2 and constants given by ±1 (to map g to g and ReLU(si) with ReLU(−si) to si). Finally, the necessary parameters mapping the penultimate layer of φ to the output layer consisting of φ(x) = W3h + b3 = sL + b3 are b3, W3,L and again constants given by ±1. As a consequence, the asymptotical behavior of the parameters in [16, Lemma 3.4] is given by
+# P(φ) ≲P(˜φ) ≲max((|bi|∞)i=1,2,3, (|Wi|∞)i=1,2,3).
+Complexity estimation in [12, Proposition 4.3]: The result in [12, Proposition 4.3] shows that there exists a ReLU FNN φ with width W(φ) = O(N1/d) and depth D(φ) = O(L) realizing the step function fulfilling φ(x) = k if x ∈
+[ k K, k+1 K −δ1{k≤K−2}] for 0 ≤k ≤K −1 with K = ⌊N1/d⌋2⌊L2/d⌋. The cases d = 1 and d ≥2 are considered separately. Case d = 1: The network φ is given by φ(x) = φ1(x)L + φ2(x −M−1φ1(x)) where M = N2L and φ1, φ2 are defined as follows. The φ1 is a ReLU network with φ1(x) = m if x ∈[ m M , m+1 M −δ1{m≤M−2}] for 0 ≤m ≤M −1. The φ2 is a ReLU network with φ2(x) = l if x ∈[ l ML, l+1 ML −δ1{l≤L−2}] for 0 ≤l ≤L −2. In view of the considerations on [15, Lemma 2.2] we may apply Lemma 7 to φ1 with R = N2L, m = N, n = 2NL −1, Y = 1, X = 2, δ = 1 (c+1)R and thus, obtain
+Similarly for φ2 the result in Lemma 7 is applicable with R = N2L2, m = 1, n = 2L −1, Y = 1, X = 2, δ = 1 (c+1)R and hence,
+P(φ2) ≲c3N2L3.
+As we have discussed in the paragraph above, the application of [16, Lemma 3.4] to φ1, φ2 resulting in modified networks with W(φ1) = O(N), D(φ1) = O(L), W(φ2) = O(1) and D(φ2) = O(L), does not increase the complexity of the parameters such that by definition of φ (see also [12, Figure 13]) it holds true that
+P(φ) ≲c3N2L2(N + L)
+with W(φ) = O(N) and D(φ) = O(L).
+Case d ≥2: The result in Lemma 7 is applicable to φ with R = ⌊N1/d⌋2⌊L2/d m = ⌊N1/d⌋, n = 2⌊N1/d⌋⌊L2/d⌋−1, Y = 1, X = 2 and as a consequence,
+P(φ) ≲c3N3/dL4/d.
+Again the application of [16, Lemma 3.4] to φ resulting in a modified network with W(φ) = O(N1/d) and D(φ) = O(L) fulfilling the properties above does not increase the complexity of the parameters. Note that the asymptotical bound for d ≥2 applies also in the case d = 1 but is worse.
+Complexity estimation in [12, Lemma 5.6]: The result in [12, Lemma 5.6] is the same as [16, Lemma 3.6] and corresponds to a certain bit-extraction technique. More concretely, it shows that for given θm,l ∈{0, 1} for 0 ≤m ≤M −1, 0 ≤l ≤ L −1 with M = N2L there exists a ReLU network φ with W(φ) = O(N) and D(φ) = O(L) such that φ(m, l) = �l j=0 θm,j for 0 ≤m ≤M −1, 0 ≤l ≤L −1. The φ is given by φ(m, l) = φ2(φ1(m), l + 1) where φ1 is a ReLU network mapping m to the unique real number ym which has the coefficients (θm,l)0≤l≤L−1 in its
+binary representation and φ2 is a ReLU network mapping x, l to the sum of the first l coefficients of the binary representation of x. In view of the considerations on [15, Lemma 2.2] applying Lemma 7 to φ1 with R = 1, m = N, n = NL−1, Y ≤1, X = N2L yields P(φ1) ≲N2L. The application of [16, Lemma 3.4] to φ1 resulting in a modified network with W(φ1) = O(N) and D(φ1) = O(L) does not increase the complexity of the parameters. To analyze the parameters of the network φ2 with W(φ2) = O(1) and D(φ2) = O(L) we consider the transformations between the layers of φ2. For given (θl)1≤l≤L and ξj the real number attaining binary coefficients (θl)j≤l≤L the recursion formulas
+are shown to hold true in [16, Lemma 3.5]. Furthermore, for zl,j = ReLU(θj + ReLU(l −j + 1) −σ(l −j) −1
+zl,j = ReLU(θj + ReLU(l −j + 1) −σ(l −j) −1)
+zl,j = ReLU(θj + ReLU(l −j + 1) −σ(l −
+it is argued that �l j=1 θj = �L j=1 zl,j. The formulas (18)-(20) are employed in the intermediate layers of φ2 to generate ξj, θj, zl,j recursively for 1 ≤l ≤L and finally output �l j=1 θj = �L j=1 zl,j in the last layer. As a consequence, it holds true that P(φ2) ≲2L due to the multiplication by 2L occurring in the formulas (18) and 19. The fact that the complexity behaves asymptotically exponential in the depth L is undesirable. One can circumvent this by adapting the constructive proof of [16, Lemma 3.5] as follows. One can introduce a network φ3 of width equal to 2 and L layers with P(φ3) = 2 realizing the multiplication by 2L. Then the network φ2 can be modified by applying φ3 to ξj −1/2 (compare to formulas (18) and (19)) right before those intermediate layers of φ2 where θj and ξj+1 are generated for 1 ≤j ≤L. As a consequence in [16, Lemma 3.5] we obtain P(φ2) ≲L with modified φ2. Note that the depth of the modified network is no more linear in L but quadratic and given by L2 + L + 1 = O(L2) and similarly also for the network in [16, Lemma 3.6] which, with the modification above, fulfills
+# P(φ) ≲N2L.
+Complexity estimation in [12, Lemma 5.7]: The result in [12, Lemma 5.7] corresponds to a modified bit-extraction technique. More concretely, for N, L ∈N and θi ∈{0, 1} for 0 ≤i ≤N2L2 −1 the network φ realizes φ(i) = θi for 0 ≤i ≤N2L2 −1 with W(φ) = O(N) and D(φ) = O(L). The network φ fulfills φ(i) = φ1(ψ(i), i −Lψ(i)) −φ2(ψ(i), i −Lψ(i)) where φ1, φ2, ψ are defined as follows. Defining am,l := θi if i = mL + l for 0 ≤m ≤N2L −1, 0 ≤l ≤L −1, bm,0 = 0 and bm,l = am,l−1 for 0 ≤m ≤
+(18) (19)
+(20)
+N2L −1, 1 ≤l ≤L −1, the networks φ1, φ2 fulfill that φ1(m, l) = �l j=0 am,j and φ2(m, l) = �l j=0 bm,j for 0 ≤m ≤N2L −1, 0 ≤l ≤L −1. The asymptotics of the parameters of φ1, φ2 are governed under the previously discussed modifications in [12, Lemma 5.6] by the complexity P(φi) ≲N2L where W(φi) = O(N) and D(φi) = O(L2) for i = 1, 2. Finally, the ψ is a ReLU network with ψ(x) = m if x ∈[mL, (m + 1)L −1] for 0 ≤m ≤M −1. We may apply Lemma 7 to ψ with R = 1/L, m = N, n = 2NL −1, Y = 1, X = N2L2, δ = 1 = 1 (c+1)R, i.e., c = L −1, that P(ψ) ≲NL3. Again the application of [16, Lemma 3.4] resulting in a modified network ψ with W(ψ) = O(N) and D(ψ) = O(L) does not increase the complexity of the parameters. Thus, the growth of parameters of the realizing network in [12, Lemma 5.7] is given by P(φ) ≲NL(N + L2).
+Complexity estimation in [12, Proposition 4.4]: The result in [12, Proposition 4.4] shows that fitting partial derivatives of order at most q −1 at the corners of the subcubes to which Ψ projects to (see [12, Proposition 4.4]) is realizable by a ReLU FNN. More concretely, for N, L, s ∈N and 0 ≤ξi ≤1 for 0 ≤i ≤N2L2 −1 there exists a ReLU FNN φ with W(φ) = O(sN log N) and D(φ) = O(L2 log L) such that |φ(i) −ξi| ≤N−2sL−2s for 0 ≤i ≤N2L2 −1 and 0 ≤φ ≤1. For that, the ReLU FNN φj realizing φj(i) = ξi,j for 0 ≤i ≤N2L2 −1 are introduced for 1 ≤j ≤J := ⌈2s log(NL + 1)⌉where ξi,j ∈{0, 1} are such that the real number with binary coefficients given by (ξi,j)0≤j≤J approximates ξi with error bounded by 2−J. For ˜φ(x) := �J j=1 2−jφj(x) it follows by the considerations in the previous paragraph that P(˜φ) ≲NL(N + L2). Finally, the network φ is defined by φ(x) = min(ReLU( ˜ φ(x)), 1) which, as the minimum is expressable by ReLU FNN with parameters ±1 and constant architecture, fulfills the growth of parameters P(φ) ≲NL(N + L2).
+Complexity estimation in [12, Lemma 5.1]: The result in [12, Lemma 5.1] shows that the function x �→x2 may be approximated with error N−L on the unit interval by a ReLU FNN φ with width W(φ) = 3N and depth D(φ) = L. The network φ is given by φ(x) = x −�Lk i=1 2−2iTi(x) with k ∈N uniquely given such that (k −1)2k−1 + 1 ≤N ≤k2k and Ti sawtooth functions fulfilling Ti(l2−i) = 1 for odd 0 ≤l ≤2i and Ti(l2−i) = 0 for even 0 ≤l ≤2i. The complexity of φ is governed by the growth of parameters of the sawtooth function Tk. The reason is that T1, . . . , Tk which are generated in the first intermediate layer of φ, are transformed to the higher order Ti by application of Tk. By Lemma 5 as Tk(l2−k) = 1 for odd 0 ≤l ≤2k and Tk(l2−k) = 0 for even 0 ≤l ≤2k it follows that
+P(φ) ≲2k. By the choice of k it holds 2k ≤N and consequently the asymptotica behavior of the parameters of φ fulfills
+# P(φ) ≲N.
+Complexity estimation in [12, Lemma 5.2]: The result in [12, Lemma 5.2] shows that the function (x, y) �→xy may be approximated with error of order N−L on the unit square by a ReLU FNN φ with width W(φ) = 9N and depth D(φ) = L. For ψ denoting the network providing the result of the previous paragraph, the network φ is defined by φ(x, y) = 2(ψ( x+y 2 ) −ψ( x 2) −ψ( y 2)). As a consequence, we derive that the complexity of φ follows immediately by the considerations on [12, Lemma 5.1] and fulfills
+# P(φ) ≲N.
+Complexity estimation in [12, Lemma 4.2]: The result in [12, Lemma 4.2 shows that the function (x, y) �→xy may be approximated with error of orde N−L on a general square [a, b]2 by a ReLU FNN φ with width W(φ) = 9N +1 an depth D(φ) = L. For ψ denoting the network providing the result of the previou paragraph, the network φ is defined by
+φ(x, y) := (b −a)2ψ(x −a b −a , y −a b −a) + a ReLU(x + y + 2|a|) −a2 −2a|a|.
+Thus, we obtain that the complexity of φ follows immediately by the consideration on [12, Lemma 5.2] and fulfills
+Thus, we obtain that the complexity of φ follows immediately by the considerations on [12, Lemma 5.2] and fulfills P(φ) ≲N.
+Complexity estimation in [12, Lemma 5.3]: The result in [12, Lemma 5.3] shows that multivariable functions of the form (x1, . . . , xk) �→x1x2 . . . xk on the k−unit cube may be approximated with error of order N−7kL by a ReLU FNN φ with width W(φ) = O(N) and depth D(φ) = O(L). For φ1 denoting the the network providing the result of the previous paragraph, the networks φi are recursively defined by
+φi+1(x1, . . . , xi+2) := φ1(φi(x1, . . . , xi+1), ReLU(xi+2))
+for x1, . . . , xi+2 ∈R and φ is defined by φ := φk−1. Hence, the complexity of P(φ) is a direct corollary of the previous paragraph as the network in [12, Lemma 4.2] is self-composed k −1 times to obtain the network in [12, Lemma 5.3]. As a consequence, we derive that P(φ) ≲N.
+Complexity estimation in [12, Proposition 4.1]: The result in [12, Proposition 4.1] shows that multivariable polynomials P(x) = xα of d variables and degree ˜k := |α|1 ≤k can be approximated on the d−unit cube with error of order N−7kL by a ReLU FNN φ with width W(φ) = O(N + k) and depth D(φ) = O(k2L). Denoting by ψ the network providing the result of the previous paragraph and by L : Rd →Rk the affine linear map which will be recalled from [12, Lemma 5.3] in the following, the network φ is defined by φ = ψ ◦L. Given x ∈Rd, z ∈R ˜k is defined by zl = xj if �j−1 i=1 αi < l ≤�j i=1 αi for 1 ≤j ≤d, i.e., z is the entrywise replication of x with respect to α. Then x ∈Rd is mapped to (z, 1, . . . , 1)T ∈Rk by L. The affine linear map L can be expressed by a ReLU FNN where each nonzero scalar parameter is equal to 1. Thus, the complexity of P(φ) is a direct corollary of the considerations of the previous paragraph and fulfills
+P(φ) ≲N.
+# P(φ) ≲N.
+# Complexity estimation in [12, Theorem 2.2]: We recall that the approximating neural network in [12, Theorem 2.2] on Ω([0, 1]d, R, δ) with R = ⌊N1/d⌋2⌊L2/d⌋ is given by
+φ(x) := � ∥α∥1≤q−1 ϕ( 1 α!φα(Ψ(x)), Pα(x −Ψ(x)))
+for x ∈Rd, where the role of the subnetworks Ψ, Pα, φα, ϕ is as follows:
+• The ReLU FNN Ψ realizes projections of subcubes of [0, 1]d to exactly one corner of the subcube based on one-dimensional step functions ψ with Ψ(x) = (ψ(x1), . . . , ψ(xd))T/R for x ∈[0, 1]d (see considerations on [12, Proposition 4.3] for construction of ψ). The realized analysis revealed that the growth of parameters of Ψ fulfills
+P(Ψ) ≲c3N3/dL4/d.
+# P(Ψ) ≲c3N3/dL4/d.
+• The ReLU FNN Pα achieves an approximation of multinomials of order at most q −1 (see considerations on [12, Proposition 4.1]) and is shown in the complexity estimations above to fulfill
+# P(Pα) ≲N.
+• The ReLU FNN φα achieves fitting partial derivatives of f of order at most q −1 at the corners of the subcubes to which Ψ projects to (see considerations on [12, Proposition 4.4]). For the growth of parameters we derive P(φα) ≲NL(N + L2).
+The width of the realizing network fulfills W(φ) = O(qd+1N log(8N)) and the modified depth (see the considerations on the complexity estimation in [12, Lemma 5.6]) D(φ) = O(q2L2 log(4L)).
+This concludes the the considerations on [12, Theorem 2.2]. Next we analyze the growth of parameters of the network achieving an extension of the approximation to the whole domain based on [12, Theorem 2.1].
+# 3.2 Estimation of P(φ) in [12, Theorem 2.1]:
+The result shows that given f ∈C([0, 1]d) and a ReLU FNN ˜φ approximating f uniformly with error ǫ > 0 outside some trifling region (3) with respect to δ > 0 then there exists some ReLU FNN φ approximating f uniformly with error given by ǫ + dωf(δ) where the modulus of continuity ωf is defined as
+ωf(r) = sup{|f(x) −f(y)| : ∥x −y∥≤r, x, y ∈[0, 1]d}
+for r > 0. The approximating ReLU FNN φ is constructed as follows. Given ˜φ approximating f outside a trifling region (3) as in [12, Theorem 2.2], the networks φi for 0 ≤i ≤d are set as φ0 = ˜φ and inductively
+φi+1(x) = mid(φi(x −δei+1), φi(x), φi(x + δei+1))
+for 0 ≤i ≤d −1. Here, the median function mid is constructed by a ReLU FNN as mid(x1, x2, x3) = ReLU(x1+x2+x3)−ReLU(−x1−x2−x3)−max(x1, x2, x3)−min(x1, where max(x, y) = 1 2(ReLU(x+y)−ReLU(−x−y)+ReLU(x−y)+ReLU(−x+y)). Finally, the approximating ReLU FNN, including the trifling region, is given by φ = φd. As a consequence of the construction we derive immediately that P(φi+1) ≤max(P(φi), 1, δ).
+mid(x1, x2, x3) = ReLU(x1+x2+x3)−ReLU(−x1−x2−x3)−max(x1, x2, x3)−min(x1, x2, x3) where max(x, y) = 1 2(ReLU(x+y)−ReLU(−x−y)+ReLU(x−y)+ReLU(−x+y)). Finally, the approximating ReLU FNN, including the trifling region, is given by φ = φd. As a consequence of the construction we derive immediately that P(φi+1) ≤max(P(φi), 1, δ).
+P(φ) ≤max(P(˜φ), 1, δ) ≤P(˜φ)
+where in the last inequality we have used that 0 < δ < 1 and 1 ≤P(˜φ). Hence, the asymptotical behavior of the parameters of φ is governed by the suprema of the parameters of the reduced approximation ˜φ.
+This concludes the considerations on [12, Theorem 2.1] and shows that the approximating network φ constructed in [12] under the previously discussed modification attains an error of order N−2q/dL−2q/d + dωf(δ) for ǫ = N−2q/dL−2q/d and growth of parameters
+P(φ) ≲max(NL(N + L2), c3N3/dL4/d)
+P(φ) ≲max(NL(N + L2), c3N3/dL4/d) with width W(φ) = O(qd+13dN log(8N)) and depth D(φ) = O(q2L2 log(4L) + d).
+13dN log(8N)) and depth D(φ) = O(q2L2 log(4L) + d).
+# 3.3 Estimation of P(φ) in [12, Theorem 1.1]:
+ P Finally, in the main result [12, Theorem 1.1], the trifling region is chosen small enough (i.e., the parameter δ > 0 is chosen sufficiently small), to recover the approximation rate N−2q/dL−2q/d on the whole domain [0, 1]d in terms of the width N and depth L. Following the proof of [12, Theorem

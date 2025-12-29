@@ -1,0 +1,346 @@
+# Towards More Effective Table-to-Text Generation: Assessing n-Context Learning and Self-Evaluation with Open-Source Models
+Sahar Iravani, Zuse Institute Berlin, iravani@zib.de Tim O. F. Conrad, Zuse Institute Berlin, conrad@zib.de
+Abstract
+Table processing, a key task in natural language processing, has significantly benefited from recent advancements in language models (LMs). However, the capabilities of LMs in table-to-text generation, which transforms structured data into coherent narrative text, require an in-depth investigation, especially with current open-source models. This study explores the effectiveness of various in-context learning strategies in LMs across benchmark datasets, focusing on the impact of providing examples to the model. More importantly, we examine a real-world use case, offering valuable insights into practical applications. To complement traditional evaluation metrics, we employ a large language model (LLM) self-evaluation approach using chain-of-thought reasoning and assess its correlation with human-aligned metrics like BERTScore. Our findings highlight the significant impact of examples in improving tableto-text generation and suggest that, while LLM self-evaluation has potential, its current alignment with human judgment could be enhanced. This points to the need for more reliable evaluation methods.
+# 1 Introduction
+arXiv:2410.12878v1
+In today’s data-driven world, the ability to make informed decisions increasingly depends on our capacity to process and interpret structured data. As we engage with diverse forms of such data across various domains, there is a growing demand for methods that can transform complex, structured information into clear and accessible content [11, 18, 22]. An area that has received significant attention is table processing [4, 5, 12], driven by advances in language models (LMs), which have revolutionized numerous natural language processing (NLP) tasks [27, 12, 3, 33]. These models, trained on vast amounts of text, excel at recognizing patterns in language and applying them to a variety of applications. Among the most promising techniques for handling table-related tasks is the fine-tuning of pre-trained LMs on datasets designed for specific tasks [6, 20, 42]. However, identifying or developing a dataset that is appropriately tailored to the capabilities and requirements of LMs can be challenging. In response, researchers have explored in-context learning [3], a strategy where models are guided by tailored prompts and minimal examples, improving performance across a wide range of NLP challenges. This approach has been particularly effective in table-based tasks like question answering and fact-checking [5, 23]. Building on this, chain-of-thought prompting methods [35, 37] further empower LMs to perform complex reasoning tasks, enabling them to tackle challenges that require multi-step logic and in-depth understanding [13, 43, 39]. Despite these advancements, the potential of recent opensource LMs in generating narrative text from tabular data or
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d52e/d52e0148-db9f-4cfd-8bd7-d93aa46d9f1e.png" style="width: 50%;"></div>
+Figure 1: An example of in-context learning for table-to-text generation.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6bb3/6bb3d1d2-6966-4b1c-beaf-e4aa2b274f40.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a3bd/a3bdc10b-af23-4064-96c5-a2118a01303b.png" style="width: 50%;"></div>
+<div style="text-align: center;">: The real-world table-to-text generation scenario investigated in t</div>
+the table-to-text generation task remains underexplored. This task focuses in particular on extracting and verbalizing insights from tabular data into narrative text. Automating this process has far-reaching implications for fields such as healthcare, business intelligence, and academic research, especially in automated report generation and personalized data summaries. It minimizes manual effort, ensures real-time updates at lower costs, and enables more informed decision-making.
+In this study, our objective is to comprehensively explore the performance of in-context learning in the table-to-text generation task. An example of this task is presented in Figure 1. We investigate a real-world use-case scenario of generating biographies for mathematicians. For this use-case, structured (tabular) data is available from sources such as WikiData or the Mathematical Research Data Initiative consortium (MaRDI) which focuses on systematic management and utilization of mathematical research data [8]. We focus on optimizing prompting strategies, including zero-shot, single-shot, and few-shot approaches, to enhance table-to-text generation. By carefully selecting examples, we aim to improve model performance, leveraging recent advancements in in-context learning [5]. To evaluate the presented approach, we run experiments on two benchmark datasets: WikiBio [15] and ToTTo [26]. Here, table-to text generation is investigated in two scenarios: WikiBio, where the text is the description of a table, and ToTTo, where a sentence description is presented for a specific cell of the table. We also consider the concern that LMs may have been exposed to portions of public datasets, such as Wikipedia-based datasets, during training, which could inadvertently bias their performance and lead to inflated results. To address this, we evaluate the models on recent Wikipedia biography pages created after the public release of the language models used in this study. This approach mitigates the risk of data overlap, providing a more accurate reflection of the models’ unbiased capabilities in transforming structured data into narrative text. In addition to these datasets, we explore a specialized use case involving the MaRDI Portal [8] (as illustrated in Figure 2), which contains structured information on mathematicians and their contributions. This investigation provides a unique opportunity to apply table-to-text generation in a real-world scenario. The MaRDI use case is particularly challenging because the available (structured) data about a person can be
+incomplete, due to the way data are collected from various sources. We present how the choice of examples in the few-shot approach can lead to fewer hallucinations in a real-world table-to-text task, biography generation from tabular data. This comprehensive study allows us to better understand the strengths and limitations of LMs in diverse and complex environments, ultimately contributing to more effective and reliable table-to-text generation applications. Although many high-performing open-source language models exist, in this work we focus on two models: Llama 3 [10] and Phi-3 [1] which are good representative of the current landscape and allow us to allocate resources for comprehensive evaluations, including various in-context learning strategies and real-world use cases. Llama 3, as one of the largest open-source and most advanced models, provides insights on large-scale architectures in table-to-text generation. In contrast, Phi-3, a more lightweight model, allows us to examine performance relative to model size and efficiency. This combination allows us to explore a spectrum of capabilities and offers a balanced perspective on the effectiveness of model scales in practical applications.
+# 2 Methodology
+In-context Learning: To investigate the impact of in-context learning, we employed three approaches: zero-shot, single-shot, and few-shot prompting. For the zero-shot prompting, we provided the model with a simple instruction to generate text from the table without any examples. This approach allowed us to assess the model’s ability to perform the task without prior examples. In the single-shot approach, we added one example input and corresponding output before generating the text for the target table. In the few-shot approach, we supplied the model with three sets of examples. These approaches were used to evaluate how providing contextual examples influenced the model’s performance in generating accurate and contextually relevant text. Inspired by the study by Zhou et al. [44], we generated the initial prompts for our experiments using the well-established GPT-4 system. For each task, we began by providing GPT-4 with a simple task description and a single example from the dataset to generate initial prompts for other language models. However, the output from GPT-4 was not used without modification in all cases. The complexity of the task and the specific characteristics of the dataset often necessitated iterations on the generated prompts. We refined the prompts to ensure that the results were more closely aligned with our desired results. An example of this refinement within our MaRDI use case is as follows: one row in the dataset contains gender-related information, such as [ sex or gender | male ] (refer to Figure 4). Our initial experiment with the GPT4 generated prompt, resulted in generated text where the gender was explicitly linked to the scientist’s name, such as: Douglas Bate is a male researcher., which was not aligned with our objectives. Since we opted not to preprocess the data to remove such patterns, we instead added a refinement to the prompt: Generate the biography without directly mentioning the gender. This adjustment mitigated the issue without altering the dataset. Additionally, in the cases of single-shot and few-shot prompting, we manually selected examples from the ground truth samples to further guide the models. After evaluating the model’s performance across different samples in a zero-shot setting, we selected one high-quality example where the model performed well to serve as the prompt for single-shot learning. For the few-shot setup, we supplemented this optimal example with two additional examples where the model demonstrated moderate performance in the zero-shot scenario, as well as one example where the model performed poorly. This selection strategy ensured that a diverse range of samples was represented, allowing the model to generalize better across varying input complexities. We integrated these examples with natural language instructions. Since LMs process input in a linear, sequential text format, a common method, as highlighted in previous research [30, 31], is to linearize tables into a markdown structure. This is achieved by separating rows with new lines and using column separators (e.g., "|" ) between individual cells to maintain the table’s structure within the text sequence.
+# 2.1 Experimental Setup
+The experiments were conducted on a Linux based system having 16 CPU cores, 64 GB RAM, and a NVIDIA A100 GPU for model inference tasks. Language models were deployed using the Ollama framework (version 0.1.44) for model management and inference. We used Python 3.11 with the Langchain module (langchain community), enabling seamless loading and interaction with Ollama. We conducted experiments using two recent open-source language models, Llama 3 [10] with 70B parameters as a large language model (LLM) and Phi-3 [1] with 14B parameters as a small language model (SLM). This selection enabled a robust evaluation across different scales. LLaMA 3, developed by Meta AI, is known for its high optimization and performance across diverse NLP tasks. It employs a unique 128K tokenizer and grouped query attention to enhance inference speeds. The model is trained on 15 trillion tokens, emphasizing multilingual capabilities and advanced attention mechanisms. Microsoft’s Phi-3 is a compact language model optimized for both efficiency and high performance. Renowned for employing high-quality training datasets, Phi-3 utilizes a curated dataset that includes heavily filtered web data, curated educational materials, and synthetic data created by larger models. Despite its reduced parameter count, this model consistently surpasses larger counterparts in standard benchmarks, demonstrating its superior design and training methodology.
+# 2.2 Measurements
+BLEU [25] (Bilingual Evaluation Understudy) score evaluates the quality of machine-generated text by comparing them to one or more reference text. It works by calculating the overlap between small sequences of words, called n-grams, from the generated text and the reference texts. BLEU considers multiple n-gram lengths (e.g., single words, pairs of words, etc.) to capture different levels of similarity. To avoid giving too much credit for repeated words, BLEU uses a method called clipping, which limits how often n-grams are counted. Additionally, a brevity penalty is applied to gnerated text that are too short. The final BLEU score is the geometric mean of the n-gram precisions, weighted equally, and scaled by the brevity penalty. The BLEU score was initially introduced for the evaluation of machine translation but has since been widely adopted across various natural language processing (NLP) tasks. However, it exhibits limitations in effectively capturing semantic nuances and may not consistently correlate with human judgment, particularly in more complex NLP tasks [28, 14]. BERTScore [41] evaluates the semantic similarity between a candidate and reference sentence using token embeddings from pre-trained models like BERT. Unlike BLEU, BERTScore captures semantic meaning rather than exact word matches, providing a more nuanced assessment of text quality. To calculate BERTScore, both sentences are tokenized and embedded, and then cosine similarity is computed between each token in the candidate and every token in the reference. Precision is calculated by averaging the maximum similarity for each candidate token with respect to the reference, while recall averages the maximum similarity for each reference token with respect to the candidate. The final BERTScore is the harmonic mean (F1-score) of precision and recall.
+LLM Self Evaluation employs LLMs to evaluate the quality of a text based on a set of pre-defined criteria. We tested a LLM self-evaluation strategy inspired by the G-EVAL framework [21], which incorporates LLMs with chain-of-thought (CoT) reasoning [37]. We specifically tailored the evaluation template, originally developed for summarization tasks, to suit biography evaluation. G-Eval employed GPT-4 to generate CoT prompts and evaluate generated text based on four key criteria: fluency, relevance, consistency, and coherence. In this study, we instead employed Llama 3 to assess the generated biographies based on the GPT-4 generated criteria. We were particularly interested in determining whether LLM self-evaluation could be effectively used for table-to-text generation, especially for datasets like MaRDI that lack reference data to measure performance. Our goal was to assess the reliability of this evaluation method in scenarios where traditional metrics could not be applied, ensuring a comprehensive assessment even in the absence of benchmark data.
+# 2.3 Datasets
+The WikiBio dataset [16] consists of approximately 700,000 pairs of Wikipedia infoboxes and their corresponding biographical introductions. Each infobox is a structured collection of key-value pairs representing factual information (e.g., name, birth date, occupation), while the corresponding biography provides a natural language summary of these facts. The dataset is widely used in natural language generation tasks, specifically for table-to-text generation. WikiBio presents challenges such as maintaining factual fidelity, ensuring text fluency, and handling varying levels of detail across infoboxes, making it a suitable resource for evaluating table-to-text generation models. An example of this dataset is illustrated in Figure 3.
+# 2.3.2 Recent Wikipedia pages
+To ensure a fair evaluation of the latest language models, Llama 3 and Phi-3, we specifically designed a dataset similar to WikiBio, but with a critical distinction: it exclusively comprised Wikipedia biography pages created after June 2024. This selection criterion was pivotal because it coincides with the timeline after the public releases of Llama 3 in April 2024 and Phi-3 in May 2024. Consequently, this approach decreased the likelihood that the models had previously encountered the data during training (unless the recent Wikipedia pages were generated by these models themselves). By focusing on these newly generated pages, we aimed to provide a more accurate and unbiased assessment of the models’ capabilities in executing table-to-text generation tasks.
+# 2.3.3 MaRDI
+In our use case, we focused on generating biographical content from structured mathematical research data housed within the MaRDI Portal [8]. An example of this dataset is illustrated in Figure 4. This portal featured a rich knowledge graph that incorporated data from various mathematical sources such as DLMF, CRAN, PolyDB, swMATH, and zbMATH, which were still in the partial stages of integration. The objective was to automate the generation of detailed biographies for mathematicians and researchers by harnessing this structured data, thereby facilitating a more dynamic presentation of their contributions and impact within the mathematical community. As we do not have any reference biographies for this data, we evaluated the outcomes manually and with the LLM self-evaluation method across relevance, fluency, consistency, and coherence metrics. For this dataset, we implemented the zero-shot prompting strategy, similar to our approach with other datasets. However, since we lacked existing examples for single-shot and few-shot prompting, we adopted this strategy: first, we generated initial outputs using the zero-shot method. We then manually modified selected samples. For the single-shot prompting, we used one example of a well-constructed biography to provide a clear standard for the model to follow when generating new outputs. Our experiments revealed that most hallucinations occurred in cases where the information was incomplete or missing. Therefore, to select the most effective examples for few-shot prompting, we included both the samples where the model performed well, to serve as a template for replicating success in other cases, and those samples that contained significant errors, requiring substantial editing to serve as an example. By including both successful outputs and those with significant errors, we aimed to guide the model on how to handle such situations and cover variety in the data.
+# 2.3.4 ToTTo
+The ToTTo dataset [26] is a large-scale corpus for table-to-text generation, containing over 120,000 examples of Wikipedia tables paired with human-written descriptions. It focuses on generating fluent and factually accurate natural language summaries from specific subsets of tables, where relevant cells are annotated to guide the content selection process. ToTTo addresses key challenges such as content selection, fluency, and factual accuracy, making it a critical benchmark for models designed to convert structured table data into coherent text. Our aim in running the experiment on this task was to observe how well LMs could understand where to focus within the table to produce accurate and relevant descriptions. An example of this dataset is illustrated in Figure 5.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/e281/e281bef2-be15-4d81-bf7e-87d62f609e4d.png" style="width: 50%;"></div>
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5f09/5f09438a-6c77-4b98-81d2-d9275081bc28.png" style="width: 50%;"></div>
+
+Figure 3: An example in the Wikibio dataset: the pairs of infobox and biographical introductions. The goal of the task is given the infobox, generate a biography style description. The biography generated by our pipeline is: “Curtis Wright (born June 6, 1955, in Huntingdon, Pennsylvania, United States) is a country singer-songwriter. He has been active in the music industry since 1989 and is known for his solo performances as well as his work with various associated acts such as Vern Gosdin, Robert Ellis Orrall, Shenandoah, and others. Wright’s music career has spanned multiple decades, during which he has released albums under labels including MCA/Airborne and has been part of groups like Orrall & Wright, Free Falls, Cumberland Road, Liberty, and Giant.” [16].
+
+<div style="text-align: center;"></div>
+Figure 5: Example in the ToTTo dataset: a pair of table with highlighted cells and hand-crafted referenc descriptions. The goal of the task is given the table, table metadata (such as the title), and set of highlighte cells, to produce a description. [26]. The description generated by our pipeline is: “In the 2015 TV serie “The Returned”, Renn Hawkey played the role of Paul Koretsky.”
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cca8/cca8dfcc-a2f8-4e25-84d0-bf008d9c04f8.png" style="width: 50%;"></div>
+Figure 4: An example in the Mardi dataset. The biography generated by our pipeline is: “Douglas Bates is a researcher who holds degrees from two esteemed institutions: University of California, Los Angeles and Queen’s University. Throughout his career, Douglas has been affiliated with several prestigious organizations, including the University of Wisconsin–Madison and the University of Alberta. As an accomplished researcher, he has guided numerous students in their doctoral studies, including Christian Ritter, William Whipple Neely, Mary Judith Lindstrom, Saikat Debroy, Sandra Jane Martin, Jos´e C. Pinheiro, Yuhwen Soo, Dennis A. Wolf, Gunseog Kang, and Andrzej P. Jaworski. Notably, Douglas has been recognized as a Fellow of the American Statistical Association and is an active member of the organization.”
+# 3 Results
+In this section, we present the experimental results, benchmarking the performance of our pipeline across multiple datasets. Figures 3,4, and 5 provide illustrative examples of the pipeline’s output, demonstrating its effectiveness across diverse datasets. Additionally, Figure 7 highlights the impact of example selection in fewshot prompting, showcasing how carefully chosen examples enhance the relevance of the generated outputs. In the following subsections, we provide a detailed walkthrough of the benchmarking results, underscoring the robustness and versatility of the pipeline in benchmark datasets and a real-world application.
+# 3.1 WikiBio
+Table 1 presents the comparison study of the zero-shot, single-shot and few-shot prompting on the WikiBio dataset. BLEU scores and BERTScores show incremental performance improvement with Llama 3 by employing examples in the prompt. However, Phi-3, as a SLM, exhibited comparatively less benefit. We also conducted a manual evaluation of 10 randomly selected samples. While Llama 3 demonstrated slight improvements and a reduction in hallucinations, no enhancement in the quality of biographies was observed when examples were provided to the Phi-3 model. To ensure that this difference in performance was not due to Phi-3 having already been exposed to the data during its training (which could diminish the impact of additional examples) we conducted experiments on recently added Wikipedia pages. The LLM self-evaluation results in Table 1 across fluency, relevance, consistency, and coherence did not show any agreement with the quantitative measurements. In many cases, the self-evaluation scores were close to the maximum possible values, providing little meaningful differentiation between the different prompting strategies. We were more interested to see if these metrics had any agreement with BERTScores that have been shown to correlate well with human judgment. In Figure 6 the correlation heatmap of all metrics are illustrated. As evident, the self-evaluation metrics do not show any agreement with Bertscores. We further examined this discrepancy using recent Wikipedia pages to gain a better understanding of its applicability in table-to-text generation tasks.
+# 3.2 Recent Wikipedia pages
+Table 2 presents the comparison study of the zero-shot, single-shot, and few-shot prompting on recent Wikipedia pages. According to this table, the few-shot approach generally outperforms zero-shot and singleshot approaches across most metrics in both Llama 3 and Phi-3 models. This suggests that incorporating a few examples into the model’s training or inference process could enhance its performance. The performance improvements are notably more pronounced with Llama 3 compared to Phi-3. By manually comparing the 10 randomly selected samples we also noticed more considerable improvement with Llama 3 than Phi-3.
+<div style="text-align: center;">Table 1: Comparison study of different prompting strategies on the WikiBio dataset.</div>
+Llama 3
+Phi-3
+Metrics
+Zero Shot
+Single Shot
+Few Shot
+Zero Shot
+Single Shot
+Few Shot
+Relevance
+4.996
+4.984
+4.982
+4.917
+4.702
+4.649
+Fluency
+2.926
+2.972
+2.968
+2.469
+2.432
+2.603
+Consistency
+4.998
+4.990
+4.982
+4.817
+4.568
+4.534
+Coherence
+4.961
+4.970
+4.959
+4.945
+4.622
+4.728
+BLEU
+0.401
+0.411
+0.422
+0.470
+0.407
+0.356
+BLEU2
+0.381
+0.391
+0.408
+0.460
+0.397
+0.346
+BLEU3
+0.312
+0.322
+0.341
+0.230
+0.371
+0.287
+BLEU4
+0.256
+0.267
+0.285
+0.348
+0.309
+0.235
+BERTScore Precision
+0.543
+0.557
+0.577
+0.533
+0.557
+0.523
+BERTScore Recall
+0.622
+0.651
+0.657
+0.632
+0.641
+0.638
+BERTScore Mean
+0.573
+0.592
+0.606
+0.571
+0.587
+0.566
+Llama 3
+Phi-3
+Metrics
+Zero Shot
+Single Shot
+Few Shot
+Zero Shot
+Single Shot
+Few Shot
+Relevance
+5.000
+4.94
+5.000
+4.938
+5.000
+4.706
+Fluency
+2.875
+2.938
+3.000
+2.625
+2.389
+2.353
+Consistency
+5.000
+4.750
+5.000
+5.000
+4.889
+4.765
+Coherence
+5.000
+4.938
+5.000
+5.000
+4.944
+4.941
+BLEU
+0.417
+0.413
+0.489
+0.405
+0.425
+0.410
+BLEU2
+0.367
+0.363
+0.429
+0.355
+0.385
+0.380
+BLEU3
+0.301
+0.301
+0.358
+0.293
+0.316
+0.315
+BLEU4
+0.250
+0.253
+0.305
+0.244
+0.262
+0.263
+BERTScore-Precision
+0.506
+0.512
+0.546
+0.515
+0.530
+0.519
+BERTScore-Recall
+0.594
+0.609
+0.620
+0.599
+0.592
+0.601
+BERTScore-Mean
+0.542
+0.552
+0.577
+0.549
+0.556
+0.554
+Figure 6 shows the correlation heatmap of all metrics across different prompting settings. It can be seen that there is a strong correlation between BLEU scores and BERTScores, indicating a consistent pattern, especially with the Llama 3 model. However, while a closer correlation between LLM self-evaluation metrics and other metrics is observed with Llama 3, it does not exhibit a meaningful relationship, as it does not follow any consistent pattern. Additionally, the strong internal correlation between the self-evaluation metrics does not provide any significant insights, as the differences in scores were too small to be considered meaningful, according to Table 1 and Table 2. The self-evaluation scores mostly show the maximum values, indicating the LLM’s tendency to prefer its own generated texts.
+# 3.3 MaRDI
+Figure 4 presents a table data extracted from MaRDI Portal on the first row and the generated biography using few-shot prompting with Llama 3 on the second row. This example demonstrates the model’s ability to accurately interpret the properties and values without generating hallucinations. The resulting biography is coherent, consistent, and easy to read and understand and covers the information provided in the table. We manually observed that the few-shot approach, when provided with well-crafted demonstrative examples significantly reduced hallucinations in generated text. This reduction was evident not only when compared to the zero-shot approach but also when compared to the single-shot approach, where the model was only shown one pair of table and biography. Notably, Llama 3 demonstrated a lower incidence of hallucinations, particularly in cases of missing information. This finding underscores the importance of careful selection of demonstrative examples to cover similarity and diversity. Figure 7 illustrates an example of how different prompting strategies can lead to better outcomes when dealing with incomplete information. Compared to the example shown in Figure 4, the structured data in this example contains only a few properties. In the zero-shot scenario, the model generated content that is not relevant to the provided table, leading to hallucinations. The single-shot approach mitigates these hallucinations, guided by a well-crafted example that sets a clear standard for what a good biography should look like. The few-shot approach, however, performed best, as it effectively avoids adding extraneous information. This success is likely due to one of the examples in the few-shot prompt including missing information, which helped the model learn to avoid generating unrelated content, which is highlighted in the last row of Figure 7. However, we manually observed that Phi-3 was less responsive to these examples and continued to generate unrelated text in similar cases. The improvement with Llama 3 based on our manual evaluation contrasts with the results presented in table 3, which shows the LLM self-evaluation on the MaRDI dataset. This table shows that the differences between zero-shot, single-shot, and few-shot strategies across various metrics are relatively small. We highlighted this contrast in second row of Figure 7 for the corresponding MaRDI example in the first row. Despite the evident improvement in the generated output using the few-shot prompt using Llama 3, the LLM self-evaluation does not reflect these differences. Based on the MaRDI evaluation and other results from
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/12f9/12f9e88f-650f-4449-853f-e2b767e4004d.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8429/84298c27-1c01-40ae-a9b2-89336b0c8cc4.png" style="width: 50%;"></div>
+<div style="text-align: center;">WikiBio (Llama 3)</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5a18/5a18c54f-26b0-4771-9ada-243a9887d17d.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cb9c/cb9cd698-fc7b-419e-b8dc-ae41b4713997.png" style="width: 50%;"></div>
+<div style="text-align: center;">Recent Wikipedia pages (Llama 3)</div>
+Figure 6: Correlation matrix comparisons of all metrics across different prompting strategies on the WikiBio and recent Wikipedia datasets using Llama 3 and Phi-3 models.
+<div style="text-align: center;">Figure 6: Correlation matrix comparisons of all metrics across different prompting strategies on the WikiBio and recent Wikipedia datasets using Llama 3 and Phi-3 models.</div>
+the Wikipedia leading paragraph, it can be concluded that the LLM self-evaluation method still lacks th sensitivity needed to detect meaningful distinctions in performance. These findings suggest that, althoug LLM self-evaluation shows potential in other domains [44], the current approaches may not yet be full reliable for assessing table-to-text generation tasks.
+<div style="text-align: center;">Table 3: Comparison study of different prompting strategies on MaRDI with LLM self-evaluation.</div>
+Metrics
+Llama 3
+Phi-3
+Zero Shot
+Single Shot
+Few Shot
+Zero Shot
+Single Shot
+Few Shot
+Relevance Score
+4.827
+4.820
+4.860
+4.900
+4.600
+4.800
+Fluency Score
+3.000
+2.973
+2.747
+2.980
+2.943
+2.947
+Consistency Score
+4.436
+4.547
+5.000
+4.613
+4.147
+4.493
+Coherence Score
+5.000
+4.947
+4.527
+4.980
+4.886
+4.927
+# 3.4 ToTTo
+Table 8 demonstrates the comparison study of the zero-shot, single-shot, and few-shot prompting on the ToTTo dataset using Llama 3 and Phi-3 models. The results indicate that Llama 3 benefits more from the
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/311e/311ebaf3-a79d-4233-80d0-8b9521cd8060.png" style="width: 50%;"></div>
+<div style="text-align: center;">WikiBio (Phi-3)</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9e8e/9e8ed81b-150d-4698-ac81-946e3ec5cc50.png" style="width: 50%;"></div>
+<div style="text-align: center;">Recent Wikipedia pages (Phi-3)</div>
+igure 7: An example of a MaRDI Person Profile with lacking information. The output shows how the w-shot approach helps reduce hallucination with Llama 3. This affects the Phi-3 less.
+Property
+Value
+MaRDI profile type
+MaRDI person profile
+educated at
+´Ecole nationale du g´enie de l’eau et de l’environnement de Strasbourg
+given name
+David
+instance of
+human
+occupation
+researcher
+sex or gender
+male
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/04fb/04fbea8c-4fc8-475c-a863-fe8b5d0c5566.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/028a/028a800d-7364-410f-a6c6-7cec6730ed71.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a9fa/a9fa4fa0-a9e1-4b27-a54b-4b68b3a6653c.png" style="width: 50%;"></div>
+<div style="text-align: center;">Phi-3</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/396d/396d5154-586d-4104-9090-1923c56e1ce7.png" style="width: 50%;"></div>
+Llama 3
+Phi-3
+Metric
+Zero-
+shot
+Single-
+shot
+Few-
+shot
+Zero-
+shot
+Single-
+shot
+Few-
+shot
+BLEU
+0.585
+0.545
+0.635
+0.560
+0.610 0.601
+BLEU2 0.541
+0.506
+0.597
+0.513
+0.576 0.554
+BLEU3 0.487
+0.464
+0.551
+0.461
+0.519 0.498
+BLEU4 0.446
+0.431
+0.514
+0.421
+0.476 0.456
+<div style="text-align: center;">Figure 9: Effect of Human-Crafted Prompts Versus GPT-4-Generated Prompts.</div>
+few-shot approach compared to Phi-3, which aligns with findings from other experiments. The reduction in Phi-3’s performance with the few-shot method, as opposed to single-shot, mirrors a similar trend observed in recent Wikipedia pages (Table 2) as well. This reduction can likely be attributed Phi-3’s sensitivity to context length. Including multiple examples in the prompt might create a context that is too lengthy for Phi-3, as an SLM, to effectively process and understand, although it has the same context length as Llama 3. Our manual evaluation of 10 randomly selected samples further supports this, as the samples generated using the few-shot approach with Llama 3 showed noticeable improvements in the quality. We mentioned earlier that we modified the human-crafted prompts for the language models using GPT-4, and for ToTTo dataset we made an attempt to compare the original prompt with the modified prompt in Figure 9. The results indicate that the performance of both Llama 3 and Phi-3 models improved with GPT-4-modified prompts compared to the human-crafted ones.
+# 4 Related Work
+The notable advancements in LMs [34, 2, 1, 32] have driven a major shift in the fields of controllable text generation and data interpretation. Leveraging these developments, recent research has explored table processing across various scenarios, including question answering [7], fact checking [9], and real-world information seeking [43]. While fine-tuning models [6, 20, 42] on specific tasks remains popular, it often requires substantial amounts of high-quality data. Moreover, these table-based tasks encompass a wide variety of input-output formats and domains, presenting significant variability across task types. Studies such as UnifiedSKG [38] have aimed to standardize diverse table-based tasks by converting them into a unified textto-text format. Instruction-tuning is another promising approach, as explored by models like TableLlama [40] and Table-GPT [19]. This approach involves constructing instruction tuning datasets and continuing the pretraining LMs, such as Llama 2 (7B) [34] in TableLlama and GPT-3.5 in Table-GPT. While instruction-tuning has demonstrated promising results and enhanced generalization capabilities, the process of curating new datasets and pretraining large models comes with significant computational and resource costs. Moreover, instruction-tuning does not consistently outperform the fine-tuning of smaller, pre-trained language models in terms of accuracy. Previous research [17] suggests that across various metrics and domains, there is no definitive advantage of LLM-based solutions over pre-LLM approaches. Although Table-GPT demonstrates superior performance on table-related tasks compared to GPT-3.5 and ChatGPT through continued training on GPT-3.5, the associated training costs remain a prohibitive factor for many enterprises looking to deploy models privately. Despite these efforts, recent findings [5, 22] indicate that LMs, through in-context learning, can outperform fine-tuned models on table-processing tasks. In contrast to fine-tuning, in-context learning (1) requires only a few annotations or demonstrations as prompts, and (2) conducts inference without modifying the model parameters, reducing the need for extensive fine-tuning. The effectiveness of in-context learning largely depends on how well demonstrative examples are selected and organized within the prompt. For instance, Nan et al. [24] suggest that to improve the text-to-SQL capabilities of LMs, it is important to consider not only similarity but also diversity among the examples. We explored this potential in our
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/19ba/19ba9865-bb08-4dae-b7aa-86551cc089d9.png" style="width: 50%;"></div>
+MaRDI use case. In-context learning approaches heavily studied the superiority of GPT families (GPT3, 3.5, 4 and ChatGPT) [5, 43] for various table processing tasks. We based our experiment on open-source models that can be run locally, alleviating concerns around privacy and the high costs. Additionally, we specifically targeted the table-to-text generation task, which remains surprisingly underexplored in the current literature. Another factor of the effectiveness of in-context learning is the unpredictability of plain language prompts. Plain language prompts may fail to produce desired results, requiring users to experiment with various instructions [29, 36]. This is due to the lack of transparency in how LMs process the instructions for the human. We modified human-crafted prompts using stronger LMs like GPT-4 to instruct other LMs and explored its potential in ToTTo data analysis to improve the outcomes. This approach does not raise concerns about data privacy or higher costs, as the prompts are only used once and solely for describing the task to the other LMs.
+# 5 Discussion & Conclusion
+In this study, we employed a comprehensive prompting strategy across multiple datasets to evaluate two language models, an LLM and an SLM, for table-to-text generation tasks. Our aim was to assess the models’ effectiveness in both standard and real-world applications, including the WikiBio, ToTTo datasets, and our use case MaRDI data. This study suggests that language models can benefit from in-context learning by providing a set of proper examples to the model for table-to-text generation. We investigated the potential influence of prior data exposure using the WikiBio dataset. To address this, we retrieved recent Wikipedia pages and formatted them similarly to the WikiBio dataset, then conducted experiments on this newly retrieved data. The key finding from this study (Tables 1 and 2) was that we observed a more significant improvement in biography generation on the recent Wikipedia pages compared to the WikiBio dataset. We attribute this effect to the likelihood that the language models had not encountered the recent data during training, making the impact of providing examples in the prompts more pronounced. This conclusion was supported by both automated metrics and manual evaluations. We compared the performance of Llama 3, as an LLM, with Phi-3, an SLM. As expected, Llama 3 generally outperformed Phi-3 across various settings and datasets, reflecting the advantages of larger models in table-to-text tasks. However, the primary goal of this comparison was to analyze how both models responded to few-shot prompting. While both improved with the inclusion of examples, Llama 3 showed consistently greater benefits from additional examples. Notably, in our experiments with the MaRDI dataset, a real-world application, Llama 3 demonstrated a significant reduction in hallucinations, an improvement not observed with Phi-3 (Figure 7). We studied the potential of LLM self-evaluation with CoT reasoning for measuring the table-to-text generation task using Llama 3, a powerful open-source LLM. Specifically, we aimed to assess the correlation of this metric, which does not require a ground truth for comparison, with BERTScore, which is known to align well with human judgment. Interestingly, despite the potential of this strategy in other tasks [21], our study revealed that the self-evaluation strategy showed weak or no meaningful correlation with BERTScore (Figure 6). To investigate further, we analyzed the MaRDI dataset and manually observed a significant reduction in hallucinations when comparing the few-shot approach to the zero-shot method. However, despite this noticeable improvement, the LLM self-evaluation metrics showed minimal variation and failed to reflect the relevance between the provided table and the corresponding generated biography (Figure 7). These results suggest that the current state-of-the-art LLM self-evaluation strategy, even with advanced open-source models like Llama 3, is not yet reliable for measuring table-to-text generation tasks. This can be explained by either the LLM favors their own generated outputs or failing to establish a meaningful connection between the table and the generated text. In future work, we will explore providing observatory examples for evaluation model that might improve the alignment between LLM self-evaluation and human judgment. Table processing studies have often demonstrated LM performance on benchmark datasets that are known to be well-structured. However, current public datasets, such as WikiBio and ToTTo, commonly used for benchmarking, have inherent limitations for table-to-text generation. For example, Wikipedia-based datasets like WikiBio often contain inconsistencies between infoboxes and the associated text. Similarly, the ToTTo dataset presents challenges where descriptions sometimes focus solely on a specific table cell, while
+in other cases, additional information from the table is included. This mismatch complicates accurate model evaluation. This is where our study of the MaRDI use case, representing a real-world application, offers valuable insights. It built a foundation on how to design prompts and how to prepare examples where there is no ground truth in real-world table-to-text generation scenarios (section 2.3.3).
+# References
+[1] Marah Abdin, Sam Ade Jacobs, Ammar Ahmad Awan, Jyoti Aneja, Ahmed Awadallah, Hany Awadalla, Nguyen Bach, Amit Bahree, Arash Bakhtiari, Harkirat Behl, et al. Phi-3 technical report: A highly capable language model locally on your phone. arXiv preprint arXiv:2404.14219, 2024. [2] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4 technical report. arXiv preprint arXiv:2303.08774, 2023. [3] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. Advances in neural information processing systems, 33:1877–1901, 2020. [4] Mingda Chen, Sam Wiseman, and Kevin Gimpel. Wikitablet: A large-scale data-to-text dataset for generating wikipedia article sections. arXiv preprint arXiv:2012.14919, 2020. [5] Wenhu Chen. Large language models are few (1)-shot table reasoners. arXiv preprint arXiv:2210.06710, 2022. [6] Wenhu Chen, Jianshu Chen, Yu Su, Zhiyu Chen, and William Yang Wang. Logical natural language generation from open-domain tables. arXiv preprint arXiv:2004.10404, 2020. [7] Zhoujun Cheng, Tianbao Xie, Peng Shi, Chengzu Li, Rahul Nadkarni, Yushi Hu, Caiming Xiong, Dragomir Radev, Mari Ostendorf, Luke Zettlemoyer, et al. Binding language models in symbolic languages. arXiv preprint arXiv:2210.02875, 2022. [8] Tim Conrad, Eloi Ferrer, Daniel Mietchen, Larissa Pusch, Johannes Stegmuller, and Moritz Schubotz. Making mathematical research data fair: a technology overview. arXiv preprint arXiv:2309.11829, 2023. [9] Anubrata Das, Houjiang Liu, Venelin Kovatchev, and Matthew Lease. The state of human-centered nlp technology for fact-checking. Information processing & management, 60(2):103219, 2023. 10] Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Amy Yang, Angela Fan, et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783, 2024. 11] Xi Fang, Weijie Xu, Fiona Anting Tan, Jiani Zhang, Ziqing Hu, Yanjun (Jane) Qi, Scott Nickleach, Diego Socolinsky, ”SHS” Srinivasan Sengamedu, and Christos Faloutsos. Large language models (llms) on tabular data: Prediction, generation, and understanding - a survey. Transactions on Machine Learning Research, 2024. 12] Muhammad Usman Hadi, Rizwan Qureshi, Abbas Shah, Muhammad Irfan, Anas Zafar, Muhammad Bilal Shaikh, Naveed Akhtar, Jia Wu, Seyedali Mirjalili, et al. A survey on large language models: Applications, challenges, limitations, and practical usage. Authorea Preprints, 2023. 13] Simeng Han, Hailey Schoelkopf, Yilun Zhao, Zhenting Qi, Martin Riddell, Luke Benson, Lucy Sun, Ekaterina Zubova, Yujie Qiao, Matthew Burtell, et al. Folio: Natural language reasoning with firstorder logic. arXiv preprint arXiv:2209.00840, 2022. 14] Ziwei Ji, Nayeon Lee, Rita Frieske, Tiezheng Yu, Dan Su, Yan Xu, Etsuko Ishii, Ye Jin Bang, Andrea Madotto, and Pascale Fung. Survey of hallucination in natural language generation. ACM Computing Surveys, 55(12):1–38, 2023.
+[15] R´emi Lebret, David Grangier, and Michael Auli. Generating text from structured data with application to the biography domain. CoRR, abs/1603.07771, 2016. [16] R´emi Lebret, David Grangier, and Michael Auli. Neural text generation from structured data with application to the biography domain. arXiv preprint arXiv:1603.07771, 2016. [17] Boyan Li, Yuyu Luo, Chengliang Chai, Guoliang Li, and Nan Tang. The dawn of natural language to sql: Are we fully ready? arXiv preprint arXiv:2406.01265, 2024. [18] Hongxin Li, Jingran Su, Yuntao Chen, Qing Li, and ZHAO-XIANG ZHANG. Sheetcopilot: Bringing software productivity to the next level through large language models. Advances in Neural Information Processing Systems, 36, 2024. [19] Peng Li, Yeye He, Dror Yashar, Weiwei Cui, Song Ge, Haidong Zhang, Danielle Rifinski Fainman, Dongmei Zhang, and Surajit Chaudhuri. Table-gpt: Table-tuned gpt for diverse table tasks. arXiv preprint arXiv:2310.09263, 2023. [20] Ao Liu, Haoyu Dong, Naoaki Okazaki, Shi Han, and Dongmei Zhang. Plog: Table-to-logic pretraining for logical table-to-text generation. arXiv preprint arXiv:2205.12697, 2022. [21] Yang Liu, Dan Iter, Yichong Xu, Shuohang Wang, Ruochen Xu, and Chenguang Zhu. G-eval: Nlg evaluation using gpt-4 with better human alignment. arXiv preprint arXiv:2303.16634, 2023. [22] Weizheng Lu, Jiaming Zhang, Jing Zhang, and Yueguo Chen. Large language model for table processing: A survey. arXiv preprint arXiv:2402.05121, 2024. [23] Linyong Nan, Yilun Zhao, Weijin Zou, Narutatsu Ri, Jaesung Tae, Ellen Zhang, Arman Cohan, and Dragomir Radev. Enhancing few-shot text-to-sql capabilities of large language models: A study on prompt design strategies. arXiv preprint arXiv:2305.12586, 2023. [24] Linyong Nan, Yilun Zhao, Weijin Zou, Narutatsu Ri, Jaesung Tae, Ellen Zhang, Arman Cohan, and Dragomir Radev. Enhancing text-to-sql capabilities of large language models: A study on prompt design strategies. In Findings of the Association for Computational Linguistics: EMNLP 2023, pages 14935–14956, 2023. [25] Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. Bleu: a method for automatic evaluation of machine translation. In Proceedings of the 40th annual meeting of the Association for Computational Linguistics, pages 311–318, 2002. [26] Ankur P Parikh, Xuezhi Wang, Sebastian Gehrmann, Manaal Faruqui, Bhuwan Dhingra, Diyi Yang, and Dipanjan Das. ToTTo: A controlled table-to-text generation dataset. In Proceedings of EMNLP, 2020. [27] Ori Ram, Yoav Levine, Itay Dalmedigos, Dor Muhlgay, Amnon Shashua, Kevin Leyton-Brown, and Yoav Shoham. In-context retrieval-augmented language models. Transactions of the Association for Computational Linguistics, 11:1316–1331, 2023. [28] Ehud Reiter. A structured review of the validity of bleu. Computational Linguistics, 44(3):393–401, 2018. [29] Victor Sanh, Albert Webson, Colin Raffel, Stephen H Bach, Lintang Sutawika, Zaid Alyafeai, Antoine Chaffin, Arnaud Stiegler, Teven Le Scao, Arun Raja, et al. Multitask prompted training enables zeroshot task generalization. arXiv preprint arXiv:2110.08207, 2021. [30] Ananya Singha, Jos´e Cambronero, Sumit Gulwani, Vu Le, and Chris Parnin. Tabular representation, noisy operators, and impacts on table structure understanding tasks in llms. arXiv preprint arXiv:2310.10358, 2023.
+[31] Yuan Sui, Mengyu Zhou, Mingjie Zhou, Shi Han, and Dongmei Zhang. Table meets llm: Can large language models understand structured table data? a benchmark and empirical study. In Proceedings of the 17th ACM International Conference on Web Search and Data Mining, pages 645–654, 2024. [32] Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu, Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, et al. Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805, 2023. [33] Arun James Thirunavukarasu, Darren Shu Jeng Ting, Kabilan Elangovan, Laura Gutierrez, Ting Fang Tan, and Daniel Shu Wei Ting. Large language models in medicine. Nature medicine, 29(8):1930–1940, 2023. [34] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timoth´ee Lacroix, Baptiste Rozi`ere, Naman Goyal, Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971, 2023. [35] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. Self-consistency improves chain of thought reasoning in language models. arXiv preprint arXiv:2203.11171, 2022. [36] Jason Wei, Maarten Bosma, Vincent Y Zhao, Kelvin Guu, Adams Wei Yu, Brian Lester, Nan Du, Andrew M Dai, and Quoc V Le. Finetuned language models are zero-shot learners. arXiv preprint arXiv:2109.01652, 2021. [37] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, et al. Chain-of-thought prompting elicits reasoning in large language models. Advances in neural information processing systems, 35:24824–24837, 2022. [38] Tianbao Xie, Chen Henry Wu, Peng Shi, Ruiqi Zhong, Torsten Scholak, Michihiro Yasunaga, ChienSheng Wu, Ming Zhong, Pengcheng Yin, Sida I Wang, et al. Unifiedskg: Unifying and multi-tasking structured knowledge grounding with text-to-text language models. arXiv preprint arXiv:2201.05966, 2022. [39] Yunhu Ye, Binyuan Hui, Min Yang, Binhua Li, Fei Huang, and Yongbin Li. Large language models are versatile decomposers: Decompose evidence and questions for table-based reasoning. arXiv preprint arXiv:2301.13808, 2023. [40] Tianshu Zhang, Xiang Yue, Yifei Li, and Huan Sun. Tablellama: Towards open large generalist models for tables. arXiv preprint arXiv:2311.09206, 2023. [41] Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q Weinberger, and Yoav Artzi. Bertscore: Evaluating text generation with bert. arXiv preprint arXiv:1904.09675, 2019. [42] Yilun Zhao, Zhenting Qi, Linyong Nan, Lorenzo Jaime Yu Flores, and Dragomir Radev. Loft: enhancing faithfulness and diversity for table-to-text generation via logic form control. arXiv preprint arXiv:2302.02962, 2023. [43] Yilun Zhao, Haowei Zhang, Shengyun Si, Linyong Nan, Xiangru Tang, and Arman Cohan. Investigating table-to-text generation capabilities of llms in real-world information seeking scenarios. arXiv preprint arXiv:2305.14987, 2023. [44] Yongchao Zhou, Andrei Ioan Muresanu, Ziwen Han, Keiran Paster, Silviu Pitis, Harris Chan, and Jimmy Ba. Large language models are human-level prompt engineers. arXiv preprint arXiv:2211.01910, 2022.

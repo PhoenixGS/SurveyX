@@ -1,0 +1,326 @@
+# FocusFormer: Focusing on What We Need via Architecture Sampler
+Jing Liu Jianfei Cai Bohan Zhuang†
+Department of Data Science & AI, Monash University, Australia
+# Abstract
+Vision Transformers (ViTs) have underpinned the recent breakthroughs in computer vision. However, designing the architectures of ViTs is laborious and heavily relies on expert knowledge. To automate the design process and incorporate deployment flexibility, one-shot neural architecture search decouples the supernet training and architecture specialization for diverse deployment scenarios. To cope with an enormous number of sub-networks in the supernet, existing methods treat all architectures equally important and randomly sample some of them in each update step during training. During architecture search, these methods focus on finding architectures on the Pareto frontier of performance and resource consumption, which forms a gap between training and deployment. In this paper, we devise a simple yet effective method, called FocusFormer, to bridge such a gap. To this end, we propose to learn an architecture sampler to assign higher sampling probabilities to those architectures on the Pareto frontier under different resource constraints during supernet training, making them sufficiently optimized and hence improving their performance. During specialization, we can directly use the welltrained architecture sampler to obtain accurate architectures satisfying the given resource constraint, which significantly improves the search efficiency. Extensive experiments on CIFAR-100 and ImageNet show that our FocusFormer is able to improve the performance of the searched architectures while significantly reducing the search cost. For example, on ImageNet, our FocusFormer-Ti with 1.4G FLOPs outperforms AutoFormer-Ti by 0.5% in terms of the Top-1 accuracy.
+arXiv:2208.10861v1
+# 1 Introduction
+With powerful computing resources and large amounts of labeled data, we have witnessed the tremendous successful applications of ViTs in computer vision [54, 14, 37]. To push the state-of-theart performance boundary, several studies [58, 37, 10, 55] have been proposed to craft the architectures of ViTs and achieved competitive performance in many visual tasks, such as image classification [14, 54, 69] and dense prediction [6, 73, 9]. However, manually designing ViT architectures is laborious and human expertise is often sub-optimal in exploring the huge design space. To automatically design ViT architectures, much effort has been devoted to neural architecture search (NAS) [43, 36, 5, 50] by finding optimal architectures in a predefined search space. To obtain compact architectures, some works [36, 60, 72] propose to search architectures for a specific resource constraint or hardware requirement. Nevertheless, when it comes to diverse platforms under various resource constraints (e.g., FLOPs, latency, on-chip memory), these methods need to design architecture for each scenario from scratch and the search cost grows linearly with the number of possible cases, which is extremely computationally expensive. To tackle the above issue, one-shot NAS methods [23, 16, 65, 18, 7] have been proposed to decouple the model training and the
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9cf7/9cf76c7b-cada-4baf-ade2-e2ab8370b542.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cb0b/cb0bb43f-f23d-478a-af59-d22549b02ad2.png" style="width: 50%;"></div>
+<div style="text-align: center;">Resource Consumption (b) Gap between training and deployment in one-shot NAS.</div>
+<div style="text-align: center;">(a) Uniform distribution of each dimension</div>
+<div style="text-align: center;">(b) Gap between training and deployment in one-shot NAS.</div>
+Figure 1: An overview of the uniform distribution of each architectural dimension and the gap between training and deployment in one-shot NAS methods [65, 7]. During supernet training, existing methods randomly sample sub-networks (rectangle) from a uniform architectural distribution in one update step. During deployment, these methods focus on the sub-networks (circle) on the Pareto frontier of performance and resource consumption. The other architectures that are not on the Pareto frontier are neglected. architecture search stage, where the first stage trains an over-parameterized supernet that covers a considerable number of sub-networks (e.g., 1020) with diverse architectural configurations and the second stage selects an optimal sub-network given the target resource constraint during deployment. Nevertheless, there exists a gap between training and deployment. Specifically, to deal with the tremendous number of sub-networks in supernet, existing methods [23, 4, 57, 65] randomly sample some of them from a uniform architectural distribution (See Figure 1a) in each update step during training, where all architectures in the search space (rectangles in Figure 1b) have an equal probability of being chosen. During deployment, these methods focus on those architectures (circles in Figure 1b) that are on the Pareto frontier of performance and resource consumption. The other architectures (rectangles not on the Pareto frontier) that have poor performance or do not meet the resource constraint are neglected. In this case, the training stage does not concentrate on the architectures on the Pareto frontier. As a result, the architectures with good performance may not be sufficiently trained and hence the performance of the searched architectures is sub-optimal. Moreover, after supernet training, existing methods have to either use evolutionary search [23, 4, 65, 7] or train a controller [64, 48] to search for optimal architectures given a deployment scenario, which requires extensive architecture evaluations and hence incurs high computational cost. In this paper, we devise a simple yet effective method, called FocusFormer, to bridge the gap between training and deployment. Unlike existing NAS methods for ViTs [65, 7], we assume and highlight that not all sub-networks in the supernet are equally important. Based on this intuition, we devise a parameterized architecture sampler to learn the architectural distribution under diverse resource constraints, where we consider four important dimensions of ViTs including depth, embedding dimension, multi-layer perceptron (MLP) ratio, and head number. Instead of sampling from a uniform architectural distribution, we optimize the architecture sampler to generate sampling distributions conditioned on different resource constraints to assign higher probabilities to accurate sub-networks in an update step. In this way, we are able to train sub-networks that are likely to be on the Pareto frontier with more training budgets, thereby improving their performance. Once the supernet and architecture sampler have been well-trained, we can directly use the architecture sampler to instantly generate candidate ViT architectures with good performance given the target resource constraint in the architecture search stage. Therefore, our FocusFormer does not need to involve extensive architecture evaluations such as in evolutionary methods [65, 46] and hence greatly improve the search efficiency. Extensive experiments on CIFAR-100 and ImageNet show that our proposed method improves the performance of the searched architectures while significantly reducing the search cost. Our main contributions are summarized as follows:
+• We propose FocusFormer to bridge the gap between training and deployment in one-shot NAS for ViTs. To our knowledge, this problem has not been well studied.
+• We design a parameterized architecture sampler to serve as the bridge. During supernet training, the architecture sampler is jointly optimized with network parameters to identify and assign higher sampling probabilities for architectures on the Pareto frontier under different resource constraints, that align with the searched networks at the specialization stage. In this way, we allocate more training resources to these salient architectures and thus improve their performance. During deployment, we can instantly find the target candidate architectures for a given resource constraint using the well-trained architecture sampler, with very high search efficiency. • We evaluate our proposed method on CIFAR-100 and ImageNet. Extensive experiments demonstrate that our proposed method is able to improve the performance of the specialized network while greatly reducing the search cost. For example, on ImageNet, our FocusFormer-Ti surpasses AutoFormer-Ti by 0.5% on the Top-1 accuracy.
+# 2 Related Work
+Vision Transformers. Recently, ViTs [14, 6, 37, 73] have shown great representational power in computer vision. Specifically, a ViT [14] contains a patch embedding layer, multiple Transformer blocks, and a task-dependent head, where each Transformer block consists of a multi-head selfattention (MSA) block and an MLP block. LayerNorm (LN) [1] and residual connection [27] are applied before and after each block, respectively. To improve the performance of ViTs, several methods are proposed, including but not limited to incorporating hierarchical representations [17, 42, 37, 58], introducing inductive bias by inserting convolutional layers [61, 35, 66, 20, 15, 8, 19, 26] and improving positional encoding [11, 62], etc. Though achieving promising performance, the ViT architectures of these methods are manually designed, which may not fully explore the architecture space. Compared with these methods, our proposed FocusFormer focuses on automatically designing the ViT architecture. Neural architecture search. Neural architecture search (NAS) [75, 43, 36] seeks to automatically find architectures with promising performance while satisfying the resource constraint B, which can
+  where Wα is the weights of the network with architecture α, C(α) is the computational cost of α, and Ltrain, Lval are the training loss and validation loss, respectively. Here, Dtrain and Dval are the training and validation dataset, respectively. To solve Problem (1), we have to train weights Wα for each architecture α until convergence to obtain W ∗ α, which takes unbearable computational cost. Most existing approaches either use random search [34, 2], reinforcement learning [75, 22, 43, 52], evolutionary search [41, 40, 46, 47] or gradient-based optimization [36, 5, 60, 25] to find optimal architectures. In addition, one-shot NAS [4, 23, 16, 65, 7, 18] has been proposed to decouple the model training stage and architecture search stage. In the model training stage, the goal is to train an over-parameterized supernet that supports many sub-networks of different configurations with the shared parameters to accommodate different deployment scenarios. Let W be the weights of the supernet. The objective function for the supernet training can be formulated as
+where S(W, α) is a selection function that chooses a part of parameters from W to constitute the sub-network with architecture configuration α and A is the architecture search space. To solve Problem (2), existing methods [65, 7] assume that all the sub-networks are equally important and use a uniform sampling strategy to approximate the expectation term. Considering different resource constraints, Problem (2) can be rewritten as
+� � where B is a resource constraint sampled from a prior distribution B and U(·|B) is a uniform distribution over architectures conditioned on B. For the architecture search stage, the goal is to obtain the specialized sub-network that satisfies the resource constraint B given a deployment
+(1)
+(2)
+(3)
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/20e2/20e2819c-e3c3-4902-ae14-46771c976035.png" style="width: 50%;"></div>
+Figure 2: An illustration of our proposed architecture sampler. We formulate the architecture search problem as a sequential prediction problem where each element of the sequence denotes an architectural dimension of a ViT. Starting from a prior resource distribution B, we first sample a resource constraint B ∼B. We then feed B into an LSTM network with four fully connected layers and output the architectural distribution π(B; θ). Last, we obtain the candidate architecture by performing sampling from the architectural distribution α ∼π(B; θ). scenario while maximizing the validation accuracy Accval(S(W ∗, α)), which can be formulated as
+Here, W ∗is the well-learned weight of the supernet in the model training stage. Except for the validation accuracy, one can also use the negative validation loss to measure the performance of the searched architectures [36, 5]. To solve Problem (4), existing methods either use evolutionary search [23, 4, 68, 57, 65, 7] or train a controller to search for optimal architectures [64, 48, 30]. Since the supernet has been well-trained, we are able to obtain any sub-network without any fine-tuning or retraining during the architecture search, which yields a much lower search cost compared with Problem (1). Compared with AutoFormer [65] and S3 [7], our proposed FocusFormer bridges the gap between training and deployment, which greatly improves the performance of the specialized sub-networks and search efficiency. Compared with GreedyNAS [67, 31] and AttentiveNAS [56], our FocusFormer differs in several aspects. First, our method focuses on searching ViT architectures while GreedyNAS and AttentiveNAS concentrate on searching the architectures of convolutional neural networks (CNNs). Second, they need to sample and rank multiple architectures for each iteration during supernet training, which introduces extensive computational overhead. In contrast, our FocusFormer trains an architecture sampler to obtain sub-networks in an efficient way. Third, they need to use evolutionary search to find architectures, which is computationally expensive. Our FocusFormer uses the well-trained architecture sampler to instantly generate ViT candidate architectures, which is extremely efficient.
+# 3 FocusFormer
+In one-shot NAS, the objectives for the model training stage in Eq. (3) and the architecture search stage in Eq. (4) are different, resulting in a gap between training and deployment. Specifically, existing methods [4, 68] assume that all sub-networks are equally important and perform a uniform sampling strategy during supernet training. However, during deployment, we only care about architectures on the Pareto frontier of performance under various resource constraints. In this case, the model training stage does not tailor for those specialized architectures on the best Pareto front. As a result, the architectures with good performance may not be sufficiently trained and hence lead to the sub-optimal performance. Moreover, once the supernet has been well-trained, we have to use either evolutionary search [23, 4] or train a controller [64, 48] to search for optimal architectures due to the different objectives between the model training and architecture search stages, which introduces additional training cost. In this paper, we jointly learn an architecture sampler with network parameters to assign higher probabilities to architectures that are likely on the Pareto frontier under different resource constraints
+(4)
+Algorithm 1 Training algorithm for FocusFormer.
+Input: Supernet N with parameter W, architecture sampler π(·; θ) with parameter θ, the number of training
+epoch T, training dataset Dtrain, architecture sampler update interval τ, resource constraint distribution B,
+learning rate η, hyper-parameter β.
+1: Randomly initialize the supernet parameter W and architecture sampler parameter θ.
+2: for t ∈{1, 2, . . . , T} do
+3:
+if t = nτ, n ∈N+ then
+4:
+Train architecture sampler π(B; θ) on Dtrain.
+5:
+end if
+6:
+for each batch of data in Dtrain do
+7:
+Sample a resource constraint B ∼B.
+8:
+Sample an architecture α ∼π(B; θ).
+9:
+Train supernet N with α.
+10:
+end for
+11: end for
+during supernet training. In this way, we put more training resources on these important ViT architectures and hence mitigate the gap between training and deployment. Once the supernet and architecture sampler have been well-trained, we can directly use our architecture sampler to select good candidate architectures given a specific resource constraint, which is extremely efficient.
+Given a ViT supernet N with parameter W, we design an architecture sampler π(·; θ) parameterized by θ to obtain architectures with potentially good performance given arbitrary B. With the architecture sampler, we formulate the objective for the supernet training as
+W ∗= arg min W EB∼B � Eα∼π(B;θ) [Ltrain(S(W, α))] � .
+� � Here, if we replace π(B; θ) with the uniform distribution over architectures U(·|B) conditioned on B, Problem (5) is reduced to the original one-shot NAS problem in Eq. (3). Equipped with π(·; θ), those ViT architectures that are potentially on the Pareto frontier are trained with more computing resources. In this way, the gap between training and deployment can be mitigated and hence improve the performance of the searched architectures under different resource constraints. We summarize our training pipeline in Algorithm 1. Note that training the architecture sampler for each epoch is computationally expensive and not necessary. To reduce the computational cost, we only update our architecture sampler per τ epoch.
+# 3.2 Learning Architecture Sampler
+To determine the ViT architecture, we formulate the NAS problem as a sequence prediction problem where each element of a sequence denotes an architectural dimension (e.g., the depth of ViT) following [43, 75]. To predict the architectural distribution, our architecture sampler π(·; θ) is an LSTM network with four fully connected layers, which takes a resource constraint B as input and then outputs four architectural dimensions of a ViT, including depth, embedding dimension, head number and MLP ratio, as shown in Figure 2. We then perform sampling from the architectural distribution to obtain architectures, i.e., α ∼π(B; θ). To represent different B, we build learnable embedding vector for each B following [43, 21].
+� � where R(W, α) is a performance metric of the sampled architecture α. To guide the training of π(·; θ), we hope the resource consumption of α not only close to the given resource constraint B, but also achieves high accuracy following [3]. Considering both the resource constraint and accuracy, we
+(5)
+(6)
+Input: Supernet N, architecture sampler π(·; θ) with parameter θ, total training iterations K, training dataset
+Dtrain, distribution of resource constraint B, learning rate η, hyper-parameter β.
+1: for k ∈{1, 2, . . . , K} do
+2:
+Sample a batch of data from Dtrain.
+3:
+Sample a resource constraint B ∼B.
+4:
+Sample an architecture α ∼π(B; θ).
+5:
+Compute the reward R(W, α) using Eq. (7).
+6:
+Update θ using Eq. (8).
+7: end for
+where Accval(S(W, α))) is the validation accuracy of α with corresponding weights S(W, α) and β is a hyper-parameter that makes a balance between accuracy and resource consumption. In order to reduce the training cost of π(B; θ), we only compute the validation accuracy on a mini-batch of data rather than the whole validation data set. In general, Eq. (7) is not differentiable w.r.t. θ. Following [75, 43], we use reinforcement learning with policy gradient [59] to solve Problem (6). Specifically, we update θ by ascending the policy gradient, which can be formulated as:
+θ ←θ + ηR(W, α)∇θ log π(B; θ),
+where η is the learning rate of π(·; θ). We summarized the training details of our proposed architectur sampler in Algorithm 2.
+Note that our architecture sampler introduces some additional costs during supernet training. To reduce the training cost, we train the supernet using a progressive learning strategy following [53, 33]. Specifically, we gradually increase the image size from a small S0 × S0 to the final Se × Se with a fixed patch size p. As a result, the number of patches is increased from S2 0/p2 to S2 e/p2. However, in ViT, the size of positional encodings is related to the number of patches. To overcome this limitation, we proposed to use conditional positional encodings following [11]. Resource constraint distribution. In Eqs. (5) and (6), we introduce a prior distribution B. For simplicity, we assume that B is a uniform distribution, which indicates that all resource constraints have an equal probability of being sampled. Note that there are a large number of B in B and we can not enumerate them all during training. To overcome this limitation, we perform quantization to obtain discrete resource constraint as B = round(B/s) ∗s, where round(x) returns the nearest integer of a given value x and s is a step size of the round function. To represent a resource constraint with an arbitrary value, we use the linear interpolation method following [21, 44].
+# 3.3 Efficient Architecture Search
+Once we have well trained the supernet and the proposed architecture sampler, we now focus on obtaining architectures that satisfy the given resource constraint while achieving promising performance. Using the well-learned π(·; θ), we are able to directly obtain good candidate architectures. Specifically, given a resource constraint B, we first sample multiple architectures from the predicted architectural distribution π(B; θ). We will repeat the sampling process if the sampled ViT architecture does not satisfy the resource constraint, i.e., C(α) > B. Last, we select the ViT architecture with the highest validation accuracy as the searched architecture. Since only a limited number of architecture evaluations are involved, the search cost of our method is much smaller than the existing one-shot NAS methods [33, 7].
+# 4 Experiments
+Datasets. We evaluate the proposed method on two image classification datasets, namely, CIFAR100 [32] and ImageNet [13]. CIFAR-100 contains 100 classes, where each class has 500 training images and 100 testing images. ImageNet is a large-scale dataset that contains 1.28M training images and 50k validation images with 1k classes. To construct the validation set, we randomly sample 10k and 100k training samples from CIFAR-10 and ImageNet following [36, 65]. Search space. Following [65], we apply our proposed method to ViT search space with three different settings, namely, supernet-tiny, supernet-small and supernet-base. Each search space contains four
+(8)
+Models
+Top-1 Acc. (%)
+Top-5 Acc. (%)
+#Params (M)
+FLOPs (G)
+Resolution
+ResNet-18 [27]
+69.8
+-
+11.7
+1.8
+224
+DeiT-Ti [54]
+72.2
+91.1
+5.7
+1.2
+224
+AutoFormer-Ti∗∗[65]
+74.6
+92.3
+5.7
+1.3
+224
+FocusFormer-Ti (Ours)
+75.1
+92.8
+6.2
+1.4
+224
+ResNet-50 [27]
+76.1
+-
+25.6
+4.1
+224
+RegNetY-4GF∗[45]
+80.0
+-
+21.4
+4.0
+224
+BoTNet-S1-59 [51]
+81.7
+95.8
+33.5
+7.3
+224
+T2T-ViT-14 [69]
+81.7
+-
+21.5
+6.1
+224
+DeiT-S [54]
+79.9
+95.0
+22.1
+4.7
+224
+ViT-S/16 [14]
+78.8
+-
+22.1
+4.7
+384
+TNT-S [24]
+81.5
+95.7
+23.8
+5.2
+224
+AutoFormer-S∗∗[65]
+81.4
+95.6
+24.3
+5.1
+224
+FocusFormer-S (Ours)
+81.6
+95.6
+23.7
+5.0
+224
+ResNet152 [27]
+78.3
+-
+60.2
+11.6
+224
+ResNeXt101-64x4d [63]
+79.6
+-
+83.5
+15.6
+224
+ViT-B/16 [14]
+79.7
+-
+86.6
+17.6
+384
+DeiT-B [54]
+81.8
+95.6
+86.6
+17.6
+224
+AutoFormer-B∗∗[65]
+81.7
+95.5
+52.8
+11.0
+224
+FocusFormer-B (Ours)
+81.9
+95.6
+52.7
+11.0
+224
+main dimensions to build transformer blocks: embedding dimension, the number of heads, MLP ratio and network depth. The detailed settings of each search space can be found in AutoFormer [65]. For convenience, we use “FocusFormer-Ti”, “FocusFormer-S” and “FocusFormer-B” to represent the architectures obtained by FocusFormer in the tiny, small and base search space, respectively. Evaluation metrics. We measure the performance of different methods using the Top-1 and Top-5 accuracy. Following [49, 29], we use the floating-point operations (FLOPs) and the number of parameters (#Params) to measure the resource consumption and model size, respectively. Following [36], we also measure the training and search costs using the training and search durations on a single NVIDIA GeForce RTX 3090 GPU, respectively. Implementation details. We train our model using a server with 8 V100 GPUs. Following [65], we train the supernet with the weight entanglement strategy. The supernet is trained for 500 epochs with a mini-batch size of 128 and 1024 on CIFAR-100 and ImageNet, respectively. We scale the learning rate according to the batch size with formula: lrscaled = 5×10−4 512 × batchsize and use cosine rule [38] to decrease the learning rate. We use AdamW [39] for optimization. Following DeiT [54], we use RandAugment [12], Cutmix [70], Mixup [71] and random erasing [74] except the repeated augmentation [28] for data augmentation. For the progressive learning strategy, we set Se to 224. S0 is set to 128 for experiments on CIFAR-100 and 160 for experiments on ImageNet. The patch size p is set to 16 following [14]. For the architecture sampler, we use the same batch size and optimization method as the supernet. We initialize the learning rate to 2.5×10−4 and 1×10−3 for the experiments on CIFAR-100 and ImageNet, respectively. We set the dimension of the hidden state for the LSTM network to 64. The number of training iterations K for π(·; θ) and the hyper-parameter β in Eq. (7) are set to 100 and 0.07, respectively. We set τ to 30 and 40 for the experiments on CIFAR-100 and ImageNet, respectively. For the architecture search stage, we randomly sample 30 architectures and select the architecture with the highest validation accuracy. All the searched architectures directly inherit weights from the learned supernet without any fine-tuning.
+# 4.1 Main Results
+We apply our FocusFormer to search ViT architectures under different FLOPs on ImageNet. We show the results in Table 1. For fair comparisons, we modify AutoFormer to use conditional positional encodings [11]. From the results, our searched ViTs perform better than the CNN counterparts, such as ResNet [27], RegNetY [45] and ResNeXt [63], which shows the strong representational power of ViTs. We can also observe that our proposed FocusFormer achieves much higher performance
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cfe6/cfe6430e-f2cd-422f-8cff-440c0cfe2d60.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3: Top-1 accuracy of 1k sub-networks extracted from the supernet-tiny obtained with different training methods on CIFAR-100.</div>
+Figure 3: Top-1 accuracy of 1k sub-networks extracted from the supernet-tiny obtained with different training methods on CIFAR-100.
+Table 2: Effect of the architecture sampler. “AS in Train” denotes that we use architecture sampler rather than uniform sampling [65] to obtain sub-networks during supernet training. “AS in Search” indicates that we use architecture sampler instead of evolutionary search [65] to obtain candidate architectures during search. We report the results of FocusFormer-Ti obtained by different methods on CIFAR-100. “†” denotes that we include the training cost of the architecture sampler.
+AS
+in Train
+AS
+in Search
+Top-1
+Acc. (%)
+FLOPs (G)
+Train Cost
+(GPU Hours)
+Search Cost
+(GPU Hours)
+80.5
+1.8
+7.7
+1.7
+✓
+81.0
+1.8
+9.1
+1.7
+✓
+80.7
+1.7
+7.7
+0.3†
+✓
+✓
+81.0
+1.7
+9.1
+< 0.1
+Table 3: Effect of the progressive learning. “PL” represents that we use the progressive learnin strategy [53] during supernet training. We report the results of FocusFormer-Ti obtained by differen methods on CIFAR-100.
+able 3: Effect of the progressive learning. “PL” represents that we use the progressive learning rategy [53] during supernet training. We report the results of FocusFormer-Ti obtained by different
+than the manually designed ViTs. For example, FocusFormer-Ti with 1.4G FLOPs outperforms DeiTTi [54] by 2.9% on the Top-1 accuracy. More critically, our FocusFormer consistently outperforms Autoformer [65] under different resource constraints. For example, with 1.4G FLOPs, FocusFormerTi achieves 75.1% in terms of the Top-1 accuracy, which is 0.5% higher than AutoFormer-Ti.
+Effect of the architecture sampler. To investigate the effect of our architecture sampler (“AS”), we apply “AS” to different stages. Specifically, applying the “AS” in the supernet training stage denotes that we sample sub-networks from the learned distribution using “AS” instead of a uniform distribution [65] while applying the “AS” in the search stage represents that we obtain candidate architectures using “AS” rather than the evolutionary methods [65]. The results are provided in Table 2. To show the supernet performance under various resource constraints, we also randomly sample 1k architectures from the supernet and show the results in Figures 3 and 4. From the results, using the “AS” in the supernet training stage introduces a little training cost but consistently improves the performance under various resource constraints (See Figures 3 and 4). The performance improvement is more significant in high FLOPs scenarios. For example, with about 1.7G FLOPs, our method with “AS” in the supernet training stage outperforms those without “AS” by 0.5% in terms of the Top-1 accuracy on CIFAR-100. Moreover, using our “AS” in the search stage achieves comparable or even better performance than the evolutionary search while significantly reducing the search cost (0.3 vs. 1.7 GPU Hours). Using “AS” in both the training stage and search stage, our FocusFormer yields the best performance with 81.0% Top-1 accuracy and 1.7G FLOPs while the search cost is less than 0.1 GPU Hour. These results show that our “AS” is able to improve the performance of the searched architectures while significantly reducing the search cost.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/135e/135e91f1-879c-47a0-a240-dfb9eb87be46.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 4: Top-1 accuracy of 1k sub-networks extracted from the supernet-small obtained with different training methods on ImageNet.</div>
+Figure 4: Top-1 accuracy of 1k sub-networks extracted from the supernet-small obtained with different training methods on ImageNet.
+<div style="text-align: center;">able 4: Performance comparisons with different update intervals τ on CIF</div>
+Acc. (%)
+Acc. (%)
+FocusFormer-Ti
+10
+80.3
+95.9
+8.1
+1.8
+20
+81.0
+96.0
+8.0
+1.7
+30
+80.8
+96.1
+7.8
+1.7
+40
+80.5
+95.9
+8.0
+1.8
+<div style="text-align: center;">le 5: Performance comparisons with different step sizes s on CIFAR-100</div>
+e 5: Performance comparisons with different step sizes on CIFAR-1
+Model
+s
+Top-1
+Acc. (%)
+Top-5
+Acc. (%)
+#Params (M)
+FLOPs (G)
+FocusFormer-Ti
+50
+80.4
+96.0
+7.7
+1.7
+100
+80.4
+95.8
+7.9
+1.7
+200
+81.0
+96.0
+8.0
+1.7
+300
+80.5
+95.8
+7.9
+1.7
+400
+80.8
+95.9
+7.9
+1.7
+500
+80.3
+95.7
+7.7
+1.7
+Effect of the progressive learning. To investigate the effect of progressive learning (See Section 3.2), we apply our method to obtain architectures with and without progressive learning during supernet training. From Table 3, FocusFormer with “PL” strategy improves the supernet performance by 0.4% on the Top-1 accuracy while significantly reducing the training cost by 2.5 GPU Hours. Therefore, we use progressive learning by default. Effect of different update intervals τ. To investigate the effect of different update intervals τ in the supernet training stage, we train FocusFormer-Ti with different τ ∈{10, 20, 30, 40} and show the results in Table 4. From the results, with the decrease of τ, the performance of the searched architecture becomes better first and then goes worse. For example, the searched architecture obtained by τ = 30 with 0.1G lower FLOPs surpasses that of τ = 40 by 0.3% in terms of the Top-1 accuracy. One possible reason is that we need to update the architecture sampler regularly to a certain extent to accommodate the performance change during supernet training. However, too small τ indicates the frequent changes of the learned architectural distribution. As a result, the potentially good architectures may not be sufficiently trained. Moreover, as our FocusFormer achieves the best performance when τ is set to 20, we use it by default in our experiments. Effect of different step sizes s. To investigate the effect of different step sizes s in resource constraint discretization, we train FocusFormer-Ti with different s ∈{50, 100, 200, 300, 400, 500}. Here, smaller s denotes more resource constraint candidates. From Table 5, the performance of searched architecture becomes better and then worsens with the decrease of s. On one hand, larger s results in a small number of resource constraint candidates, which can not accurately represent an arbitrary resource constraint due to coarse-grained linear interpolation. For example, our method yields the worst performance with s = 500. On the other hand, smaller s leads to a large number of resource constraint candidates, which introduces too many learnable embedding vectors and hence incurs the optimization difficulty. With s = 200, the searched architectures achieve the best performance (81.0% in terms of the Top-1 accuracy).
+# 5 Conclusion and Future Work
+In this paper, we have proposed FocusFormer to mitigate the gap between training and deployment in one-shot neural architecture search. To this end, we have devised an architecture sampler to obtain ViT architectures that are likely on the Pareto frontier under diverse resource constraints. By jointly training the architecture sampler with network parameters, we put more training resources on these salient architectures and hence improve the performance of the searched ViT architectures. Once the supernet and architecture sampler have been well-trained, we can directly use our proposed architecture sampler to obtain architectures with promising performance while satisfying the given resource constraint. Experiments on CIFAR-100 and ImageNet have demonstrated that our proposed method is able to improve the performance of the searched architectures while significantly reducing the search cost. In the future, we may extend our method in several aspects. First, we may consider improving both the training and search efficiency by using some sparsity training strategies. Second,
+# References
+# Supplementary Material for FocusFormer: Focusing on What We Need via Architecture Sampler
+A Visualization of the searched architectures
+# A Visualization of the searched architectures
+In this section, we show the ViT architectures obtained by our FocusFormer in Figure A. The searched architectures tend to select large Q-K-V dimensions, MLP ratios, head numbers, and depth numbers with the increase of FLOPs and #Params. For FocusFormer-S and FocusFormer-B, we observe that the intermediate Transformer blocks prefer large head numbers, while the deep blocks tend to choose small head numbers.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8542/8542bf1b-6f96-4f08-ac2d-19117dc81781.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure A: The architectures obtained by FocusFormer under different resource constraints on ImageNet. The orange and blue blocks denote the multi-head self-attention layers and MLP blocks, respectively. We omit the shortcuts and conditional positional encodings for simplicity. (a): The searched architecture of FocusFormer-Ti with 1.4G FLOPs and 6.2M #Params. (b): The searched architecture of FocusFormer-S with 5.0G FLOPs and 23.7M #Params. (c): The searched architecture of FocusFormer-B with 11.0G FLOPs and 52.7M #Params.</div>
+Figure A: The architectures obtained by FocusFormer under different resource constraints on ImageNet. The orange and blue blocks denote the multi-head self-attention layers and MLP blocks, respectively. We omit the shortcuts and conditional positional encodings for simplicity. (a): The searched architecture of FocusFormer-Ti with 1.4G FLOPs and 6.2M #Params. (b): The searched architecture of FocusFormer-S with 5.0G FLOPs and 23.7M #Params. (c): The searched architecture of FocusFormer-B with 11.0G FLOPs and 52.7M #Params.

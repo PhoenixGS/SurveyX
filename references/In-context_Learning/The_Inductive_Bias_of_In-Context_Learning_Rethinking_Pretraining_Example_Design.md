@@ -1,0 +1,415 @@
+# THE INDUCTIVE BIAS OF IN-CONTEXT LEARNING: RETHINKING PRETRAINING EXAMPLE DESIGN
+# ABSTRACT
+Pretraining Neural Language Models (NLMs) over a large corpus involves chunking the text into training examples, which are contiguous text segments of sizes processable by the neural architecture. We highlight a bias introduced by this common practice: we prove that the pretrained NLM can model much stronger dependencies between text segments that appeared in the same training example, than it can between text segments that appeared in different training examples. This intuitive result has a twofold role. First, it formalizes the motivation behind a broad line of recent successful NLM training heuristics, proposed for the pretraining and fine-tuning stages, which do not necessarily appear related at first glance. Second, our result clearly indicates further improvements to be made in NLM pretraining for the benefit of Natural Language Understanding tasks. As an example, we propose “kNN-Pretraining": we show that including semantically related non-neighboring sentences in the same pretraining example yields improved sentence representations and open domain question answering abilities. This theoretically motivated degree of freedom for pretraining example design indicates new training schemes for self-improving representations.
+# INTRODUCTION
+Beyond excelling in their core task of pure language modeling, modern Neural Language Models (NLMs) show impressive zero- and few-shot abilities in more general Natural Language Understanding (NLU) tasks (Brown et al., 2020). This implies that the training corpus contains the information required for performing such tasks, and moreover it implies that the common pretraining process grants the trained NLM some access to these higher level capabilities. In this paper, we highlight a connection between the quality of the emergent NLU capabilities and a basic component in the NLM training scheme: the process of segmenting the corpus into training examples. Specifically, NLMs self-train over huge training corpora (typically, billions to trillions of words). A basic, automatic, operation in the training pipeline is to segment these corpora into training examples: contiguous text chunks of sizes processable by the neural architecture (typically, up to thousands of words). We formalize an expressivity bias that this segmentation process introduces, to be referred to as the in-context bias, which directly affects the NLM’s ability to integrate cross-corpus information. We show that the NLM can model much stronger dependencies between sentences that were shown together at least once in-context, i.e., in the same training example, than between sentences that were never shown together in the same input. This inductive bias may be good for language modeling, but it implies that NLU capabilities that involve integrating information from different examples across the corpus (see, e.g., figure 1), are under-favored by design in the current setting. Thus, if one sentence in the corpus can elucidate the meaning of another sentence (e.g., defines a hard concept or provides auxiliary information), our result implies that a model that saw them in different training examples will enjoy this elucidation less than a model that saw them in the same training example. While standard approximation results examine the expressivity of an architecture over a single input, our theoretical approach pertains to the entire training process, and examines the expressive capacity of the resultant NLM with respect to the training set. Therefore, our approximation result ties an optimization parameter (the learning-rate) to the regular NLM architecture expressivity parameters (depth, width). Intuitively, sentences that were never shown in the same input can only access each
+other via the weights of the network during training. The mechanism for “storing" information in the network involves a very small learning-rate term η; our analysis formalizes and quantifies an “expressivity toll" that the model pays when making use of such harder-to-access stored information. We employ the tool of a function’s separation rank with respect to subsets of its variables, which quantifies its ability to model input dependencies between these subsets. The separation rank was employed for analyzing the dependencies modeled by convolutional (Cohen & Shashua, 2017), recurrent (Levine et al., 2018a), and self-attention (Levine et al., 2020) networks with respect to a single input example. In order to analyze an NLM’s ability to model dependencies between different training examples, we refine the usage of this measure in two manners: (1) we introduce the ε-separation rank, which measures the effective ability of a function to model dependencies in a finite precision setting, and (2) we modify the separation rank such that it can account for the more intricate mechanism of mixing between variables that occurs in the sequential case. Specifically, we upper bound the log of the separation rank of a depth L width dx self-attention based NLM, with respect to two sentences that are shown in its input, by ˜O(dxL), and prove that this bound is tight. On the other hand, we upper bound this measure with respect to two sentences that were never shown in the same input by ˜O(dx[L −0.5 log3(η−1)]). Given common learning-rate values of η ∈[10−6, 10−4], this implies a guaranteed “depth deficit" of ∼6 layers for modeling dependencies between sentences that are not seen in the same training example. After the presentation of our results, we point at empirical evidence that imply that this depth deficit is more significant, and may behave like a fraction of L. We leave attempts to tighten the depth deficit estimates to future work.
+Several recent works intuitively rely on the above formalized in-context expressivity bias in different manners, and significantly improve both task-specific training and pretraining of NLMs. Gao et al. (2020) advance the frontier in k-shot learning via finetuning. They show that by concatenating several related training examples per input, instead of using standard fine-tuning practice of one example per input, the k-shot performance on sentence similarity tasks is considerably boosted. Another example was pointed out in Humeau et al. (2020); Thakur et al. (2020): when training for sentence similarity tasks, including both sentences in the same input leads to a performance gain of around 10 points relative to separately encoding each sentence. In the challenging setting of open-domain question answering, Izacard & Grave (2020) jointly attend to all documents that may contain the answer, and show large gains relative to prior methods that consider these documents in separate forward passes. Turning our focus to methods that leverage the in-context bias for improved pretraining, the most straightforward effort is a body of work aimed at reducing the quadratic dependence of the Transformer computation on input sequence length (Tay et al., 2020). While allowing for more text in-context during training, this does not improve the model’s ability to integrate text across different documents in the corpus. The following approaches take a further step and enable direct cross-corpus connections during pretraining. Lewis et al. (2020) attend to related documents when maximizing the likelihood of a target document. The scope of related documents is restricted by meta-data: taken from the same Wikipedia entry as the input, or published on the same date. Guu et al. (2020) expand the scope of the related documents, by training a Knowledge-Retrieval model that has access to the entire Wikipedia corpus. They retrieve several related documents per target document, but condition on each related document independently. Outside of the natural language domain, Rao et al. (2021) train a Transformer based protein-LM that receives multiple related protein sequences in-context. Their protein-LM surpasses previous methods which process one sequence per input by a wide margin, with significant parameter efficiency.
+Though the in-context bias is intuitive, the above subsection surveys recent advances that leverage it in non-trivial manners. Having formalized the theoretical advantage for in-context integration of related text, the roots of the above successes can be unified, and importantly, new methods for tilting the pretraining bias towards NLU tasks are indicated. Following the presentation of our theoretical results in section 2, we detail in section 3 two controlled setting exemplifications of new methods that directly leverage the in-context bias.
+Though the in-context bias is intuitive, the above subsection surveys recent advances that leverage it in non-trivial manners. Having formalized the theoretical advantage for in-context integration of related text, the roots of the above successes can be unified, and importantly, new methods for tilting the pretraining bias towards NLU tasks are indicated. Following the presentation of our theoretical results in section 2, we detail in section 3 two controlled setting exemplifications of new methods that directly leverage the in-context bias. Our first experiment augments the Task Adaptive PreTraining (TAPT) setting of Gururangan et al. (2020), in which an NLM that was pretrained on a general corpus continues pretraining (with its original objective) on the training set of an NLU task. We perform TAPT on the SentEval
+sentence similarity benchmark (Conneau & Kiela, 2018), and during TAPT introduce the following augmentation: along with SentEval sentences, we simultaneously pretrain on related sentences from Wikipedia, the general pretraining corpus. The related sentences are found via k-Nearest Neighbors (kNN) search between the embeddings of SentEval examples and all Wikipedia sentences; we thus dub this approach kNN-TAPT. Importantly, during kNN-TAPT, each input includes a training example from the task, appended in-context by its Wikipedia neighbors. We demonstrate significant gains of the kNN-TAPT over regular TAPT on SentEval sentence similarity tasks. A dedicated ablation study shows the significance of adding the general corpus neighbors in-context, versus in separate training examples, during kNN-TAPT.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4f64/4f64e573-1764-4b61-9f26-97fbbdc9b070.png" style="width: 50%;"></div>
+Our second experiment introduces a task-independent pretraining phase, dubbed kNN-Pretraining. As in kNN-TAPT, we group together sentences with similar sentence representations in the same training example, but in kNN-Pretraining we use only sentences from the general pretraining corpus. This can be viewed as a sentence-focused variation of the above surveyed pretraining schemes in Lewis et al. (2020) and Guu et al. (2020), who operate on full documents (up to 512 each), and is very similar to RETRO by Borgeaud et al. (2021) (DeepMind), who show the benefits of this
+<div style="text-align: center;">Figure 1: A 10% addition of kNN-Pretraining boosts zero-shot closed book QA score by∼5X (evaluation set size is 20,000).</div>
+approach given much larger resources. Figure 1 shows that after regular pretraining for 200K steps on Wikipedia, the zero-shot closed book performance of 3 different randomly initialized GPT2medium models (345M parameters) on open domain questions from Wikipedia (Kwiatkowski et al. 2019) is very low (correct on less than 50 questions out of 20,000 in the evaluation set). Adding kNN-Pretraining for 20K steps raises performance significantly (correct on roughly 250 questions in the evaluation set), reflecting the enhanced ability to integrate knowledge from related sentences acquired via the in-context bias.
+In summary, our main contributions are:
+• We formally establish the in-context bias: information within pretraining examples is better represented than information integrated across pretraining examples. • We ask and answer a new type of network expressivity question: how expressive is a network with respect to examples seen during its training process? • We demonstrate that in-context bias motivated “pretraining example design" elicits better representations from the same data: kNN-Pretraining improves on several NLU tasks.
+In this section, we consider the entire NLM training procedure as a functional that receives an unlabeled training corpus and outputs a trained NLM. Our analysis focuses on the corpus segmentation into training examples as a hyper-parameter of this functional. We reduce the high-level notion of representing “cross-corpus correlations" to a quintessential case study: we quantify the NLM’s ability to model dependencies between two sentences that appear in the same training example (the in-context representation) and in different training examples (the sequential representation). We believe that the in-context bias can be shown to exist in a broad range of architectures, but we focus on self-attention since almost all modern NLMs are based on the Transformer architecture of Vaswani et al. (2017). Our theoretical framework is based on that of Levine et al. (2020); Wies et al. (2021), who analyze a simplified, theoretically accessible, self-attention network. They study the expressivity of this self-attention architecture with respect to its input, and use a measure of a multivariate function’s ability to correlate two subsets of its variable set, referred to as the separation
+rank. The analyzed framework captures the connectivity of self-attention but omits its softmax and ReLU non-linearities (see eq. 1 below). We refer the reader to Levine et al. (2020); Wies et al. (2021) for a discussion on the impact of these relaxations. Essentially, they are shown to weaken the overall network power but still allow a meaningful comparison of the self-attention integration abilities. Importantly, both works derive unforeseen theoretical conclusions from analyses of the separation rank measure for this architecture class, and then provide extensive empirical corroboration for their manifestation in common Transformer architectures, reinforcing the relevance of this setting. In the following, we describe in section 2.1 the analyzed in-context and sequential self-attention representations of two sentences. Then, in section 2.2, we present the separation rank, which we use in section 2.3 for quantifying the advantage of in-context representations versus sequential ones.
+For an input sequence of N embedding vectors {xj ∈Rdx}N j=1, denote the function realized by the analyzed H-headed depth-L width-dx Transformer architecture at output location i ∈[N] by: gi,L,dx W � x1, ..., xN� ∈Rdx, where W stands for learned parameters, recursively defined:
+where W is composed of Key, Query, Value and Output matrices: ∀l ∈ [L], h ∈ [H], W K,l,h, W Q,l,h, W V,l,h, (W O,l,h)⊤∈Rda×dx, where we assume the standard choice da = dx/H. For a word from vocabulary of size V , w ∈[V ], the translation into the Transformer dimension is done via a mapping EM V : [V ] →Rdx:
+� � where M V ∈Rdx×V is the learned vocabulary embedding matrix, and � M V� w is its wth column, also referred to as the learned word embedding for w. Overall, the function of the analyzed Transformer over a sequence of N words {wj ∈[V ]}N j=1 can be written by composing eqs. 1 and 2:
+yi,L,dx W,M V � w1, ..., wN� = gi,L,dx W � EM V � w1� , ..., EM V � wN��
+� � �  � �  � �� For simplicity of presentation, we examine two sentences S1 and S2 of equal length N: S1 = {wj 1}N j=1 and S2 = {wj 2}N j=1. The in-context representation simply concatenates both in the input:
+� � For the sequential approach, we consider a setup in which sentence S1 is inserted into the network at training step t and sentence S2 is inserted into the network at training step t + 1. The output of the network at training step t is therefore: yi,L,dx Wt,M V t (S1), where Wt, M V t stand for all the learned weights before training step t. Focusing on autoregressive NLMs for simplicity of presentation (the analysis holds for bidirectional NLMs as well), the log-likelihood loss is given by L (S1) = −�N j=1 log �� softmax �� M V t �⊤yj,L,dx Wt,M V t (S1) �� wj+1 1 � , and the gradient update for any learned weight θ ∈{Wt, M V t } is: θt+1 (S1; η) = θt−η·∂L(S1)/∂θt, where η is the learning rate. Accordingly, the analyzed sequential representation is the network output after training step t + 1:
+In practice, two relevant non-neighboring sentences are not necessarily shown in consecutive pretraining steps. In comparison to the realistic scenario of S1 and S2 appearing at any training step,
+(1)
+(2)
+(3)
+(5)
+this simplifications tilts the representation in favor of modeling high correlations between S1 and S2. Thus, by upper bounding the ability to correlate S1 and S2 in the setting of eq. 5 (as we do in section 2.3), we establish an inherent limitation of the network to access information that was stored in its weights via the gradient update mechanism. In the next subsection, we present our approach for measuring a network’s ability to correlate two sentences seen during training, which we will use in order to separate between the in-context and sequential settings.
+In this section, we refine the separation rank, used in prior work in order to analyze the dependencies between two sentences appended in-context. In section 2.2.1 we present the separation rank and introduce a finite precision refinement of it, referred to as the effective separation rank, which helps to elucidate the degradation in integration ability caused by the gradient update mechanism. In section 2.2.2 we point at a structural problem in employing the separation rank in the same manner in which it was employed in prior work that analyzed only architecture expressivity, and introduce the the sequential separation rank, meaningful for both the in-context and sequential cases.
+# 2.2.1 THE EFFECTIVE SEPARATION RANK
+The separation rank, introduced in Beylkin & Mohlenkamp (2002) for high-dimensional numerical analysis, was employed for various applications, e.g., chemistry (Harrison et al., 2003), particle engineering (Hackbusch, 2006), and machine learning (Beylkin et al., 2009). More recently, the separation rank has been established as a measure of dependencies modeled by deep convolutional and recurrent networks w.r.t. their inputs (Cohen & Shashua, 2017; Cohen et al., 2017; Levine et al., 2018a), and tied to quantum entanglement measures for proving that these deep learning architectures can model elaborate many-body quantum particle correlations (Levine et al., 2018b; 2019; Sharir et al., 2020). Recently, Levine et al. (2020); Wies et al. (2021) employed this measure for studying the expressivity of a self-attention architecture with respect to its input. For a function y(A, B) over variables A = {aj ∈X}M j=1 and B = {bj ∈X}M j=1, the separation rank w.r.t. (A, B) is the minimal number of summands that together sum up to equal y(A, B), where each summand is multiplicatively separable w.r.t. (A, B), i.e., is equal to a product of two functions – one that intakes only A variables and another that intakes only B variables. Formally, the separation rank of y : X 2M →R w.r.t. (A, B) is defined as follows: � N′ ′  M R R � ′ �
+If the separation rank of a function w.r.t. (A, B) is 1, it is multiplicatively separable w.r.t. (A, B), meaning it cannot take into account consistency between A and B. The higher sep(A,B) (y) is, the farther y is from this situation, i.e., the more it models dependency between A and B. We will further make use of the effective separation rank:
+� � In words, if a function has a high separation rank, but it can be approximated up to error ε by a function with a low separation rank, then it has a low ε-separation rank.
+Prior works compare two functions by establishing the differences between their separation ranks. In principle, these differences could manifest only in irrelevant magnitudes (if many of the summands in the separation rank definition are negligibly small for the function with the higher separation rank, for example). The effective separation rank is key to our analysis because we rely on the fact that information on past examples is stored in the network weights in a small magnitude (due to a small learning-rate). We show in section 2.3 that much of the integration between text segments from different training examples occurs in very small magnitudes due to high powers of the learning rate, limiting the effective integration, as measured by the ε-separation rank. Our techniques for bounding
+(6)
+(7)
+the ε-separation rank are extendable to prior works, and while these did not examine the gradient update mechanism, their results can be reinforced due to the guarantees of this introduced measure.
+# 2.2.2 THE SEQUENTIAL SEPARATION RANK
+Levine et al. (2020), who were the first to apply the separation rank to functions realized by Transformer architectures, studied classical architecture expressivity questions which apply only to the in-context representation. Accordingly, they analyzed only the separation rank of gi,L,dx, defined in eq. 1, and the input variables considered for calculating the separation rank were the word embedding vectors. A fundamental difficulty arises when attempting to directly apply this method to the sequential representation: the word embedding vectors are learned parameters of the architecture. In the sequential case, when the second sentence S2 is introduced after the calculation at time-step t, the vectors used to describe it, if we were to follow prior practice, would already have depended on S1. In order to meaningfully measure the integration ability of two sentences across examples in the presence of the gradient update mechanism, we introduce an auxiliary sentence association layer with new variables: a, b ∈Rdx, which explicitly associates each employed vocabulary embedding vector with the sentence index s ∈{1, 2} that invoked its usage:
+where ⊙denotes element-wise multiplication. We define the sentence association operation over the analyzed representations, denoted Zy (a, b) with y ∈{yi,L,dx in-context (S1, S2) , yi,L,dx,η sequential (S1, S2)} (eqs. 4 or 5), to be the application of the sentence association layer of eq. 8 to all uses of the input embedding layer during the computation of y. Meaning, for both mechanisms, that chosen word embeddings are marked with the identity of the sentence that invoked them. Finally, we define the following specialization of the separation rank measure to our setting, referred to as the sequential separation rank of y ∈{yi,L,dx in-context (S1, S2) , yi,L,dx,η sequential (S1, S2)}:
+Clearly, when the introduced variables are vectors of 1, the auxiliary layer in eq. 8 is the identity operation and so Zy(1, 1) = y for both representations. More deeply, our expressivity questions query the ability of the in-context and sequential mechanisms to integrate two sets of variables, and Zy captures the essence of this ability by explicating where each set enters the computation. In the next subsection, we show that for the in-context case, analyzed in prior work, the introduced measure of the sequential separation rank is asymptotically equal to the previously employed measure of separation w.r.t. a partition of the input word embeddings (Levine et al., 2020). Thus, the properties of the existing framework are unchanged under the new definition. At the same time, for the sequential case brought forth in this paper, the sequential separation rank considers both the effect of S1 on the gradient-updated word embedding and the introduction of S2 into the computation.1 In the following section, we make use of both extensions to the separation rank in eqs. 7 and 9 in order to establish the in-context bias.
+Clearly, when the introduced variables are vectors of 1, the auxiliary layer in eq. 8 is the identity operation and so Zy(1, 1) = y for both representations. More deeply, our expressivity questions query the ability of the in-context and sequential mechanisms to integrate two sets of variables, and Zy captures the essence of this ability by explicating where each set enters the computation.
+Zy captures the essence of this ability by explicating where each set enters the computation. In the next subsection, we show that for the in-context case, analyzed in prior work, the introduced measure of the sequential separation rank is asymptotically equal to the previously employed measure of separation w.r.t. a partition of the input word embeddings (Levine et al., 2020). Thus, the properties of the existing framework are unchanged under the new definition. At the same time, for the sequential case brought forth in this paper, the sequential separation rank considers both the effect of S1 on the gradient-updated word embedding and the introduction of S2 into the computation.1 In the following section, we make use of both extensions to the separation rank in eqs. 7 and 9 in order to establish the in-context bias.
+# 2.3 THE EXPRESSIVE ADVANTAGE OF IN-CONTEXT LEARNING
+We show below that the function computed by a self-attention based NLM when inserting sentences S1 and S2 together in its input (the in-context representation) can model more elaborate dependencies between S1 and S2 than the function attained when showing S1 in the input, modifying the network’s weights according to its loss, and then showing S2 in a subsequent input (the sequential representation) We begin by stating the following corollary, following from theorem 2 in Levine et al. (2020) and proposition 1 in appendix A, which upper bounds the sequential separation rank of the in-context representation:
+(9)
+Corollary 1. Let y(p,i),L,dx in-context be the p ∈[dx] entry of the analyzed in-context representation defined in eq. 4. Assume that L > log3 dx. Then ( ˜O notation omits log terms: log dx, log L, log H):
+However, the ε-separation rank of the sequential representation is upper bounded by a lower term: Theorem 1. (See proof in appendix B). Let y(p,i),L,dx,η sequential be the p ∈[dx] entry of the analyzed sequential representation defined in eq. 5. Assume that all learned parameters and all gradients are bounded: ∀θ ∈{W, M V} : 0 < Λmin ≤|θ| , |∂L(S1)/∂θ| ≤Λmax,2 N < dx, and that L > log3 dx. Then, ∀ε > 0:
+Therefore, a gap between upper bounds on the ability to model dependencies between S1 and S2 is indicated. Since the learning rate η is a small term, its log is negative and the gap is in favor of the in-context representation. The following theorem guarantees that this gap is meaningful, by showing that the higher upper bound (of the in-context case) is tight in terms of effective rank: Theorem 2. (See proof in appendix C). For y(p,i),L,dx in-context as defined in corollary 1, there exists an assignment of the network weights for which the following holds:
+Therefore, a gap between upper bounds on the ability to model dependencies between S1 and S2 is indicated. Since the learning rate η is a small term, its log is negative and the gap is in favor of the in-context representation. The following theorem guarantees that this gap is meaningful, by showing that the higher upper bound (of the in-context case) is tight in terms of effective rank:
+� � Notably, corollary 1 and theorem 2 show that for the in-context case, the sequential separation rank asymptotically equals the regular separation rank, validating the relevance of this measure.
+We now provide a high level proof sketch that captures the manner in which the theoretical framework of sections 2.1 and 2.2 is used for establishing the above gap (full proof in the appendix). For the in-context case, notice that each self-attention layer, defined in eq. 1, is a degree 3 polynomial over its 2N · dx inputs, rendering the whole network a degree 3L polynomial. We write this polynomial as a sum over many monomials, and by definition, the separation rank of any monomial composing the polynomial is 1. Since the separation rank of a sum of functions is upper bounded by the sum of their separation ranks, we upper bound the separation rank by the number of these monomials, yielding eq. 10. The main difference in the sequential representation case is that the S1 variables affect the computation only via the gradient, so their impact is expected to be limited. However, considering that S2 first encounters gradient updated vocabulary matrix entries � mV� t+1 = � mV� t −η∂L(S1)/∂(mV)t, it appears that both S1 and S2 variables enter the self-attention stack via its input, similarly to the in-context case. So the integration between S1 and S2 occurs right from the start, and indeed we show that the separation rank of both representations is similar. However, since any function of S1 is accompanied by the learning-rate η, the monomials for which there are many S1 variables will be multiplied by high powers of η. This causes many monomials to be negligibly small, and accordingly not to contribute to the ε-separation rank. By combinatorial considerations we show that the number of monomials that are not attenuated by η (have sufficiently large magnitude) yields eq. 11. The above theorems establish that from an expressivity perspective, the small magnitude of commonly employed learning-rates hinders the ability to integrate information across different training examples. Specifically, the established gap implies that the power of the joint representation of two sentences shown in different training examples is upper bounded by that of a network shallower by 0.5 log3(η−1) layers that has seen them in the same context. Common learning-rate values are on the order of η ∈[10−6, 10−4], implying a deficit of ∼6 layers in the sequential case. As shown in in Levine et al. (2020); Tay et al. (2021), in many practical regimes of network size depth is crucial for expressivity, reinforcing the implications of this gap.
+2The upper boundedness assumption resembles practices of gradient clipping and weight decay, and the ower boundedness assumption resembles finite precision.
+(10)
+(11)
+(12)
+The weaker upper bound, of the sequential case, is not guaranteed to be tight. This means that theoretically, the sequential representation may in fact be much weaker than what we have proven, e.g., that showing two sentences in the same context yields a representation that cannot be matched merely by showing them in separate contexts and adding a realistic number of layers. However, Roberts et al. (2020) show evidence supporting our indicated link between architectural parameters and the in-context bias. They show that when performing open domain question answering tasks (their defined “closed book" setting), a large T5 model that sees only the question performs comparably to smaller models that are allowed to attend to the documents that contain the answer. This directly implies a certain strength of the sequential mechanism, namely, that information which was seen during training can be accessed via the weights when the model is realistically stronger, as implied by our bounds. Notably, the large T5 model is 2-4 times the depth of the contrasted smaller models (48 versus 12-24 layers), suggesting that the upper bound can be tightened to a fraction of L, or that factors that are beyond expressivity also contribute to the in-context bias (e.g., optimization, generalization). Investigation of these aspects is left for future work.
+# 3 KNN BASED PRETRAINING EXAMPLE DESIGN
+Our theoretical analysis quantifies the relation between the small magnitude of the learning rate, and the deficiency in the ability to model dependencies between different training examples. Clearly, small learning-rates are critical for optimization purposes, so the formalized phenomenon should not be solved via high learning-rates during training. Instead, our analysis makes it clear that if correlations between specific sentences are important for a given task, appending them in-context yields better representations for the task. Below, we describe two controlled experiments that demonstrate the importance of this indicated “pretraining example design" degree of freedom. In both experiments, correlated sentences are identified via kNN search in their RoBERTa-large sentence representation space (Reimers & Gurevych, 2019), performed using the FAISS library (Johnson et al., 2019).
+# 3.1 KNN TASK ADAPTIVE PRETRAINING
+The Task Adaptive PreTraining (TAPT) method, in which an NLM pretrains on the training set of an NLU task, leads to impressive gains (Gururangan et al., 2020). Notably, TAPT is most effective after the regular pretraining stage on a general corpus. This implies that during TAPT, the model generates improved representations by integrating the task related text with the knowledge stored in its weights from the preceding general pretraining phase. Under this premise, we postulated that performance will improve if we make relevant sentences from the general corpus more available to the model during the TAPT phase. According to the above analysis, a simple and effective way to bias the model towards representing desired correlations between sentences is to append them in context. We thus propose the kNN-TAPT phase, in which the training examples are composed of task examples, concatenated with their general corpus neighbors in embedding space. We applied kNN-TAPT on the SentEval sentence similarity tasks. Showing similar sentences from Wikipedia is expected to be particularly useful on these tasks, so this is a good experimentation ground to search for effects of the in-context bias. For each SentEval example, we searched over 100M Wikipedia sentences and appended in-context neighbors that have embeddings with over 0.8 cosine similarity to the SentEval example embedding, with a special token inserted between different sentences. We continued until finding no more neighbors or reaching a maximum of 256 tokens in the RoBERTa vocabulary (Liu et al., 2019). This search yielded 170K examples, over which we continued training a pretrained RoBERTa-base model for 5 epochs, using the first epoch for learning-rate warmup and examining peak learning rates of {1, 3, 5, 7} · 10−5. See appendix D for implementation details. Table 1, shows zero-shot SentEval sentence similarity scores, attained by using the average word embedding of an inserted sentence as its examined sentence representation (shown by Reimers & Gurevych (2019) to be most meaningful in zero shot). All models were trained according to the above prescription, besides the baseline RoBERTa which was simply evaluated. kNN-TAPT improves over regular TAPT, by over 1 point on average, implying that the Wikipedia neighbors are indeed useful to the TAPT stage. We compared 4 kNN-TAPT variants as an ablations study. Importantly all variants labeled with kNN-TAPT train on the same training data during the TAPT stage – the SentEval sentence similarity tasks training sets and their Wikipedia nearest neighbors, and differ only in the arrangement of the data into training examples. The “neighbors" flag relates a SentEval example to
+STS12
+STS13
+STS14
+STS15
+STS16
+STS-B
+SICK-R
+Avg.
+Basline Roberta Model
+32.1
+56.3
+45.2
+61.3
+62.0
+55.4
+62.0
+53.5
+TAPT
+43.0
+62.2
+51.6
+70.6
+64.9
+63.0
+63.5
+59.8
+kNN-TAPT (random, in-batch)
+40.2
+62.7
+51.9
+64.9
+62.1
+61.5
+65.4
+58.4
+kNN-TAPT (neighbors, in-batch)
+40.8
+62.4
+53.1
+66.1
+63.0
+61.3
+65.2
+58.8
+kNN-TAPT (random, in-context)
+44.62
+62.64
+51.4
+65.28
+64.93
+64.31
+66.96
+60.0
+kNN-TAPT (neighbors, in-context)
+44.9
+63.4
+52.1
+66.2
+65.3
+66.5
+68.3
+61.0
+its actual neighbors from the kNN search, while the “random" flag relates it to random Wikipedia sentences from the overall neighbors pool attained in the search. The “in batch" flag implies that related sentences were shown in the same batch, where every training example includes only one sentence from either SentEval or Wikipedia. In contrast, the “in context" flag implies that related sentences were shown in the same training example. The weakness of “neighbors, in-batch" implies that the a-priori plausible approach of biasing the model to learn from these Wikipedia neighbors via placing them in the same batch is not nearly as effective as the theoretically motivated in-context approach. Leading sentence representations employ in-batch techniques (see for example the contrasive setting of Gao et al. (2021b)), and this signal strongly suggests developing in-context parallels. The fact that the original TAPT scheme outperforms the in-batch approaches implies that including the Wikipedia sentences in separate training examples is harmful. We postulate that this is because training examples that have only Wikipedia sentences actually dilute the original TAPT signal. Indeed, by this view, the reason that “random, in-context" performs comparably to TAPT, is that it does not dilute the original TAPT signal – every training example includes a SentEval example. Overall, the clear advantage of the “neighbors, in-context" kNN-TAPT variant encourages leveraging the in-context bias for TAPT in further tasks.
+# 3.2 KNN PRETRAINING
+We extended the above to more general kNN-Pretraining, designing pretraining examples with related non-neighboring sentences given only the general pretraining corpus. kNN-Pretraining is also motivated by the kNN-LM results of Khandelwal et al. (2019), who show significant benefits of using nearest neighbors in representation space at inference time. Their results exemplify the potential impact of integrating cross-corpus related examples; our kNN-Pretraining approach provably biases the model to learn these correlations at pretraining time, via the in-context bias. Specifically, we performed kNN search over Wikipedia sentences for every sentence in Wikipedia, and created each training example similarly to the protocol in the previous subsection. During kNN-Pretraining, half of the batch contained regular pretraining examples and half contained the prepared kNN examples, in order to retain longer ranged LM abilities. To examine the effect of kNNPretraining, we pretrained GPT-base and GPT-medium (110M and 345M parameters) architectures from scratch over Wikipedia in the regular pretraining scheme, and switched to kNN-Pretraining at two different points during pretraining (200K and 400K). The training examples were of maximal size 256, and the batch size was 128 for the GPT-medium models and 256 for the GPT-base models. In order to directly probe the acquired ability to integrate non-neighboring sentences, we evaluated the resultant models on the very challenging setup of zero-shot closed-book open domain question answering. In this setup, the unidirectional pretrained model decodes an answer conditioned on the given open ended question. We evaluated the models on questions from the Natural Questions (NQ) benchmark (Kwiatkowski et al., 2019), using the same phrasing employed in Brown et al. (2020), and employing the standard “open-domain” version as used e.g. by Lee et al. (2019); Asai et al. (2019); Roberts et al. (2020). NQ is composed of questions that have answers within Wikipedia, our pretraining corpus. kNN pretraining can imtuitively improve in cases where the passage containing the answer has elucidating nearest neighbors from across wikipedia that would help the model to better internalize the answer, such that it is more accessible to the model in zero shot. As figure 1 demonstrates, 3 baseline models, pretrained with the regular scheme, achieve very low F1< 10−3 scores on this task. In contrast, kNN-Pretraining shows a low-scoring but significant improvement.
+To increase the credibility of the signal, we evaluated our models on the first 20K examples from the NQ training set (we tested zero-shot performance, so the training set was not used earlier). Indeed, the attained F1 scores are low, but they correspond to 100s of correct answers that the kNN-Pretrained model provide after roughly 10% of the overall training time, versus much less in the 3 randomly initialized baseline models. Finally, we include in appendix E NQ scores of models of different sizes when starting kNN-Pretraining at different checkpoints, and in appendix F zero-shot scores on several GLUE tasks, which demonstrate clear gains of kNN-Pretraining over the baselines.
+# 4 DISCUSSION
+Modern NLM pretraining schemes have tremendously advanced the natural language landscape, since they allowed powerful models to train on huge amounts of unlabeled text. But NLMs are now challenged with tasks which require deeper and more nuanced understanding of text, and means of improving the basic pretraining process should be considered. For a given architecture, pretraining can be improved by adding more data or finding more sophisticated training objectives to apply over existing data. In this paper we highlight a parallel path for improvement, which employs the same data and objective, but redistributes the available strength of the Transformer architecture such that important connections within the pretraining corpus are learned more effectively. Specifically, we highlight the bias of the trained NLM towards modeling dependencies between chunks of text that appeared within the same training examples. In current pretraining schemes, this means that dependencies between non-neighboring chunks of text are under-favored. If such dependencies matter for the task at hand, we suggest rearranging the data into corresponding training examples. We formalize the above notion. Our theoretical setup asks expressivity questions that pertain to the training set rather than to a single example. We thus tie the construction of the training example with the available expressivity of the architecture: we prove that the connections that can be modeled between different training examples are bounded by the connections that can learned by a shallower and weaker architecture, if these examples were inserted within the same input. The advantage in including related text in the input of the NLM is noticed and leveraged in the empirical landscape. With that, it is clear that showing the model related data is meaningful even if it is in different training examples, and many leading methods elect to do just that. Our quantification of this trade-off is intended to aid informed decisions and highlight the expressivity advantage to be gained by smarter training example designs. We follow up on these recommendations and demonstrate the immediately available gains to be achieved by designing training examples that include nearest neighbors in embedding space. This method can be enhanced, and other more explicit biases can be introduced. For example, multiple mentions of the same entity, event, or concept can be concatenated within the same training example. The gains achieved by using similarity in representation space indicate a path for self-improving representations, left for future work. After a first cycle of kNN-Pretraining, the representation is refined and applying a new kNN search over it can lead to more informative next round of kNNPretraining. This way, deeper insight can be elicited from a given pretraining corpus. Lastly, while this paper focused on leveraging the identified in-context bias for pretraining, it can also be tied to recent successes of in-context inference methods. From the in-context few-shot prompts of Brown et al. (2020), to in context augmentations such as in Gao et al. (2020); Schick & Schütze (2020) and many others, the benefits of biasing the prediction by appending text in-context are now widely established. The tools brought forth here can assist in clarifying the theoretical advantages of such practices. Overall, our work aims to provide timely theoretical interpretations, to help guide the rapid empirical advances of our field.
+Noga Alon, Troy Lee, Adi Shraibman, and Santosh Vempala. The approximate rank of a matr and its algorithmic applications: approximate rank. In Proceedings of the forty-fifth annual AC symposium on Theory of computing, pp. 675–684, 2013.
+Akari Asai, Kazuma Hashimoto, Hannaneh Hajishirzi, Richard Socher, and Caiming Xiong. Learning to retrieve reasoning paths over wikipedia graph for question answering. arXiv preprint arXiv:1911.10470, 2019.
+A PROOF OF COROLLARY 1
+Proof. Assume that sep([N],[2N]\[N]) � gi,L,dx W � = R, then by definition there exist g1, . . . , gR : � Rdx�N →R and g′ 1, . . . , g′ R : � Rdx�N →R such that for any � xj�2N j=1,
+Now, given a, b ∈Rdx, we can write:
+Corollary 1 now follows from an upper bound on sep([N],[2N]\[N]) � gi,L,dx W � given in Levine et al. (2020).
+Corollary 1 now follows from an upper bound on sep([N],[2N]\[N]) � gi,L,dx W � given in Levine (2020).
+B UPPER BOUND FOR THE ε-SEPARATION RANK
+Definition 1. For an expression that can be represented as a sum of some terms,
+by f + the corresponding sum, but with each term replaced by its absolut
+and note that by the triangle inequality it holds that:
+Theorem 3. Let y(p,i),L,dx,η sequential be be the p ∈[dx] entry of the analyzed sequential representation defined in eq. 5. Assume that all learned parameters and all gradients are bounded: ∀θ ∈{W, M V} : Λmin ≤|θ| , |∂L(S1)/∂θ| ≤Λmax for some 0 < Λmin ≤Λmax, N < dx, η ∈(0, 1], 2(1+η)dx η < 3L, 2 (1 + η) d2 x < 3L, In addition, assume that there exists M ≥0 for which it holds that Z+ yp,i,H,L,dx,η sequential (S1,S2) < M on its domain. Then:
+# log � ε-seq-sep � y(p,i),L,dx,η sequential �� = ˜O ([L + 0.5 log3 (η)] · dx)
+Proof. Denote:
+Z(S2) Θt+1(a,S1;η) (b) := Zyp,i,H,L,dx,η sequential (S1,S2) (a, b)
+The proof outline is as follows: We start by finding a representation of Z(S2) Θt+1(a,S1;η) as a sum of terms, where each term is separable with respect to (a, b). We then turn to finding a subset of these terms, denoted G, such that the sum of all terms in G is an ε-approximation of Z(S2) Θt+1(a,S1;η). Lastly, since it follows from the definition of the ε-separation rank and the construction of G that ε-sep(a,b) � Zyp,i,H,L,dx,η sequential (S1,S2) � is upper bounded by the cardinality of G (which is the number of summands in the approximation), we find an upper bound to |G|, which is therefore an upper bound to ε-sep(a,b) � Zyp,i,H,L,dx,η sequential (S1,S2) � as well, which by definition is equal to ε-seq-sep � yp,i,H,L,dx,η sequential � .
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/26ec/26ec5ead-ba19-44c5-bd67-1b0d28e3df23.png" style="width: 50%;"></div>
+(13)
+where ˜ wj := g (b)j + ηf (a)j ⊙b (this form follows from g (b)j := EM V t � wj 2 � ⊙b is the entrywise product of b with the embedding of wj 2 prior to the tth training step, and f (a)j := −∂L(S1;a) ∂(M V t )wj 2 is the gradient update performed to wj 2’s embedding at time t), the P (c,h) rc and Q(c,h) rc+1 terms are sums of products of the networks inner (i.e., non-embedding) weights which were also updated with respect to L (S1; a), and for convenience we denote jC(L)+1 := i and P (C(L)+1,h) := P (0,h).
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/302e/302ebac6-6910-40fb-9856-59d99aad9816.png" style="width: 50%;"></div>
+<div style="text-align: center;">Separating to vocab-gradient terms and vocab terms:</div>
+Separating to vocab-gradient terms and vocab terms:
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9658/965855b0-82b0-4da4-b8c8-6b713cdd73a1.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6215/6215884f-1c3b-4c0c-bdc8-357df6ca67ec.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9b16/9b16ce0e-f7dc-41f7-a914-9fabec83f544.png" style="width: 50%;"></div>
+Separating to weights and variables:
+<div style="text-align: center;">∀κ∈[dx] |{c∈IP |αc=κ }|+|{c∈IQ|βc=κ }|=pκ κ∈[dx] |{c∈[C(L)+1]\IP |αc=κ }|+|{c∈[C(L)]\IQ|βc=κ }|=nκ</div>
+Pushing in summations on N, only the parity matters:
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/0f55/0f554812-469b-48fc-8b69-28a906b2d82a.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d312/d3128930-1560-444e-8267-57906b82bebf.png" style="width: 50%;"></div>
+which is the sum of all terms with indices in G. Clearly, summing over all possible indices gives us the original expression:
+Given ε > 0, we wish to find a subset of the indices, G ⊆D, such that the sum of all terms whose ndices are in G is an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2) (a, b). That is, we are looking for
+Given ε > 0, we wish to find a subset of the indices, G ⊆D, such that the sum of all terms whose indices are in G is an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2) (a, b). That is, we are looking for G ⊆D such that for all a, b:
+�� �� � � and it follows that it is enough for us to show that:
+which is equivalent showing that:
+under the assumption:
+∀θ ∈Θ
+which we make going forward. This will ensure that ZG is an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2) (a, b).
+Now, we assume that ∀θ ∈Θ : θ, −∂L(S1) ∂θ ∈[Λmin, Λmax], and by Levine et al. (2020), the Ps and Qs in eq. 13 are products of up to L matrices, so each of their coordinates is bounded in � ΛL min, ΛL max � and we assume without loss of generality that Λmin ≤1 ≤Λmax (otherwise we could have picked a smaller Λmin and a larger Λmax). Then for each (NA, p, n, e) ∈D the following inequalities hold:
+(14)
+(15)
+dC(L) x daΛ2C(L)+2 max
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ee81/ee81c469-f6d5-4354-bbdd-83cd66e503a5.png" style="width: 50%;"></div>
+Relaxing the parity constraints inside the brackets and recalling that Λmax ≥1 gives us an upp bound: � � � �
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2a07/2a07b0cc-57f6-423f-853b-460920f3ccca.png" style="width: 50%;"></div>
+On the other hand:
+so in order to show that (14) holds, it suffices to show that:
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5ac7/5ac7dd6a-4654-403b-a213-f7e2370c6be6.png" style="width: 50%;"></div>
+� and in this case we get that:
+and also:
+where the inequality is due to lemma 3 in Levine et al. (2020). Hence: � � � �
+In order for ZG(T ) (a, b) to be an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2) (a, b).
+� � In the last step we have found a condition on subsets of indices, such that summing over any subset who meets this condition will yield an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2). We will now find a specific subset who meets this condition, and use it in order to bound ε-sep(a,b) � Zyp,i,H,L,dx,η sequential (S1,S2) � from above. We will focus our attention on Ts of the form:
+for some s ∈ � 0, e−1.5� which we’ll determine later. By lemma 9 we have that:
+�� so we can choose:
+<div style="text-align: center;">and since this upholds s∗< e−1.5, we get that (16) indeed holds for ˜G (T (s∗)), and therefore that ZG(T (s∗)) is an ε-approximation of Zyp,i,H,L,dx,η sequential (S1,S2).</div>
+and therefore:
+Remark 1. For brevity and clarity we will use expressions of the form � K K M ,..., K M � , regardless whether K is divisible by M or not. For the latter case, this expression should actually be:
+� expressions of the form � K K M ,..., K M +1 � should be read as:
+� �� and expressions of the form � K K M ,..., K M −1 � should be read as:
+    � �� � Lemma 1. For all K, M ∈N, the maximal value of � K a1,...,aM � is achieved when ∀j1, j2 ∈[M]  holds that |aj1 −aj2| ≤1.
+Proof. Let a1, . . . , aM be a sequence of non-negative integers such that a1 + . . . + aM = K and � K a1,...,aM � is maximal. Assume towards a contradiction there exist j1, j2 ∈[M] such that aj1 −aj2 > 1 ⇐⇒ aj2+1 aj1 < 1, then:
+  in contrary to the maximality of � K a1,...,aM � . Therefore, ∀j1, j2 ∈[M], |aj1 −aj2| ≤1. Lemma 2. Let K, M be two fixed natural numbers, η ∈(0, 1] and denote
+Then for all n ∈[K] ∪{0}:
+if K mod M ≡0
+
+Proof. We will prove by induction.
+<div style="text-align: center;">�� � � where the second equality is due to the fact that:</div>
+�� � � where the second equality is due to the fact that: 
+Therefore, (17) is true for n = 0. • Induction step: Let n ≥0 such that (17) holds for n.
+�� � � Thus, (17) holds for n + 1, and the proof of the induction step is complete. Hence, by induction, (17) is correct for all n ∈[K] ∪{0}.
+
+is achieved when:
+�� � � and for all i ∈[M], ��ai −n M ��≤1 and ��bi −K−n M ��≤1.
+�� �� �� �� Proof. From lemma 1 we know that a multinumial coefficient reaches its maximum when the sum is evenly distributed between all indices. Since the ais and bi can be chosen independently of each other given K and n, we may assume without loss of generality that no matter the value of n, for all i ∈[M], it holds that ��ai −n M ��≤1 and ��bi −K−n M ��≤1. Define S as in lemma 2. Note that the function: � �� �� �
+is Gaussian-shaped and therefore unimodal and has a unique maximum. ηx for η ∈(0, 1] is monotonically decreasing, and therefore their product is also unimodal. Since we are only interested in solutions for n ∈N, we can reduce our problem to finding the maximal n such that: S (n)
+and from lemma 2 we have:
+So we get that S (n) is monotonically increasing as long as �n−1 M � M ≤ηK−M 1+η , and the large integer for which this condition holds is:
+Lemma 4. Denote by N � Bd R � the number of integer lattice points in Bd R (the d-dimensional zerocentered ball of radius R). Then:
+Proof. Let I � Bd R � be the set of all integer lattice points in Bd R. For x ∈I � Bd R � , define: �
+��� Let y ∈� x∈I(Bd R) Cx, so there exists x ∈I � Bd R � such that y ∈Cx, and from the triangle inequality we get:
+Note that V ol (Cx) = 1 for all x ∈I � Bd R � and that for x, x′ ∈I � Bd R � such that x ̸= x′, Cx ∩Cx′ s a set of measure zero, hence: N � Bd R � = ��I � Bd R ���  
+Note that V ol (Cx) = 1 for all x ∈I � Bd R � and that for x, x′ ∈I � Bd R � such that x ̸= x′, Cx ∩C is a set of measure zero, hence:
+� � Assume for convenience that d mod 2 ≡0, so Γ �d 2 + 1 � = �d 2 � !, and Stirling’s approximation yields:
+� � Assume for convenience that d mod 2 ≡0, so Γ �d 2 + 1 � = �d 2 � !, and Stirling’s approximatio yields: � �
+ · � � On the other hand, note that Bd R− √ d 2 ⊆� x∈I(Bd R) Cx, and therefore:
+Lemma 5. Let K, M be two fixed natural numbers, s ∈(0, 1) a constant sensitivity parameter, and let”
+Then:
+�� �� Proof. By Stirling’s approximation, it holds that:
+and a slightly more accurate version is:
+and by plugging this approximation to the definition of a multinomial coefficient we get after some rearranging: �
+and by plugging this approximation to the definition of a multinomial coefficient we get after some rearranging:
+and by plugging this approximation to the definition of a multinomial coefficient we get after some
+� so we can characterize the set: �  �
+�  ��� �� � � � as ˜TK,M ≃TK,M. We’ll start by finding a condition that will assure us that (a1, . . . , aM) ∈TK,M (i.e., we will characterize a subset of TK,M). First, note that by the AM-GM inequality, �
+and therefore:
+�  � � �  Since we’re interested in a subset of TK,M, we can show that the last inequality holds when we replace the first term in the left-hand side (�M i=1 � ai + 1 6) with �K M + 1 6 �M 2 (if the new inequality holds, (19) must hold as well), and we’re left with: � �
+� Now, for i ∈[M], let hi := M K ai −1, so:
+� and the last inequality becomes:
+(18)
+(19)
+(20)
+Observe that for all x ≥−1, it holds that:
+and therefore:
+so it suffices (again, we’re only interested in a subset of TK,M) to show that:
+Now, observe that:
+so (21) becomes:
+and we get that:
+�� � � Let us now turn to finding a condition that will assure us that (a1, . . . , aM) /∈TK,M (i.e., we will characterize a subset of the complement of TK,M). Note that:
+so if (a1, . . . , aM) /∈TK,M, we must have that:
+(21)
+and using the same definition of hi as before, we get:
+  for some ξi between 0 and hi. Note that f ′′ (ξi) is monotonically decreasing with ξi for ξi ∈(−1, M −1], and using this fact an the fact that K ≥1, (22) is lower bounded by:
+Note that f ′′ (ξi) is monotonically decreasing with ξi for ξi ∈(−1, M −1], and using this fact and the fact that K ≥1, (22) is lower bounded by:
+  So we can limit ourselves to looking at the cases where:
+��� Combining the two results together we get: � � �
+(22)
+Lemma 6. Let K, M be two fixed natural numbers, and s ∈(0, 1) a constant sensitivity parameter. Then the number of multinomial coefficients, � K a1,...,aM � , which uphold:
+is upper bounded by:
+and lower bounded by:
+Proof. Let � K a1,...,aM � be a multinomial coefficient for which it holds that:
+and denote:
+then by lemma 5,
+�� �� �� �� so in order to bound the cardinality of TK,M (which is the quantity we are interested in), we can find an upper bound on the cardinality of T U K,M and a lower bound on the cardinality of T L K,M. Let B ∈{L, U} and a ∈T B K,M, and denote:
+� For i ∈[M], denote xi := ai −K M . So the problem has changed to finding the number of integer M-tuples x1, . . . , xM such that �M i=1 xi = 0 and ∥x∥≤R (B), which is the number of integer lattice points x in the zero-centered M-dimensional ball of radius R (B) that uphold �M i=1 xi = 0. Note that the intersection of a d-dimensional ball of radius R with the hyperplane H = � y ∈Rd ��� � y,⃗1 � = 0 � is a (d −1)-dimensional ball, so we can assume that the number of integer lattice points in the zero-centered d-dimensional ball of radius R whose coordinates add-up to zero is ∼ 1 √ d · N � Bd−1 R � , where 1 √ d is the cosine of the angle between H and one of the axis-aligned (d −1)-dimensional hyperplanes in Rd. In our case, R = R (B) and d = M, so by lemma 4, the
+cardinality of T U K,M is upper bounded by:
+and the cardinality of T L K,M is lower bounded by:
+Lemma 7. Let K be a fixed natural number, η ∈(0, 1], and s ∈(0, 1) a constant sensitivity parameter.Then number of integer ns such that �K n � ηn ≥s · �K ηK 1+η � η ηK 1+η is upper bounded by:
+Proof. Denote n := ηK 1+η + x, so:
+Recall that by Stirling’s approximation we know that:
+So the number xs which uphold:
+approximates the number we are trying to quantify.
+
+(23)
+After some rearranging, one can observe that (23) is equivalent to:
+and since for all t > −1, t 1+t ≤ln (1 + t), the number of xs which uphold (24) is upper bounded by the number of integer xs for which it holds that:
+� � ��� � � � Recall that for inequalities of the form ax2 + bx + c ≤0 where a > 0, the set of all values of x which satisfy this inequality is � −b− √ b2−4ac 2a , −b+ √ b2−4ac 2a � and the number of integer values of x which satisfy this condition is approximately √ b2−4ac a (the interval’s length). In our case, (25) gives us:
+and therefore:
+emma 8. Let K, M be two fixed natural numbers, η ∈(0, 1], and s ∈ � 0, e−1.5� a constant ensitivity parameter. Denote:
+Lemma 8. Let K, M be two fixed natural numbers, η ∈(0, 1], and s ∈ � 0, e−1.5� a constant sensitivity parameter. Denote:
+define F : DK,M −→R as:
+and let x⋆:= arg max x∈DK,M F (x). If ηK 1+η ≥(M −1), then the number of x ∈DK,M which uphold F (x) ≥s · F (x⋆) is bounded from above by:
+Proof. By lemma 3, x⋆≃ � ηK M(1+η), ηK M(1+η), . . . , ηK M(1+η), K M(1+η), . . . , K M(1+η) � . By lemma 7, the number of ns between 0 ≤n ≤K such that �K n � ηn ≥s · �K ηK 1+η � η ηK 1+η is upper bounded by K√ (2 ln(s−1)−1)2(1+η)2−4η 2(1+η)(ln(s−1)−1) , by lemma 6 the number of non-negative integer M-tuples a1, . . . , aM such that a1 + . . . + aM = ηK 1+η and � ηK 1+η a1,...,aM � ≥s · � ηK 1+η ηK M(1+η) ,..., ηK M(1+η) � is bounded from above by
+(24)
+(25)
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1a0f/1a0fe7e4-5df8-4f61-90e0-4727851e9479.png" style="width: 50%;"></div>
+Lemma 9. Let K, M be two fixed natural numbers, η ∈(0, 1], and s ∈ � 0, e−1.5� a cons sensitivity parameter. Denote:
+define F : DK,M −→R as:
+and let x⋆:= arg max x∈DK,M F (x). If K 1+η ≥M 2, then the number of x ∈DK,M which uphold F (x) ≥ s · F (x⋆) is bounded from below by:
+Proof. By lemma 6, the number of non-negative integer M-tuples b1, . . . , bM such that b1 + . . . + bM = K 1+η and � K 1+η b1,...,bM � ≥ s · � K 1+η K M(1+η) ,..., K M(1+η) � is bounded from below by ( πe 2 ) M−1 2 M√π � 2 � K 1+η ln(s−1) M −1 �M−1 . Since these bs are only a subset of the elements of DK,M which F takes into consideration, this is also a (quite loose) lower bound on the number of x ∈DK,M which uphold F (x) ≥s · F (x⋆). Now, we know that:
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a2f7/a2f77f65-3395-4a8f-85a9-ff65d4afee4f.png" style="width: 50%;"></div>
+and therefore:
+C.1.1 TENSORS AND THEIR MATRICIZATION
+We begin by laying out basic concepts in tensor theory required for the upcoming analysis. The core concept of a tensor may be thought of as a multi-dimensional array. The order of a tensor is defined to be the number of indexing entries in the array, referred to as modes. The dimension of a tensor in a particular mode is defined as the number of values taken by the index in that mode. If A is a tensor of order N and dimension Mi in each mode i ∈[N], its entries are denoted Ad1...dN , where the index in each mode takes values di ∈[Mi]. We will make use of the concept of the matricization of A w.r.t. the balanced partition (P, Q), denoted �A�P,Q ∈RM N/2×M N/2, which is essentially the arrangement of the tensor elements as a matrix whose rows correspond to P and columns to Q. Suppose A ∈RM×···×M is a tensor of order N, and let (P, Q) be a balanced partition of [N], i.e. P and Q are disjoint size N/2 subsets of [N] whose union gives [N]. The matricization of A w.r.t. the partition (P, Q), denoted �A�P,Q, is the M N/2-by-M N/2 matrix holding the entries of A such that Ad1...dN is placed in row index 1 + �N/2 t=1(dpt −1)M N/2−t and column index 1 + �N/2 t=1(dqt −1)M N/2−t. We now present the concept of grid tensors, which are a form of function discretization (Hackbusch, 2012). Essentially, the function is evaluated for a set of points on an exponentially large grid in the input space and the outcomes are stored in a tensor. Formally, fixing a set of template vectors x(1), . . . , x(Z) ∈[V ], the points on the grid are the set {(x(d1), . . . , x(dN))}Z d1,...,dN=1. Given a function y(x1, . . . , xN), the set of its values on the grid arranged in the form of a tensor are called the grid tensor induced by y, denoted A(y)d1,...,dN ≡y(x1 = x(d1), . . . , xN = x(dN)).
+C.1.2 ε-RANK
+We will make use of the concept of ε-rank Alon et al. (2013) of a matrix A defined for any ε > 0 as the minimum rank over matrices that approximate every entry of A to within an additive ε. We will prove lower bounds on the εs for which the ε-rank a matrix remain high by the following lemma: Lemma 10. Let M ∈Rn×n be symmetric matrix and ε > 0, then:
+∀k ≤n λk (M) ≥ε =⇒ ε 2n-rank (M) ≥k
+Proof. Let E ∈ �−ε 2n , ε 2n �n×n, we need to prove that rank (M + E) ≥k. Since M is symmetric, M is diagonalizable with eigenvalues λ1 ≥λ2 ≥· · · ≥λn. Denote by v1, v2, . . . , vn the eigenvectors that are normalized according to the l1 norm, then for any i ≤k we have that:
+    In particular for any i ≤k we have that (M + E) vi ̸= 0 and since v1, v2, . . . , vk are linearly independent we conclude that rank (M + E) ≥k. Finally, we will use the following lemma for lower bounding the amount of small eigenvalues of symmetric matrices: Lemma 11. Let M ∈Rn×n be a symmetric matrix with diagonal entries that equal to 1, and denote its eigenvalues by λ1 ≥λ2, . . . , λn. Then: � �
+Proof. Since the trace of a matrix equals to both the sum of its eigenvalues and its diagonal ent we get:
+� Eq. 28 follows from the fact that:
+C.1.3 HIGH-DIMENSIONAL SPHERES
+We will use the Lebesgue measure on the sphere for taking expectations on Sd. For any measurable subset A ⊆Sd this measure is defined as the d + 1 dimensional volume of the "wedge" in the ball
+We will use the Lebesgue measure on the sphere for taking expectations on Sd. For any measura subset A ⊆Sd this measure is defined as the d + 1 dimensional volume of the "wedge" in the b Bd+1:  
+B Where λd+1 denotes the Lebesgue measure on Rd+1. We will also use an unnormalized version of this measure:
+ � � Smith & Vamanamurthy (1989) showed that µunnormalized � Sd� is monotonically decreasing for d > 5. The following lemma bounds the rate of this decrease: Lemma 12. For any d > 5 the following holds: � �
+Finally, we will use a well known fact regarding the variation of the sphere volume for different radii (see for example Smith & Vamanamurthy (1989)): Fact 1. For any d ∈N, R > 0 the following holds: � �
+(27)
+(28)
+(29)
+(30)
+(30)
+(31)
+(32)
+(33)
+(34)
+(35)
+In this subsection, we prove theorem 2 of the main text. We will follow the proofs of Levine et al. (2020); Wies et al. (2021), with important adjustments to the ε-sequential-separation rank definition. We begin by showing that high ε-rank Alon et al. (2013) of the grid tensor matricization implies high ε-sequential-separation rank (see section 2.2 of the main text) of the function. Essentially, we apply claim 1 from Levine et al. (2020) to ε-approximations obtained from the ε-separation-rank definition. This relation, which holds for all functions, is formulated below for functions realized by the analyzed Transformer network: Lemma 13. For y(p,i),L,dx in-context as defined in theorem 1 of the main text. Let ε-seq-sep � y(p,i),L,dx in-context � denote its ε-sequential-separation rank. Then, for any integer Z, any ε > 0, any set of template vectors x(1), . . . , x(Z) ∈Rdx and any sub-matrix M of �A(Zy(p,i),L,dx in-context )�a,b it holds that:
+� � ≥ where A(Zy(p,i),L,dx in-context ) is the grid tensor of Zy(p,i),L,dx in-context with respect to the above template vectors. Proof. If ε-seq-sep � y(p,i),L,dx in-context � = ∞then the inequality is trivially satisfied. Otherwise, assume that ε-seq-sep � y(p,i),L,dx in-context � = K ∈N, and let ˜y be an ε-approximation for Zy(p,i),L,dx in-context with seq-sep (˜y) = K. By claim 1 of Levine et al. (2020) we have that rank (�A(˜y)�a,b) ≤K. Denote by ˜ M the sub-matrix of �A(˜y)�a,b that corresponds to the rows and columns in M. Now, since ˜y is an ε-approximation for Zy(p,i),L,dx we have that ���M −˜ M ��� ∞≤ε. Finally, by definition ε-rank (M) ≤rank � ˜ M � ≤rank (�A(˜y)�a,b) ≤K. Relying on lemma 13, we will bound the ε-sequential-separation rank from below via the ε-rank of sub-matrices of �A(Zy(p,i),L,dx in-context )�a,b. Denote d := (dx−H)/2, λ := 3L−2, lemmas 10, 11 assure us that for n := �� d λ �� = Ω � 2L·dx� it is enough to prove that there exists an assignment to the network’s weights, as well as choice of templates vectors, for which there exists sub-matrix M ∈Rn×n of �A(Zy(p,i),L,dx in-context )�a,b that is symmetric with diagonal entries that equals to 1 and with ∥M∥F ≤ �� (d + 1) � n 3 4 , in order to show that ε-seq-sep � y(p,i),L,dx in-context � ≥ n 1/4 2√d+1 for ε ≤ 1 2n2 . Now we will use a corollary that is direct results of the proof in Levine et al. (2020). This corollary shows that if Zy(p,i),L,dx in-context is able to produce vectors that do not change the analysis in Levine et al. (2020), then for any matrix B ∈Rn×d with rows that are l2 normalized, there exists an assignment to the networks weights, as well as choice of templates vectors, for which there exists a sub-matrix of the grid tensor matricization that is equal to3 M = � BBT �⊙λ. Importantly M is symmetric. In addition, since the rows of B are l2 normalized, the diagonal entries of M equals to 1. Therefore, M upholds the assumptions of lemmas 10, 11, 13 and it is enough to find B for which ∥M∥F ≤ �� (d + 1) � n 3 4 . Corollary 2. Let d, λ > 0, assume that for any matrix A ∈R(( d 3L−2 ))×d with rows that are l2 normalized, there exists a choice of template vectors x(1), . . . , x(Z), an assignment to the embedding layer and the first self-attention layer key and query weights, such that for any j1, j2 ∈ ��� d 3L−2 ��� the output of the first self-attention layer on � j1, j2 + �� d 3L−2 ��� is:
+3We ignored the constant that appear in eq 28 of Levine et al. (2020) since we can get rid of this constant by dividing the last layer output matrices. Importantly, this constant is larger than 1 and therefore the network weights boundedness assumption is not violated
+
+  Then for any matrix B ∈Rn×d with rows that are l2 normalized, there exists an assignment to the networks weights, as well as choice of templates vectors for which there exists sub-matrix of the grid tensor matricization that equal to M = � BBT �⊙λ.
+�  � Now we will shows that indeed Zy(p,i),L,dx in-context is able to produce vectors that do not change the analysis in Levine et al. (2020) and the assumptions of corollary 2 holds.
+Lemma 14. Let A ∈R(( d 3L−2 ))×d with rows that are l2 normalized, then there exists a choice of template vectors x(1), . . . , x(Z), an assignment to the embedding layer and the first self-attention layer key and query weights, such that for any j1, j2 ∈ ��� d 3L−2 ��� the output of the first self-attention layer on � j1, j2 + �� d 3L−2 ��� is:
+for
+   where φ(j) ≡⌊j−1/da⌋· (da −1) + (j −1 mod da) + 1.
+Proof. We will ignore Zy(p,i),L,dx in-context ’s element-wise multiplication with vocabulary embedding matrix by choosing ∀i, j M V i,j = 1 (by the terms of corollary 2 it suffices to find any assignment of the learned weights). For any i ∈ � 2 �� d 3L−2 �� + 1 � our templates vectors will be:
+<div style="text-align: center;"> We will implement summation of the inputs embedding in the first self-attention layer, we will follow Levine et al. (2020) and set the first layer self-attention key and query weights to:</div>
+� � � where (1) is because W Q,1,h = W K,1,h are matrices that are zero everywhere except for entry (1, da) and that all the entries in the vocabulary embedding matrix equals to 1, and (2) because of linearity. Therefore, for any j1, j2 ∈ ��� d 3L−2 ��� the output of the first self-attention layer on j1, j2 is: � �
+    The third and forth cases are clear from x′s definition, so it remain to prove the first and second cases. For this we will examine d1, d2. d1 = j1 ≤ �� d 3L−2 �� and therefore:
+So it clear that also the first and second cases upholds.
+So it clear that also the first and second cases upholds.
+Returning to finding B for which ∥M∥F ≤ �� (d + 1) � n 3 4 , we will use the probabilistic method for proving the existence of such B, i.e.we will show that for random B the expectation of ∥M∥F ≤ �� (d + 1) � n 3 4 and therefore in particular there exists such B.
+(41)
+(42)
+(43)
+(44)
+
+Lemma 15. For any d, λ ∈N such that λ ≥d the following holds: ��
+� Now, Eu,v∼Sd � ⟨u, v⟩2λ� ≤(d + 1) �� d λ ��−1 2 by lemma 16 and therefore we got that:
+���� � Finally, by Jensen inequality we have that: �
+C.3 TECHNICAL LEMMAS
+Lemma 16. For any d, λ ∈N such that λ ≥d the following holds:
+Proof. We will use conditional expectation to make reduction for simpler expectation. From rotational invariance of the uniform measure on Sd we know that for every rotation matrix R ∈SO (d) and unit vector v ∈Sd we have that: � � � � � �
+� � � ∈ Now, by lemma 12 and fact 1 we have that: ��√
+Therefore we have that: � �
+(45)
+(46)
+(48)
+(49)
+(50)
+(51)
+(52)
+(55)
+(56)
+(57)
+57)
+Lemma 17. For any x ∈[0, 1] and d, λ ∈N such that λ ≥d the following holds:
+  Proof. Note that since x2λ � 1 −x2�d 2 = 0 in the boundaries (x ∈{0, 1}), it is enough to prove the inequality for critical points.
+Proof. Note that since x2λ � 1 −x2�d 2 = 0 in the boundaries (x ∈{0, 1}), it is enough to prove the nequality for critical points.
+� � Therefore, x2 = 2λ 2λ+d is the only critical point and:
+� � �� where the last inequality follow from the fact that: �� �� � � �
+# D EXPERIMENTAL DETAILS
+# D.1 KNN-TAPT
+We conducted the network training described in section 3.1 of the main text with AdamW optimizer (with the parameters suggested in the original RoBERTa paper: β1 = 0.9, β2 = 0.98, ε = 10−6 and weight decay of 0.01), with batch sizes of 128 or 256 (depending on model size) and sequences of 256 tokens each. We started with pretrained RoBERTA-base weights from the HuggingFace Transformers repository 4, and continued training them on the MLM task with masking probability of 15%, where each masked token had a probability of 80% of being replaced with the special [MASK] token, 10% of being replaced with a random token and 10% of being kept the same. The data used for this phase of training was created using the four different procedures described in section 3.1. After the training was finished, we evaluated the models’ performance using the SentEval kit.
+# D.2 KNN-PRETRAINING
+We conducted the network training described in section 3.2 of the main text with AdamW optimizer (with the parameters suggested in the original GPT-2 paper: β1 = 0.9, β2 = 0.95, ε = 10−8 and weight decay of 0.1), with batch size of 512 and sequences of 256 tokens each. We pretrained a HuggingFace Transformers implementation of GPT-2 from scratch on Wikipedia with the standard LM objective, and switched to a mixture of the standard data and our generated kNN data in two different points during training. After the training was finished, we evaluated the models’ performance on the Natural Questions benchmark.
+(58)
+(61)
+(62)
+(64)
+(66)
+
+The following table includes F1 evaluation scores of zero shoe closed book Natural Questions examples for different model sizes at different training checkpoints. Overall, further pretraining seems to improve the effectiveness of kNN-Pretraining.
+Model
+Reg.+kNN
+NQ
+Size
+Steps
+F1
+110M
+200 / 400+0
+< 10−3
+110M
+200+40
+6.2 · 10−3
+110M
+400+40
+7.9 · 10−3
+345M
+200 / 400+0
+< 10−3
+345M
+200+10
+9.6 · 10−3
+345M
+400+10
+1.4 · 10−2
+Table 2: Impact of model size and regular pretraining steps on the Natural Questions F1 score o kNN-Pretraining.
+# F KNN-PRETRAINING ON ADDITIONAL BENCHMARKS
+The main text describes experiments on the Natural Questions dataset. We test how kNN-Pretraining affects other NLU tasks, by examining several tasks from the GLUE benchmark (Wang et al., 2018) – Multi-Genre Natural Language Inference (MNLI) (Williams et al., 2017), Recognizing Textual Entailment (RTE) (Dagan et al. (2010) and others), and the The Winograd Schema Challenge (WNLI) (Levesque et al., 2012). As in the case of Natural Questions, we evaluate the zero-shot performance of our models since it is a direct probe to the abilities of the model straight after the process of pretraining. In contrast to Natural Questions, the GLUE tasks we examined are classification tasks and not generation tasks, so assessing zero shot performance on them is not straightforward. We therefore follow the template-based method of Gao et al. (2021a) for converting the tasks’ data into a format processable by unidirectional language models. Notably, the examined GLUE classification tasks are not easy for the examined unidirectional models in zero shot. Table 3 includes the zero-shot scores of the 345M parameter model that trained regularly for 200K steps and then continued training for 20K steps of kNN-Pretraining, versus the average of 3 baselines that trained regularly for the same number of overall steps (the same models used in figure 1). Similarly to the results on Natural Questions (figure 1), all examined models score only slightly better than random guess on the examined GLUE tasks. However (and again similarly to the case of Natural Questions), we get a clear signal that kNN-Pretraining significantly moves the needle when applied for just 10% of the regular pretraining time. We conjecture that when using stronger models (that train for longer and over more data), the positive effect of kNN-Pretraining will be enhanced, since as the model improves, it can better understand and utilize the various in-context hints that kNN-Pretraining provides.
+GLUE Task
+MNLI
+RTE
+WNLI
+Random guess
+33.3
+50.0
+50.0
+3 baselines – Average score
+35.1
+52.0
+51.1
+3 baselines – Max score
+35.3
+52.3
+54.9
+kNN-Pretraining
+35.5
+53.0
+56.3
+Table 3: Zero-shot accuracy scores on several GLUE tasks of a kNN-Pretrained model versus 3 baselines that trained regularly on the same data.

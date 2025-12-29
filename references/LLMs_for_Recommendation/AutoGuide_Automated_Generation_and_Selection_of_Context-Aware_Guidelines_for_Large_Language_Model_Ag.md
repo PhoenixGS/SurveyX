@@ -1,0 +1,699 @@
+# AutoGuide: Automated Generation and Selection of State-Aware Guidelines for Large Language Model Agents
+Yao Fu∗12 Dong-Ki Kim∗1 Jaekyeom Kim1 Sungryull Sohn1 Lajanugen Logeswaran1 Kyunghoon Bae1 Honglak Lee12
+# Abstract
+The primary limitation of large language models (LLMs) is their restricted understanding of the world. This poses significant difficulties for LLM-based agents, particularly in domains where pre-trained LLMs lack sufficient knowledge. In this paper, we introduce a novel framework, called AutoGuide, that bridges the knowledge gap in pre-trained LLMs by leveraging implicit knowledge in offline experiences. Specifically, AutoGuide effectively extracts knowledge embedded in offline data by extracting a set of stateaware guidelines. Importantly, each state-aware guideline is expressed in concise natural language and follows a conditional structure, clearly describing the state where it is applicable. As such, the resulting guidelines enable a principled way to provide helpful knowledge pertinent to an agent’s current decision-making process. We show that our approach outperforms competitive LLM-based baselines by a large margin in sequential decision-making benchmarks.
+arXiv:2403.08978v1
+arXiv:2403.089
+# 1. Introduction
+Recent advances in large language models (LLMs) have empowered AI agents to address various sequential decisionmaking tasks and applications (Wang et al., 2023; Xi et al., 2023). The foundation of these successes involves the planning and reasoning capabilities of pre-trained LLMs, enabling agents to execute effective policies (Brohan et al., 2023; Wei et al., 2022). However, the knowledge embedded in pre-trained LLMs is confined to the concepts and information present in a training dataset, which is inherently incomplete (Yin et al., 2023). This limited understanding
+∗Equal contribution. 1LG AI Research 2University of Michigan. Correspondence to: Yao Fu <violetfy@umich.edu>, Dong-Ki Kim <dkkim@lgresearch.ai>, Honglak Lee <honglak@eecs.umich.edu, honglak@lgresearch.ai>. Work was partially done while Yao Fu interned at LG AI Research.
+∗Equal contribution. 1LG AI Research 2University of Michigan. Correspondence to: Yao Fu <violetfy@umich.edu>, Dong-Ki Kim <dkkim@lgresearch.ai>, Honglak Lee <honglak@eecs.umich.edu, honglak@lgresearch.ai>. Work was partially done while Yao Fu interned at LG AI Research.
+in pre-trained LLMs poses significant difficulties for agents, particularly in target domains with insufficient prior knowledge. For example, in web navigation, LLM agents generally achieve low success rates due to a lack of information about taking appropriate actions on real-world websites with diverse and dynamic contents (Koh et al., 2024; Deng et al., 2023; Gur et al., 2023; Zhou et al., 2023). In this paper, we explore data-driven strategies that leverage offline experiences to bridge knowledge gaps between pre-trained LLMs and a downstream domain. As offline experiences implicitly convey valuable knowledge about desirable and undesirable policies in domains, they promise to serve as a useful resource for improving an LLM agent’s decision-making in situations where the pre-trained LLM lacks understanding. Despite this potential benefit, a critical challenge lies in effectively extracting the implicit information embedded in offline data. Unfortunately, the conventional method of directly providing all available experiences to an agent, as in in-context learning, is either impossible or unsuccessful due to constraints, including context length limitations, prompt sensitivity, and difficulty with complex reasoning (Lu et al., 2022; Dong et al., 2022; Min et al., 2022; Kaddour et al., 2023). To address the challenge of extracting knowledge from offline data, we propose a novel framework, called AutoGuide. Specifically, AutoGuide automatically extracts a comprehensive set of state-aware guidelines from offline experiences. Our method then applies these stateconditional guidelines to improve an LLM agent’s performance by identifying the current state and then incorporating its corresponding guidelines into the prompt during testing (see Figure 1). Notably, we generate stateaware guidelines in concise natural language statements, efficiently compressing knowledge in offline data. Additionally, state-aware guidelines clearly describe the states where each guideline is applicable, so AutoGuide provides an LLM agent with guidelines that are most relevant to its current decision-making process. As a result, AutoGuide achieves the highest success rates compared to competitive baselines in challenging sequential decision-making benchmark environments.
+in pre-trained LLMs poses significant difficulties for agents, particularly in target domains with insufficient prior knowledge. For example, in web navigation, LLM agents generally achieve low success rates due to a lack of information about taking appropriate actions on real-world websites with diverse and dynamic contents (Koh et al., 2024; Deng et al., 2023; Gur et al., 2023; Zhou et al., 2023).
+To address the challenge of extracting knowledge from offline data, we propose a novel framework, called AutoGuide. Specifically, AutoGuide automatically extracts a comprehensive set of state-aware guidelines from offline experiences. Our method then applies these stateconditional guidelines to improve an LLM agent’s performance by identifying the current state and then incorporating its corresponding guidelines into the prompt during testing (see Figure 1). Notably, we generate stateaware guidelines in concise natural language statements, efficiently compressing knowledge in offline data. Additionally, state-aware guidelines clearly describe the states where each guideline is applicable, so AutoGuide provides an LLM agent with guidelines that are most relevant to its current decision-making process. As a result, AutoGuide achieves the highest success rates compared to competitive baselines in challenging sequential decision-making benchmark environments.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3b01/3b0146e2-7df6-44e0-bd67-412132f2e4b7.png" style="width: 50%;"></div>
+<div style="text-align: center;">Knowledge Extraction</div>
+Figure 1. AutoGuide aims to extract the implicit knowledge embedded in offline experiences and help the decision-making proc of an LLM agent. Specifically, our method generates a comprehensive set of state-aware guidelines from offline data and explic identifies when each guideline is applicable by generating its corresponding state. Our state-aware guidelines enable providing pertin guidelines at test time by summarizing the current trajectory into the state, leading to correct decision-making compared to baseli without state-aware guidelines. Our contribution. In summary, we present the following main contributions in this paper: knowledge in these corner cases.
+Our contribution. In summary, we present the following main contributions in this paper:
+• Principled method based on state-aware guidelines (Section 3): We develop two modules to generate stateaware guidelines from offline experiences: the state summarization module for generating a description of a given state, and the guideline extraction module for extracting a desired guideline corresponding to the state. The outcome is a set of domain knowledge in concise natural language that enhances decision making by providing pertinent information.
+• Comprehensive evaluation of AutoGuide (Section 4.2): We show AutoGuide’s capability in extracting helpful state-aware guidelines in various interactive benchmark domains, including navigating realistic web environments. Our results highlight the flexibility of AutoGuide, such that it can be seamlessly incorporated into an existing LLM-based method.
+• Analyses with important perspectives (Section 4.3): We explore various aspects of AutoGuide, such as the significance of determining the applicability of each guideline based on generated states. We also investigate having only successful or unsuccessful trajectories in offline experiences, and demonstrate that AutoGuide can still extract valuable
+# 2. Related Work
+LLM agents. Language models have recently been shown to possess strong priors for sequential decision-making tasks, which has given rise to LLM-powered agents (Wang et al., 2023; Xi et al., 2023; Zheng et al., 2024; Zeng et al., 2023). Agents need to possess various skills to be effective in practice including planning (Brohan et al., 2023; Huang et al., 2022; Logeswaran et al., 2022), reasoning (Wei et al., 2022; Gao et al., 2023), tool manipulation (Qin et al., 2023; Patil et al., 2023; Parisi et al., 2022; Schick et al., 2023), code generation (Sun et al., 2023; Logeswaran et al., 2022), among others. In this work we focus on building effective agents for web (Yao et al., 2022b; Zhou et al., 2023) and embodied (Shridhar et al., 2021) environments.
+LLM agents. Language models have recently been shown to possess strong priors for sequential decision-making tasks, which has given rise to LLM-powered agents (Wang et al., 2023; Xi et al., 2023; Zheng et al., 2024; Zeng et al., 2023). Agents need to possess various skills to be effective in practice including planning (Brohan et al., 2023; Huang et al., 2022; Logeswaran et al., 2022), reasoning (Wei et al., 2022; Gao et al., 2023), tool manipulation (Qin et al., 2023; Patil et al., 2023; Parisi et al., 2022; Schick et al., 2023), code generation (Sun et al., 2023; Logeswaran et al., 2022), among others. In this work we focus on building effective agents for web (Yao et al., 2022b; Zhou et al., 2023) and embodied (Shridhar et al., 2021) environments. Self-reflection from past experiences. An important capability for agents to succeed is the ability to learn from past experiences and update their behavior based on feedback. Self-feedback (Madaan et al., 2023; Kim et al., 2023; Shinn et al., 2023) has emerged as an effective technique where a model inspects its own incorrect predictions, reflects on it to identify what went wrong and attempts to improve
+Self-reflection from past experiences. An important capability for agents to succeed is the ability to learn from past experiences and update their behavior based on feedback. Self-feedback (Madaan et al., 2023; Kim et al., 2023; Shinn et al., 2023) has emerged as an effective technique where a model inspects its own incorrect predictions, reflects on it to identify what went wrong and attempts to improve
+its prediction. Our approach shares similar motivations to self-refinement approaches, but unlike these methods which generate reflections on the fly, our approach first attempts to distill a set of guidelines from offline experiences and then retrieves the appropriate guidelines during inference for more accurate action prediction. However, these advances are complementary to our method and can be used in conjunction with our approach (as shown in the experiments). Leveraging natural language guidance. Natural Language can be a rich source of information for artificial agents to learn to act efficiently. Prior work has explored the notion of learning from human written text manuals which describe various details about the agent’s environment (Branavan et al., 2012; Hanjie et al., 2021; Zhong et al., 2020). Recent work has explored automatically generating such guidance in the form of chain-of-thought reasoning (Wei et al., 2022; Yao et al., 2022b) which emulates a thought process or rationale for an agent’s predictions. In contrast to ReAct, which generates such guidance on the fly during inference, our approach examines successful and unsuccessful trajectories corresponding to a task to generate appropriate guidance and uses these guidelines for predicting better actions. ExpeL (Zhao et al., 2023) proposed a related approach to derive guidelines. In contrast to ExpeL, where all guidelines are provided to an agent as a prompt, our guideline selection process is contextual, where guidelines relevant to the agent’s current state are retrieved and used for prediction. We show that this substantially improves over ExpeL’s non-contextual guideline-based approach.
+# 3. AutoGuide: Principled Method Based on State-Aware Guidelines
+Our work is motivated by the growing availability of offline experiences that agents or humans naturally accumulate during their interactions with the environment. We focus on leveraging these offline experiences to enhance the decisionmaking of an LLM agent. A key question in achieving our goal is how to effectively extract implicit knowledge embedded in these experiences. This section details our method, AutoGuide, which extracts a comprehensive set of state-aware guidelines from offline data.
+# 3.1. Problem Statement
+The goal of AutoGuide is to distill knowledge from offline data into a helpful natural language format, such that the extracted information improves the decision-making of an agent during testing. Formally, AutoGuide is given offline experiences Dtrain = (τ 1, ..., τ N) that consist of N trajectories from the training tasks. Each trajectory τ i :=(x0, a0, r0, ..., rT ) is a sequence of observations, actions, and rewards following the Markov decision process (Sutton & Barto, 2018). We assume that each trajectory τ i
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4c73/4c73bb0f-5b50-4c29-bb04-b5edab58f328.png" style="width: 50%;"></div>
+<div style="text-align: center;">State-Aware Guideline:</div>
+<div style="text-align: center;">When you are on the List of forums page, if you want to navigate to a specific forum, you can click on the link that exactly matches the forum name you are looking for.</div>
+When you are on the List of forums page, if you want to navigate to a specific forum, you can click on the link that exactly matches the forum name you are looking for.
+Figure 2. State-aware guideline generation process based on a pair of success trajectory τ i success and failure trajectory τ i fail. In this example, the two trajectories start deviating from each other at t = 1. The state summarization module generates a description of a state at t = 1 given τ i :t, and the guideline extraction module generates the corresponding guideline for that state.
+can be categorized as either a success or failure determined by either direct feedback from the environment or the terminal reward (e.g., considered a success if the final reward rT is positive) depending on the domain.
+# 3.2. Constructing Dataset for Guideline Extraction
+From an offline experience dataset Dtrain, we construct a paired offline dataset Dpaired for guideline extraction:
+� � where τ i success ∈Dtrain and τ i fail ∈Dtrain denote a success and failure trajectory in Dtrain of the same task, respectively. In practice, we can easily collect these pairs by applying advanced LLM-based planning approaches (Yao et al., 2022b;
+Algorithm 1 Collection of state-aware guidelines
+Input: Paired offline dataset Dpair, state summarization
+module Mstate, guideline extraction module Mguideline
+Initialize state-aware guideline dictionary G
+for Each pair (τ i
+success, τ i
+fail) ∈Dpair do
+# Summarize a trajectory into a state
+Identify target timestep t from τ i
+success and τ i
+fail
+state ←Mstate(τ i
+:t)
+# Check if the current state matches any existing states
+if state /∈G then
+G[state] = {}
+end if
+# Generate the corresponding state-aware guideline
+guideline ←Mguideline(τ i
+success, τ i
+fail, state)
+G[state] ←G[state] ∪{guideline}
+end for
+Return State-aware guideline dictionary G
+Shinn et al., 2023) or taking advantage of human demonstration datasets (Zhou et al., 2023; Deng et al., 2023). However, in rare cases, it can be challenging to obtain paired data if the offline data Dtrain contains only one type (either success or failure) of the trajectories. We discuss how our algorithm can be adjusted to handle such a biased dataset and its impact on the performance in Section 4.3.
+# 3.3. Extraction of State-Aware Guidelines
+AutoGuide generates state-aware guidelines by utilizing pairs of success and failure trajectories from offline data. Each state-aware guideline is expressed in concise natural language and follows a conditional structure, clearly describing the state in which this guideline is applicable. Intuitively, contrasting actions taken between τ i success and τ i fail provides important information about when and which actions are effective or ineffective. Building on this insight, we develop two modules for deriving state-aware guidelines in a conditional structure (see Figure 2):
+AutoGuide generates state-aware guidelines by utilizing pairs of success and failure trajectories from offline data. Each state-aware guideline is expressed in concise natural language and follows a conditional structure, clearly describing the state in which this guideline is applicable. Intuitively, contrasting actions taken between τ i success and τ i fail provides important information about when and which actions are effective or ineffective. Building on this insight, we develop two modules for deriving state-aware guidelines in a conditional structure (see Figure 2): State summarization module. The objective of this module is to generate a concise description of the state of a trajectory in natural language. Specifically, given a pair of τ i success and τ i fail from the same task, we first identify the target timestep t at which these two trajectories start deviating from each other with different actions. Then, we construct a target trajectory τ i :t :=(x0, a0, ..., xt), which comprises a sequence up to t, either from a success or failure trajectory and prompt an LLM to summarize it:
+State summarization module. The objective of this module is to generate a concise description of the state of a trajectory in natural language. Specifically, given a pair of τ i success and τ i fail from the same task, we first identify the target timestep t at which these two trajectories start deviating from each other with different actions. Then, we construct a target trajectory τ i :t :=(x0, a0, ..., xt), which comprises a sequence up to t, either from a success or failure trajectory and prompt an LLM to summarize it:
+(2)
+where Appendix B.1 details our prompt template. For example, Figure 2 shows trajectories related to the task i of creating a discussion post about online learning in a relevant
+Algorithm 2 Applying state-aware guidelines at test time
+Input: State-aware guideline dictionary G, state sum-
+marization module Mstate, guideline selection module
+Mselect, LLM agent policy π
+Initialize test trajectory τ = {x0}
+for Each timestep t do
+# Summarize a trajectory into a state
+state ←Mstate(τ)
+# Check if the current state matches any existing states.
+If matched, then perform top-k guideline selection
+if state ∈G then
+guidelines ←Mselect(state, G[state], τ)
+else
+guidelines ←∅
+end if
+# Action selection based on guidelines
+at ∼π(τ, state, guidelines)
+Execute action at and observe xt+1
+Update trajectory τ ←τ ∪{state, at, xt+1}
+end for
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f38c/f38c3d6d-db11-4378-a10c-f211e6b2132c.png" style="width: 50%;"></div>
+subReddit. Given that these two trajectories have different actions at a target timestep of t=1, our state summarization module generates the following state summary from τ i :1 in Figure 2: “You are on the List of forums page”. Guideline extraction module. The goal of this module is to generate a desired guideline corresponding to the state. We extract a useful natural language guideline by examining successful and failure trajectories with respect to the state:
+guideline←Mguideline(τ i success, τ i fail, state), (
+(3)
+where we refer to Appendix B.2 for the prompt template we use. As an example, this module generates the following state-aware guideline for the state described in Figure 2: “When you are on the List of forums page, ... you can click on the link that exactly matches the forum name ...”.
+Construction of state-aware guidelines. We collect stateaware guidelines G by iterating through available pairs in the paired offline data and organize the guidelines in a dictionary format, using the state as the key and the corresponding guidelines as the value (see Algorithm 1). In particular, we observe that the state summarization module occasionally produces states that share the same context but are expressed slightly differently. To minimize redundancy, we employ an LLM to determine if the current state corresponds to any previously identified state. If a match is found, we reuse the existing state; otherwise, we introduce the new state into our dictionary. The specific prompt template for this state-matching procedure is outlined in Appendix B.3.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ad25/ad25c07c-46d2-4d4f-8841-37cac6b50f95.png" style="width: 50%;"></div>
+# Figure 3. Sequential decision-making benchmark domains considered in our work: ALFWorld (Shridhar et al., 2021), WebShop (Yao et al., 2022a), WebArena (Zhou et al., 2023). Graphic credit: Shridhar et al. (2020); Yao et al. (2022a); Zhou et al. (2023).
+<div style="text-align: center;">Figure 3. Sequential decision-making benchmark domains considered in our work: ALFWorld (Shridhar et al., 2021), WebShop (Yao et al., 2022a), WebArena (Zhou et al., 2023). Graphic credit: Shridhar et al. (2020); Yao et al. (2022a); Zhou et al. (2023).</div>
+# 3.4. Applying State-Aware Guidelines at Test Time
+After extracting a set of state-aware guidelines G from offline experiences, our method employs these guidelines to enhance the decision-making of an LLM agent during testing. At each timestep, AutoGuide summarizes the current test trajectory τ into a state using our state summarization module Mstate. Then, we employ the LLM designed for identifying a matching state in Section 3.3 to find a match and retrieves its corresponding guidelines. If there are more than k guidelines related to the current state, we apply the guideline selection module to choose top-k guidelines:
+(4)
+where Appendix B.4 details the prompt template for this selection procedure. Subsequently, AutoGuide incorporates both the state and guidelines into the agent’s prompt. Finally, the agent selects an action by considering the provided state and guidelines (see Figure 1 for an example). This process iterates until the end of the test trajectory (see Algorithm 2 for pseudocode).
+Key benefits of AutoGuide. First, the extraction of stateaware guidelines in AutoGuide offers the inherent benefit of providing relevant guidelines for the state of interest. This capability is important since neglecting the specific context in which a guideline applies can confuse the agent’s decision-making process. The second key benefit is the generation of concise natural language guidelines, which can be seamlessly incorporated into any prompt-based LLM agent. Lastly, AutoGuide generates guidelines at the individual state level rather than at the trajectory level. Given that a single incorrect action can lead to a complete failure, it is essential to provide detailed assistance in each action selection process. With these advantages, we demonstrate in the next section that our approach significantly enhances the performance of LLM agents.
+# 4. Evaluation
+We demonstrate the efficacy of AutoGuide by conducting experiments on a diverse suite of sequential decision-making benchmark domains. We also perform important analyses about AutoGuide. Additional experimental details and hyperparameters can be found in Appendix A.
+# 4.1. Evaluation Setup
+4.1.1. DECISION-MAKING BENCHMARK DOMAINS
+# 4.1.1. DECISION-MAKING BENCHMARK DOMAINS
+We consider the following interactive text-based sequential decision-making benchmarks to study different aspects of AutoGuide (see Figure 3):
+• ALFWorld (Shridhar et al., 2021): In this embodied benchmark, an LLM agent interacts with an environment to carry out household tasks, such as placing a pan on the dining table. Observations and actions are expressed in natural language statements, and the agent must navigate through the space and manipulate objects to successfully complete the tasks.
+• WebShop (Yao et al., 2022a): This interactive web environment simulates the task of online shopping on an ecommerce website. The agent’s goal is to understand a text instruction and buy a product that meets specified criteria. This involves querying the website’s search engine, understanding the descriptions and details of each item, and selecting necessary options.
+• WebArena (Zhou et al., 2023): This web-based benchmark introduces realistic environments by replicating the functionality and data found in popular web domains (e.g., Gitlab, Reddit, Wikipedia). Compared to WebShop, WebArena presents more challenges and difficulties for an LLM agent due to its large observation and action space, along with tasks that involve longer planning horizons. We focus on the Reddit domain for the WebArena experiments.
+<div style="text-align: center;">AutoGuide: Automated Generation and Selection of State-Aware Guidelines for Large Language Model Agents</div>
+Algorithm
+Offline
+data?
+State
+aware?
+WebShop
+Reward
+Success Rate (SR)
+ReAct (1-shot)
+✗
+✗
+66.4
+30%
+ReAct (2-shot)
+✗
+✗
+66.0
+35%
+ReAct (4-shot)
+✗
+✗
+70.2
+37%
+ReAct (6-shot)
+✗
+✗
+71.0
+38%
+ExpeL
+✓
+✗
+60.9
+35%
+AutoGuide
+✓
+✓
+73.4
+46%
+ReAct
++ Reflexion
+✗
+✗
+77.1
+51%
+ExpeL
++ Reflexion
+✓
+✗
+71.7
+42%
+AutoGuide
++ Reflexion
+✓
+✓
+81.4
+57%
+Table 1. Test reward and success rate on WebShop. Agent model for all methods is based on GPT-3.5-turbo. Reflexion is done by GPT-4-turbo for at most 3 trials.
+# 4.1.2. BASELINES
+# 4.2. Main Results
+4.1.2. BASELINES
+We compare AutoGuide against the following baseline approaches to fully show the effect of state-aware guidelines (refer to Appendix A for more details): • ReAct (Yao et al., 2022b): This LLM-based planning method integrates reasoning and acting to address sequential decision-making tasks. However, it does not leverage offline experiences and thus suffers from the limited understanding of pre-trained LLMs in downstream domains. • ExpeL (Zhao et al., 2023): This method also extracts natural language knowledge from offline data. However, it fails to consider the applicability of guidelines and does not generate state-aware guidelines. Instead, it provides all guidelines to an LLM agent without filtering out irrelevant ones based on the current state. ExpeL has two contributions, the guideline generation and in-context example selection module. Because the latter is orthogonal to our analysis and can be seamlessly combined with our method, we consider ExpeL with guidelines in our experiments. • Reflexion (Shinn et al., 2023): This approach converts environmental feedback into text statements to assist an LLM agent (e.g., ReAct) in the next trial. The baseline generates valuable feedback about solving a specific test task. We demonstrate how state-aware guidelines derived by AutoGuide can be combined with the feedback.
+We compare AutoGuide against the following baseline approaches to fully show the effect of state-aware guidelines (refer to Appendix A for more details):
+• ReAct (Yao et al., 2022b): This LLM-based planning method integrates reasoning and acting to address sequential decision-making tasks. However, it does not leverage offline experiences and thus suffers from the limited understanding of pre-trained LLMs in downstream domains.
+• ExpeL (Zhao et al., 2023): This method also extracts natural language knowledge from offline data. However, it fails to consider the applicability of guidelines and does not generate state-aware guidelines. Instead, it provides all guidelines to an LLM agent without filtering out irrelevant ones based on the current state. ExpeL has two contributions, the guideline generation and in-context example selection module. Because the latter is orthogonal to our analysis and can be seamlessly combined with our method, we consider ExpeL with guidelines in our experiments. • Reflexion (Shinn et al., 2023): This approach converts environmental feedback into text statements to assist an LLM agent (e.g., ReAct) in the next trial. The baseline generates valuable feedback about solving a specific test task. We demonstrate how state-aware guidelines derived by AutoGuide can be combined with the feedback.
+4.1.3. IMPLEMENTATION
+# 4.1.3. IMPLEMENTATION
+We collect offline experiences either by running ReAct and Reflexion, or incorporating human demonstrations. We use ReAct with GPT-3.5-turbo as our base LLM agent for WebShop and ALFWorld and GPT-4-turbo for WebArena. For each benchmark, we apply the same GPT version for action generation, state summarization, and guideline selection. We extract state-aware guidelines from the training set with GPT-4-turbo and evaluate their effectiveness by applying them to the test set with non-overlapping tasks. We refer to Appendix A for more details.
+Algorithm
+ALFWorld SR
+ReAct
+54.5%
+ExpeL
+59.0%
+AutoGuide
+79.1%
+Table 2. Test result on ALFWorld.
+Algorithm
+WebArena SR
+ReAct
+8.0%
+ExpeL
+21.8%
+AutoGuide
+43.7%
+Table 3. Test result on WebArena.
+4.2. Main Results
+Q1. How effective is AutoGuide compared to the competitive baseline methods without state-aware guidelines? To answer this question, we run ReAct, ExpeL, and AutoGuide on WebShop and ALFWorld benchmarks. The performance on the test datasets is presented in Tables 1 and 2. There are three notable observations:
+To answer this question, we run ReAct, ExpeL, and AutoGuide on WebShop and ALFWorld benchmarks. The performance on the test datasets is presented in Tables 1 and 2. There are three notable observations:
+1. Effectiveness of state-aware guidelines. Our approach surpasses baseline performance in both benchmarks, achieving the highest test rewards and success rates in Tables 1 and 2. These results highlight the effectiveness of employing state-aware guidelines in language-based decision-making domains. To further examine the action selection differences among ReAct, ExpeL, and our method, we present their trajectories in Figure 4. We observed that ReAct makes common mistakes such as trying to take soapbar that is not visible, or taking a soapbottle instead of soapbar due to their similar names. Both ExpeL and AutoGuide improve on this by extracting guidelines from similar mistakes in the offline experience. However, ExpeL often erroneously applies incorrect guidelines due to the availability of all guidelines at each timestep. In Figure 4, ExpeL mistakenly attends to the second guideline “ensure to specify the item’s number and location...”, leading to wrong reasoning and action. AutoGuide presents relevant guidelines at necessary moments, enabling accurate task completion by avoiding the mistakes seen in ExpeL and ReAct.
+# 2. Limitation of in-context learning. In Table 1, while in-
+creasing the number of in-context examples (i.e., #-shot) for ReAct gradually improves performance, there is a plateau at a certain number of shots. Additionally, ReAct with more than 6 shots often exceeds the token limit of GPT-3.5-turbo. These results indicate that directly inputting raw trajectories into ReAct for in-context learning is not an effective way to fully leverage offline data. In contrast, AutoGuide extracts knowledge from entire training trajectories by summarizing them into concise state-aware guidelines, making
+AutoGuide: Automated Generation and Selection of State-Aware Guidelines for Large Language Model Agents
+<div style="text-align: center;">ExpeL Trajectory</div>
+<div style="text-align: center;">ReAct Trajectory</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4efb/4efb87f6-c036-4f39-884d-b63ae2b66809.png" style="width: 50%;"></div>
+ReAct Trajectory
+ExpeL Trajectory
+AutoGuide Trajectory
+Observation: You open the cabinet 4. The 
+cabinet 4 is open. In it, you see a soapbottle 1, 
+and a toiletpaper 2.
+Action: Think: Now I find a soapbar (1). Next, I 
+need to take it.
+…
+…
+…
+Observation: OK.
+…
+Observation: OK.
+Action: Take soapbar 1 from cabinet 4.
+Observation: On the garbagecan 1, you see 
+nothing.
+State: Looking for an object, but it's not here.
+State-aware Guideline:
+• When looking for an object and you have not 
+found the desired object in the expected 
+locations, you should expand your search to 
+less obvious places that have not been 
+checked yet. For example, if you have not 
+found a soapbar in the sinkbasin, 
+bathtubbasin, garbagecan, or shelves, 
+proceed to check the toilet. 
+Action: Go to toilet 1
+…
+Observation: Nothing happens.
+Fixed guidelines:
+• If an attempt to interact with an item … 
+• When an item is found, ensure to specify …
+• …
+Action: Think: I tried to take the soapbar (1) 
+but failed. I specify the wrong item number, I 
+should redo by take soapbottle 1 from cabinet 
+4.
+Observation: Nothing happens.
+…
+Observation: The cabinet 3 is open. In it, you 
+see a candle 1, and a toiletpaper 3. 
+Fixed guidelines:
+• If an attempt to interact with an item fails or 
+does not progress the task, reassess the 
+situation and consider alternative actions or 
+locations before repeating the same action. 
+• When an item is found, ensure to specify 
+the item’s number and location when 
+interacting with it.  
+• …
+Action: Take soapbar 1 from cabinet 3.
+Task: clean some soapbar 
+and put it in countertop.
+Observation: Nothing happens.
+Action: Take soapbottle 1 from cabinet 4.
+Observation: You pick up the soapbottle 1 from 
+the cabinet.
+Reward: Failed
+Reward: Failed
+Reward: Success
+✘
+✘
+✓
+Observation: OK.
+Fixed guidelines:
+• If an attempt to interact with an item … 
+• When an item is found, ensure to specify …
+• …
+Action: Take soapbottle 1 from cabinet 4.
+Observation: On the toilet 1, you see a soapbar 
+2, and a soapbottle 2.
+State: Looking for an object and found the 
+desired object here.
+State-aware Guideline:
+• When looking for an object and found the 
+desired object here, you should only take the 
+object if it is visible and specify the correct 
+location and number when taking it. For 
+example, if you see a credit card on the 
+dining table, you should 'take creditcard 1 
+from diningtable 1'.
+Action: Think: Now I find a soapbar (2). This is 
+what I am looking for. Based on the guideline, I 
+can take it.
+<div style="text-align: center;">Figure 4. Trajectories of ReAct, ExpeL, and AutoGuide from the same test task. ReAct (Left) chose the wrong item, consequently failing the task in the end. ExpeL (middle) was confused by guidelines that were irrelevant to its state, leading to incorrect reasoning and actions. AutoGuide (right) can select useful guidelines relevant to the agent’s state, enabling the agent to efficiently accomplish the task.</div>
+3. Importance of providing pertinent knowledge. ExpeL approach helps ReAct by extracting knowledge from offline experiences, but its impact is not as significant as AutoGuide. Recall that for ExpeL, the guidelines are neither generated for specific states at training time, nor selected to only provide state-aware guidelines at test time. As a result, irrelevant guidelines can be introduced to an agent, potentially causing confusion for the agent. Consequently, the result highlights the significance of providing relevant guidelines conditioned on states for LLM agents.
+Q2. Does AutoGuide scale to more challenging and complex environments?
+In this question, we highlight the scalability of AutoGuide in addressing challenging and complex domains. Specifically, we conduct experiments on WebArena-Reddit, which features more diverse tasks on realistic and complex websites requiring longer action sequences. It has the larger observation space and more complex action space (e.g., scrolling). Table 3 presents the results, where AutoGuide
+<div style="text-align: center;">AutoGuide Trajectory</div>
+achieves the highest success rate with a significant margin when compared to ReAct and ExpeL. We observe that ReAct scores low task success rate (8.0%) in WebArena due to the complex observation and action spaces and longer task horizon. In ExpeL, the issue of presenting all guidelines to an agent is exacerbated in the WebArena compared to simpler environments like ALFWorld and WebShop. WebArena’s wide variety of tasks across different domains requires a larger number of guidelines to cover the knowledge needed for all tasks and domains. This results in either an overload of irrelevant guidelines that could mislead the agent or a lack of crucial information when the number of guidelines is limited, as suggested in ExpeL (Zhao et al., 2023). In contrast, AutoGuide achieves a more significant performance enhancement (43.7%) compared to ExpeL (21.8%) by efficiently providing pertinent guidelines for each state and minimizing the burden on context capacity. Refer to Figure 15 for a list of example states and guidelines. Q3. How does AutoGuide perform when combined with test-time self-feedback approaches like Reflexion?
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/691e/691ed8d5-2459-44ae-a936-7084378e548c.png" style="width: 50%;"></div>
+<div style="text-align: center;">Offline Data Type</div>
+Figure 5. Extracting state-aware guidelines when offline experiences have either success or failure trajectories. With minor modifications, AutoGuide can extract useful knowledge from offline data and outperform the ReAct baseline.
+Our state-aware guidelines effectively provide inter-task knowledge by considering multiple tasks in offline data. Meanwhile, self-feedback methods (e.g., Reflexion) offer intra-task knowledge based on environmental feedback during test time. In this question, we explore the effectiveness of integrating both inter-task and intra-task information. The results presented in Table 1 demonstrate that the combination of AutoGuide with Reflexion achieves the highest performance in the WebShop benchmark. Hence, we find that our state-aware guidelines positively complement the intra-task knowledge of Reflexion. Another observation from Table 1 is that, while ExpeL + Reflexion outperforms ExpeL alone, this combination is not as effective as other approaches. This limitation may stem from ExpeL introducing irrelevant knowledge, potentially leading to conflicts with Reflexion’s feedback and having an adverse impact on the decision-making process.
+# 4.3. Analysis of AutoGuide
+Q4. Can AutoGuide extract state-aware guidelines when offline data has either success or failure trajectories?
+We explore how AutoGuide can be adapted to address extreme types of offline data, comprising either successful or failed trajectories. Intuitively, successful trajectories exhibit shared patterns of successful behaviors, whereas unsuccessful trajectories may fail for a variety of reasons. Based on this insight, when offline experiences contain exclusively successful instances, we sample multiple trajectories and prompt GPT-4-turbo to identify states exhibiting shared common behaviors across them. Then, for each state, AutoGuide applies the state summarization and guideline extraction modules to construct state-aware guidelines. In the case of failures only, we leverage failed trajectories and a one-shot example from ReAct as a successful demonstration to generate state-aware guidelines based on our modules. The results are shown in Figure 5. Interestingly, even without having pairs of success and failure trajectories for the same task, the different variants of AutoGuide can extract
+The results are shown in Figure 5. Interestingly, even without having pairs of success and failure trajectories for the same task, the different variants of AutoGuide can extract
+Algorithm
+SS
+GES
+WebShop SR
+ReAct
+✗
+✗
+30%
+ReAct + SS
+✓
+✗
+36%
+ReAct + GES
+✗
+✓
+37%
+AutoGuide
+✓
+✓
+46%
+Table 4. Ablation study of AutoGuide, analyzing each module’s contribution in the WebShop benchmark. SS denotes our state summarization module, and GES denotes the guideline extraction and selection modules.
+valuable knowledge from offline data, leading to improvements in test-time performance compared to ReAct, which does not leverage any offline data. As such, our method is flexible and robust to the type of available offline data. However, in general cases, we expect to have both successful and failed trajectories, which provide the most direct insights for AutoGuide to extract useful guidelines. Q5. How does each component of AutoGuide contribute to the final results?
+Q5. How does each component of AutoGuide contribute to the final results?
+We evaluate the impact of different components within AutoGuide on its performance in WebShop, as detailed in Table 4. We examine two variants: ReAct+SS and ReAct+GES. The ReAct+SS, which incorporates state summaries into observations without guidelines, shows improvement over ReAct. This suggests that state summaries enhance decision-making by verifying the current state before action selection. ReAct+GES, which generates guidelines from trajectories without state summaries and employs GPT3.5-turbo for guideline selection, also enhances performance but is less effective than the full AutoGuide. This indicates that choosing relevant guideline based on the trajectory alone is more challenging than using state summary. Therefore, integrating both state summaries and guidelines is crucial for maximizing the benefits of AutoGuide.
+# 5. Conclusion
+In this paper, we presented AutoGuide, an effective framework for extracting and exploiting important domain knowledge from offline experiences for improving decision making with pre-trained LLMs. Pre-trained LLMs often lack the knowledge required for solving tasks in downstream domains, and to fill in such knowledge gap, we proposed to generate state-aware guidelines that can be incorporated into prompts for LLM agents. As AutoGuide extracts the guidelines by contrasting successful and failed trajectories on the same task, the resulting state-aware guidelines carry critical information for preventing failures in the domains. For inference, it provides the guidelines pertinent to each of the different states that LLM agents encounter, which can make pre-trained LLMs strong decision-making agents
+in the downstream domains. Empirically, we showed that AutoGuide outperforms strong LLM-based baselines by a large margin and achieves outstanding performance in multiple sequential decision-making benchmarks.
+# References
+References Branavan, S., Silver, D., and Barzilay, R. Learning to win by reading manuals in a monte-carlo framework. Journal of Artificial Intelligence Research, 43:661–704, 2012. Brohan, A., Chebotar, Y., Finn, C., Hausman, K., Herzog, A., Ho, D., Ibarz, J., Irpan, A., Jang, E., Julian, R., et al. Do as i can, not as i say: Grounding language in robotic affordances. In Conference on Robot Learning, pp. 287– 318. PMLR, 2023. Deng, X., Gu, Y., Zheng, B., Chen, S., Stevens, S., Wang, B., Sun, H., and Su, Y. Mind2web: Towards a generalist agent for the web. arXiv preprint arXiv:2306.06070, 2023. Dong, Q., Li, L., Dai, D., Zheng, C., Wu, Z., Chang, B., Sun, X., Xu, J., and Sui, Z. A survey for in-context learning. arXiv preprint arXiv:2301.00234, 2022. Gao, L., Madaan, A., Zhou, S., Alon, U., Liu, P., Yang, Y., Callan, J., and Neubig, G. Pal: Program-aided language models. In International Conference on Machine Learning, pp. 10764–10799. PMLR, 2023. Gur, I., Nachum, O., Miao, Y., Safdari, M., Huang, A., Chowdhery, A., Narang, S., Fiedel, N., and Faust, A. Understanding HTML with large language models. In Bouamor, H., Pino, J., and Bali, K. (eds.), Findings of the Association for Computational Linguistics: EMNLP 2023, pp. 2803–2821, Singapore, December 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.findings-emnlp. 185. URL https://aclanthology.org/2023. findings-emnlp.185. Hanjie, A. W., Zhong, V. Y., and Narasimhan, K. Grounding language to entities and dynamics for generalization in reinforcement learning. In International Conference on Machine Learning, pp. 4051–4062. PMLR, 2021. Huang, W., Abbeel, P., Pathak, D., and Mordatch, I. Language models as zero-shot planners: Extracting actionable knowledge for embodied agents. In International Conference on Machine Learning, pp. 9118–9147. PMLR, 2022. Kaddour, J., Harris, J., Mozes, M., Bradley, H., Raileanu, R., and McHardy, R. Challenges and applications of large language models, 2023.
+Branavan, S., Silver, D., and Barzilay, R. Learning to win by reading manuals in a monte-carlo framework. Journal of Artificial Intelligence Research, 43:661–704, 2012.
+Gao, L., Madaan, A., Zhou, S., Alon, U., Liu, P., Yang, Y., Callan, J., and Neubig, G. Pal: Program-aided language models. In International Conference on Machine Learning, pp. 10764–10799. PMLR, 2023.
+Gur, I., Nachum, O., Miao, Y., Safdari, M., Huang, A., Chowdhery, A., Narang, S., Fiedel, N., and Faust, A. Understanding HTML with large language models. In Bouamor, H., Pino, J., and Bali, K. (eds.), Findings of the Association for Computational Linguistics: EMNLP 2023, pp. 2803–2821, Singapore, December 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.findings-emnlp. 185. URL https://aclanthology.org/2023. findings-emnlp.185.
+Hanjie, A. W., Zhong, V. Y., and Narasimhan, K. Grounding language to entities and dynamics for generalization in reinforcement learning. In International Conference on Machine Learning, pp. 4051–4062. PMLR, 2021.
+Huang, W., Abbeel, P., Pathak, D., and Mordatch, I. Language models as zero-shot planners: Extracting actionable knowledge for embodied agents. In International Conference on Machine Learning, pp. 9118–9147. PMLR, 2022.
+Kaddour, J., Harris, J., Mozes, M., Bradley, H., Raileanu, R., and McHardy, R. Challenges and applications of large language models, 2023.
+Kim, G., Baldi, P., and McAleer, S. Language models can solve computer tasks. arXiv preprint arXiv:2303.17491, 2023. Koh, J. Y., Lo, R., Jang, L., Duvvur, V., Lim, M. C., Huang, P.-Y., Neubig, G., Zhou, S., Salakhutdinov, R., and Fried, D. Visualwebarena: Evaluating multimodal agents on realistic visual web tasks. arXiv preprint arXiv:2401.13649, 2024. Logeswaran, L., Fu, Y., Lee, M., and Lee, H. Few-shot subgoal planning with language models. In NAACL: HLT, 2022. Lu, Y., Bartolo, M., Moore, A., Riedel, S., and Stenetorp, P. Fantastically ordered prompts and where to find them: Overcoming few-shot prompt order sensitivity. In ACL, 2022. Madaan, A., Tandon, N., Gupta, P., Hallinan, S., Gao, L., Wiegreffe, S., Alon, U., Dziri, N., Prabhumoye, S., Yang, Y., et al. Self-refine: Iterative refinement with self-feedback. arXiv preprint arXiv:2303.17651, 2023. Min, S., Lyu, X., Holtzman, A., Artetxe, M., Lewis, M., Hajishirzi, H., and Zettlemoyer, L. Rethinking the role of demonstrations: What makes in-context learning work? In EMNLP, 2022. Parisi, A., Zhao, Y., and Fiedel, N. Talm: Tool augmented language models. arXiv preprint arXiv:2205.12255, 2022. Patil, S. G., Zhang, T., Wang, X., and Gonzalez, J. E. Gorilla: Large language model connected with massive apis. arXiv preprint arXiv:2305.15334, 2023. Qin, Y., Liang, S., Ye, Y., Zhu, K., Yan, L., Lu, Y., Lin, Y., Cong, X., Tang, X., Qian, B., et al. Toolllm: Facilitating large language models to master 16000+ real-world apis. arXiv preprint arXiv:2307.16789, 2023. Schick, T., Dwivedi-Yu, J., Dess`ı, R., Raileanu, R., Lomeli, M., Zettlemoyer, L., Cancedda, N., and Scialom, T. Toolformer: Language models can teach themselves to use tools. arXiv preprint arXiv:2302.04761, 2023. Shinn, N., Cassano, F., Gopinath, A., Narasimhan, K. R., and Yao, S. Reflexion: Language agents with verbal reinforcement learning. In Thirty-seventh Conference on Neural Information Processing Systems, 2023. Shridhar, M., Thomason, J., Gordon, D., Bisk, Y., Han, W., Mottaghi, R., Zettlemoyer, L., and Fox, D. ALFRED: A Benchmark for Interpreting Grounded Instructions for Everyday Tasks. In The IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2020.
+Schick, T., Dwivedi-Yu, J., Dess`ı, R., Raileanu, R., Lomeli, M., Zettlemoyer, L., Cancedda, N., and Scialom, T. Toolformer: Language models can teach themselves to use tools. arXiv preprint arXiv:2302.04761, 2023.
+Shinn, N., Cassano, F., Gopinath, A., Narasimhan, K. R., and Yao, S. Reflexion: Language agents with verbal reinforcement learning. In Thirty-seventh Conference on Neural Information Processing Systems, 2023.
+Shridhar, M., Thomason, J., Gordon, D., Bisk, Y., Han, W., Mottaghi, R., Zettlemoyer, L., and Fox, D. ALFRED: A Benchmark for Interpreting Grounded Instructions for Everyday Tasks. In The IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2020.
+Shridhar, M., Yuan, X., Cˆot´e, M.-A., Bisk, Y., Trischler, A., and Hausknecht, M. ALFWorld: Aligning Text and Embodied Environments for Interactive Learning. In ICLR, 2021. Sun, H., Zhuang, Y., Kong, L., Dai, B., and Zhang, C. Adaplanner: Adaptive planning from feedback with language models. arXiv preprint arXiv:2305.16653, 2023. Sutton, R. S. and Barto, A. G. Reinforcement Learning: An Introduction. The MIT Press, second edition, 2018. URL http://incompleteideas.net/ book/the-book-2nd.html. Wang, L., Ma, C., Feng, X., Zhang, Z., Yang, H., Zhang, J., Chen, Z., Tang, J., Chen, X., Lin, Y., et al. A survey on large language model based autonomous agents. arXiv preprint arXiv:2308.11432, 2023. Wei, J., Wang, X., Schuurmans, D., Bosma, M., Xia, F., Chi, E., Le, Q. V., Zhou, D., et al. Chain-of-thought prompting elicits reasoning in large language models. Advances in Neural Information Processing Systems, 35: 24824–24837, 2022. Xi, Z., Chen, W., Guo, X., He, W., Ding, Y., Hong, B., Zhang, M., Wang, J., Jin, S., Zhou, E., et al. The rise and potential of large language model based agents: A survey. arXiv preprint arXiv:2309.07864, 2023. Yao, S., Chen, H., Yang, J., and Narasimhan, K. Webshop: Towards scalable real-world web interaction with grounded language agents. Advances in Neural Information Processing Systems, 35:20744–20757, 2022a. Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., and Cao, Y. React: Synergizing reasoning and acting in language models. arXiv preprint arXiv:2210.03629, 2022b. Yin, Z., Sun, Q., Guo, Q., Wu, J., Qiu, X., and Huang, X. Do large language models know what they don’t know? In Findings of ACL, 2023. Zeng, A., Liu, M., Lu, R., Wang, B., Liu, X., Dong, Y., and Tang, J. Agenttuning: Enabling generalized agent abilities for llms. arXiv preprint arXiv:2310.12823, 2023. Zhao, A., Huang, D., Xu, Q., Lin, M., Liu, Y.-J., and Huang, G. Expel: Llm agents are experiential learners. arXiv preprint arXiv:2308.10144, 2023. Zheng, B., Gou, B., Kil, J., Sun, H., and Su, Y. Gpt-4v(ision) is a generalist web agent, if grounded. arXiv preprint arXiv:2401.01614, 2024. Zhong, V., Rockt¨aschel, T., and Grefenstette, E. Rtfm: Generalising to new environment dynamics via reading. In ICLR, pp. 1–17. ICLR, 2020.
+Zhou, S., Xu, F. F., Zhu, H., Zhou, X., Lo, R., Sridhar, A., Cheng, X., Bisk, Y., Fried, D., Alon, U., et al. Webarena: A realistic web environment for building autonomous agents. arXiv preprint arXiv:2307.13854, 2023.
+<div style="text-align: center;">Guide: Automated Generation and Selection of State-Aware Guidelines for Large Language Model Agents</div>
+# A. Evaluation Details
+# A.1. ALFWorld (Shridhar et al., 2021)
+A.1.1. ENVIRONMENT DETAILS
+Each task in ALFWorld starts with a description of the specific environment and the goal to achieve. At each timestep, an agent can choose one of the following actions to interact with the objects and receptacles in the environment:
+• go to [recep]
+# • take [object] from [recep] • put [object] in/on [recep] • open/close/use [recep]
+• clean/heat/cool [object] with [recep]
+Alternatively, the agent can generate think actions for planning and reflection, which helps with decision-making but does not change the environment itself. After one action is performed, the environment returns an observation that describes view changes.
+Following ReAct, we concatenate a list of (observation, action) pairs to show the entire trajectory up to the current timestep for LLM agents to generate the next action. We experiment on 134 unseen test tasks with 6 categories of pick and place, pick clean then place, pick heat then place, pick cool then place, look at obj, and pick two obj. For each task, the agent is allowed to take a maximum of 50 actions.
+A.1.2. BASELINE AND MODELS
+For ALFWorld tasks, we follow the same setting as ReAct by providing 2 in-context examples for each of the 6 task categories. The original results of ReAct in their paper are produced based on Text-Davinci-002. However, this GPT version is no longer available, so we apply gpt-3.5-turboinstruct instead to generate actions. For ExpeL, we directly take the guidelines from their appendix and append them to the ReAct agent at test time.
+# A.1.3. IMPLEMENTATION DETAILS OF AUTOGUIDE
+We run the first 100 training tasks of ALFWorld to collect (τsuccess, τfail) pairs with ReAct+Reflexion and extract state-dependant guidelines on the collected data. For state summarization, we provide 2-shot demonstrations for each of the 6 task categories. The corresponding prompt templates can be found in appendix B. All parameter details are shown in Table 5.
+Parameter name
+Value
+Allowed Episode Length
+50
+n-shots
+2
+Agent Model
+gpt-3.5-turbo-instruct
+State Summarization Model
+gpt-3.5-turbo-instruct
+Guideline Selection Model
+gpt-3.5-turbo-instruct
+Guideline Extraction Model
+gpt-4-1106-preview
+top-k guideline selection
+2
+Table 5. Experiment hyperparameters on ALFWorld. The maximum allowed episode length and n-shots follow the same setup in ReAct.
+# A.2. WebShop (Yao et al., 2022a)
+A.2.1. ENVIRONMENT DETAILS
+WebShop provides an e-commerce environment, where the objective is to find and buy the product that matches the task-specific Instruction. The agent can select one of the following actions to perform:
+• search[query] • click[button]
+Following ReAct, the agent can generate think actions to do planning or reflection. After buying a product, the environment returns a reward showing how well the bought product matches the target one in type, price, buying options, and attributes. The reward is calculated by:
+r=rtype·|Uatt ∩Yatt|+|Uopt ∩Yopt|+1[yprice ≤uprice] |Uatt|+|Uopt|+1
+where y is the bought product and u is the target product. Same as ALFWorld, for WebShop, the agent takes (obst, actt) pairs for every previous timestep t as input to generate the next action.
+# A.2.2. BASELINE AND MODELS
+A.2.2. BASELINE AND MODELS
+Following ReAct, experiments are done in a one-shot setting. We apply gpt-3.5-turbo-0613 to generate actions, but when the token number exceeds the token limit (for example, for the n-shot ReAct experiments in Table 1), we use the 16k version of gpt-3.5-turbo-0613 instead. For ExpeL, we could not find how many training tasks the framework used for training. Therefore, we directly apply the guidelines from the appendix of their paper at test time. We only consider ExpeL with guidelines, not ExpeL with in-context example selection in our experiments for a fair comparison. The in-context example selection method is orthogonal to our work and can be easily combined with our method. For Reflexion, as shown in their paper, their 2-shot Reflexion prompt does not work well on WebShop. Therefore, we
+re-write a zero-shot prompt and apply gpt-4-1106-preview to generate episode-level reflections for all Reflexion experiments. Following Reflexion and ExpeL, the evaluation is done on 100 test tasks. The maximum number of allowed actions for each task is 15. At the same time, each search action shows the top 3 products for the search query. Please refer to Table 6 for more details about the experiments.
+• goto[url] • click[element id] • type[text][1 for enter or 0 for not enter] • press[key combination] • scroll [up or down] • go back
+# A.2.3. IMPLEMENTATION DETAILS OF AUTOGUIDE
+We randomly sample 50 training tasks from the training set of WebShop, on which we run ReAct+Reflexion to collect pairs and generate guidelines. The state summarization prompt is one-shot, which is shown in appendix B. At test time, we ask gpt-3.5-turbo-0613 to select the most relevant top 2 guidelines for each state.
+Parameter name
+Value
+Allowed Episode Length
+15
+# of Search Results
+3
+n-shots
+1
+Agent Model
+gpt-3.5-turbo-0613
+State Summarization Model
+gpt-3.5-turbo-0613
+Guideline Selection Model
+gpt-3.5-turbo-0613
+Guideline Extraction Model
+gpt-4-1106-preview
+Reflexion Model
+gpt-4-1106-preview
+top-k guideline selection
+2
+Table 6. Experiment hyperparameters on WebShop. The maximum allowed episode length, the number of search results per page, and n-shots follow the same setup in ReAct.
+# A.3. WebArena (Zhou et al., 2023)
+A.3.1. ENVIRONMENT DETAILS
+WebArena provides web-based benchmark environments that closely follow the data and functionality of real-world websites. Unlike other benchmarks like WebShop that provide clean text of website information as observation, WebArena’s webpage content is represented as an accessibility tree, which is a subset of the DOM tree with useful elements of a webpage. For our expeirments, we focus on WebArena Reddit, which simulates the real Reddit websites with users, forums, and posts with abundant text information.
+For each task in WebArena, the agent is expected to achieve a task-specific intent. At each timestep, WebArena provides a list of opened tabs, the accessibility tree of the focused webpage, and the URL of the current page as observation. For WebArena, each observation is long. Therefore, following the baseline in WebArena, at each timestep, we only provide the observation of the current timestep to the agent. We additionally provide up to 5 past actions for the agent to understand what it did in the past. The allowed actions in
+# WebArena include the following:
+The maximum allowed number of actions for a single task is 20. Note that WebArena does not provide training tasks, but the work provides 19 demonstrations for Reddit, each of a different category. Therefore, we set these 19 tasks as the training tasks and then test on the rest 87 tasks.
+# A.3.2. BASELINE AND MODELS
+A.3.2. BASELINE AND MODELS
+We directly run the two-shot ReAct-style baseline in the official codebase of WebArena using gpt4-preview-1106. For ExpeL, the original paper does not include experiments on WebArena, therefore we try our best to implement our own version and run on the same training tasks as our method.
+# A.3.3. IMPLEMENTATION DETAILS OF AUTOGUIDE
+Among the 19 human demonstrations provided in WebArena, 17 of them successfully complete the tasks. We directly run ReAct on the successful tasks to collect failure actions and generate guidelines correspondingly. We take advantage of the URL and webpage titles, which are a part of the observation for this benchmark, to help with state summarization.
+Parameter name
+Value
+Allowed Episode Length
+20
+n-shots
+2
+Agent Model
+gpt-4-1106-preview
+State Summarization Model
+gpt-4-1106-preview
+Guideline Selection Model
+gpt-4-1106-preview
+Guideline Extraction Model
+gpt-4-1106-preview
+top-k guideline selection
+2
+Table 7. Experiment hyperparameters on WebArena. The number of shots follows the same setup in ReAct.
+Table 7. Experiment hyperparameters on WebArena. The number of shots follows the same setup in ReAct.
+# B. Prompt Templates
+# B. Prompt Templates B.1. State Summarization
+# B.1. State Summarization
+We present our prompt templates for state summarization with Mstate (Equation (2) from Section 3.3) for WebShop, ALFWorld, and WebArena in Figures 6, 7 and 8, respectively. In ALFWorld, there exist six categories of tasks, and
+<div style="text-align: center;">tate Summarization Prompt for WebShop</div>
+State Summarization Prompt for WebShop
+Now, you'll get a snippet of a trajectory. Your job is to generate a brief and general summarization of the current status. Keep it 
+broad and general, avoid any information about specific instructions, products, or buying options. For different 'Instructions' 
+with the same status, the summarization should be the same. 
+Webshop 
+Instruction: 
+i would like a bottle of bright citrus deodorant under 50 
+dollars
+[Search]
+SUMMARIZATION: The assistant is on the search page with a 
+[Search] box. 
+Action: search[bright citrus deodorant]
+Observation: 
+[Back to Search] 
+Page 1 (Total results: 3) 
+[Next $>$] 
+[B078GWRC1J] 
+Bright Citrus Deodorant
+$10.99 
+[B078GTKVXY] 
+Ginger Fresh Deodorant
+$10.99
+[B08KBVJ4XN] 
+Barrel and Oak - Aluminum-Free Deodorant
+$15.95
+SUMMARIZATION: The assistant is on the search result page 
+with a list of products. 
+Action: click[B078GWRC1J]
+Observation: 
+[Back to Search] 
+[$>$ Prev] 
+scent [assorted scents][bright citrus][ginger fresh]
+size [travel set (4-pack)][(pack of 1)][3-ounce (2-pack)]
+Bright Citrus Deodorant
+Price: $10.99 
+Rating: N.A. 
+[Description] 
+Now it's your turn:
+Instruction
+text Example
+Input
+[Features] 
+[Reviews]
+[Attributes] 
+[Buy Now]
+SUMMARIZATION: The assistant is on a product's main 
+page.
+Action: click['bright citrus' '(pack of 1)']
+Observation: Invalid Action!
+SUMMARIZATION: The assistant failed to click on a button 
+and got 'Invalid Action!'.
+Action: click[bright citrus]
+Observation: You have clicked bright citrus.
+SUMMARIZATION: The assistant has successfully clicked on 
+a button.
+Action: click[Description]
+Observation: 
+[Back to Search] 
+[$<$ Prev] 
+Bright Citrus Deodorant for sensitive skin
+SUMMARIZATION: The assistant clicked on and navigated to 
+a product's subpage(one of [Description], [Features], 
+[Reviews], and [Attributes]).
+Action: click[Buy Now]
+Observation: Invalid Action!
+SUMMARIZATION: The assistant failed to click on a button 
+and got 'Invalid Action!'.
+Action: search[bright citrus deodorant under 50]
+Observation: Invalid Action!
+SUMMARIZATION: The assistant failed to search on the page 
+and got 'Invalid Action!’.
+we use state summarization prompting with 2-shot examples for each task, following the practice by Yao et al. (2022b). Figure 7 shows one example for the pick and place tasks.
+In Figures 9, 10 and 11, we state the prompt templates we use with Mguideline for extracting guidelines (Equation (3) from Section 3.3) in the WebShop, ALFWorld, and WebArena domains.
+# B.3. State Matching
+Figure 12 shows our prompt template for matching the summarized state with one of the existing states if there is any
+similar state, for the construction of the set of state-aware guidelines (Section 3.3) and the retrieval of relevant guidelines during testing (Section 3.4) in all the three domains: WebShop, ALFWorld, and WebArena.
+For selecting only k most relevant guidelines in case there are more corresponding state-aware guidelines during testing (Equation (4) from Section 3.4), we use the prompt with Figure 13 for WebShop and ALFWorld and Figure 14 for WebArena.
+<div style="text-align: center;">tate Summarization Prompt for ALFWorld</div>
+# State Summarization Prompt for ALFWorld
+You’ll get a snippet of a trajectory of an text-based ALFRED task. Your job is to generate a brief and general summarization of 
+the current status following ‘SUMMARIZATION: ’.
+Keep it broad and general, avoid any information about specific objects and locations.
+Here are two examples:
+You are in the middle of a room. Looking quickly around 
+you, you see a cabinet 4, a cabinet 3, a cabinet 2, a cabinet 
+1, a coffeemachine 1, a countertop 1, a diningtable 3, a 
+diningtable 2, a diningtable 1, a drawer 1, a fridge 1, a 
+garbagecan 1, a microwave 1, a sidetable 1, a sinkbasin 1, 
+and a toaster 1.
+Your task is to: find some apple and put it in sidetable.
+> think: To solve the task, I need to find and take an apple, 
+then put it in sidetable.
+OK.
+> think: First I need to find an apple. An apple is more likely 
+to appear in fridges (1), diningtables (1-3), sidetables (1), 
+countertops (1), sinkbasins (1), garbagecan (1). I can check 
+one by one, starting with fridge 1.
+OK.
+> go to fridge 1
+The fridge 1 is closed.
+SUMMARIZATION: Looking for an object here, but it is 
+closed.
+> open fridge 1
+You open the fridge 1. The fridge 1 is open. In it, you see a 
+lettuce 2, a mug 2, a potato 2, and a tomato 1.
+SUMMARIZATION: Looking for an object, but it's not here.
+> go to table 1
+Nothing happens.
+SUMMARIZATION: Tried to go to a location but failed.
+Instruction
+In-Context Example
+> go to diningtable 1
+On the diningtable 1, you see nothing.
+SUMMARIZATION: Looking for an object, but it's not here.
+> go to garbagecan 1
+On the garbagecan 1, you see a apple 3, and a egg 3.
+SUMMARIZATION: Looking for an object and found the 
+desired object here.
+> think: Now I find an apple (3). Next, I need to take it.
+> take apple 3 from garbagecan 1
+You pick up the apple 3 from the garbagecan 1.
+SUMMARIZATION: Successfully took an object.
+> think: Now I find an apple (3). Next, I need to put it in/on 
+sidetable 1.
+OK.
+> go to sidetable 1
+On the sidetable 1, you see nothing.
+SUMMARIZATION: Looking for a location to put an object 
+in/on.
+> put apple 3 in/on sidetable
+Nothing happens.
+SUMMARIZATION: Tried to put an object in/on a location 
+but failed.
+> put apple 3 in/on sidetable 1
+You put the apple 3 in/on the sidetable 1.
+SUMMARIZATION: Successfully put an object in/on a 
+location.
+In-Context Example
+<div style="text-align: center;">tate Summarization Prompt for WebArena</div>
+# State Summarization Prompt for WebArena
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7ad4/7ad49ea3-e51b-4b02-a287-f175e50c7dcf.png" style="width: 50%;"></div>
+<div style="text-align: center;">Here are the inputs: {Current trajectory} t</div>
+Figure 8. Our prompt template for state summarization (Equation (2) from Section 3.3) in the WebArena domain.
+Figure 8. Our prompt template for state summarization (Equation (2) from Section 3.3) in the WebArena domain
+# AutoGuide: Automated Generation and Selection of State-Aware Guidelines for Large Language Model Agents
+# Guideline Extraction Prompt for WebShop
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/85ec/85ec3104-ba64-4c8b-888d-3845d92fbb2f.png" style="width: 50%;"></div>
+{Task description}. You will be provided with a failed and a successful trajectory of the same task. What is the first action that  differs between the two trajectories? Why do you think it makes one trajectory failed and the other successful? Based on your  answer, generate an action guideline to make future task avoid the same mistake. The guideline should specify what to do in  what situation in the format of "When in what status, you should (or should not)...". On a product's page with product  information, strictly refer to the option buttons as 'buying options such as sizes, colors, scents, and flavors', and clearly say that  buying options are not subpages like [Description] and [Attributes] when you mention buying options.Your guideline must be  general enough for any task, therefore never include any task-specific information, instead, refer to all the requirements as the  requierments in Instruction. Strictly follow what the successful trajectory does and never suggest actions that the successful  trajectory didn't do. When referring to actions, use the allowed action format. You should make your answer concise, limit your  answer within 256 tokens, and put your answer in this format: 'Reasoning: ...  Guideline: ...'. Instruction
+<div style="text-align: center;">Failed Trajectory: {Failed trajectory} Successful Trajectory: {Successful trajectory}</div>
+Figure 9. Our prompt template for guideline extraction (Equation (3) from Section 3.3) in the WebShop domain.
+Figure 9. Our prompt template for guideline extraction (Equation (3) from Section 3.3) in the Web
+# Guideline Extraction Prompt for ALFWorld
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/0764/0764e1fd-3f24-4804-a1a3-d9b61bcb8312.png" style="width: 50%;"></div>
+# C. Example State-Aware Guidelines
+In Figure 15, we show a list of possible states and stateaware guidelines on WebArena.
+# Guideline Extraction Prompt for WebArena
+Instruction
+nstruction {Task description}
+uction {Task description}
+{Task description} You just finished a task but failed. For this failed task, we  provide a human demonstration for you. Please compare  the demonstration with your generated action at each step,  reason about the intention of the correct action, and then  geneate an action guideline for future tasks to avoid the  same mistake and make the future tasks successful.  Here's the information you'll have: 1. The current observation: * The task objective: the task you're trying to complete. * The current web page's accessibility tree: a simplified  representation of the webpage, providing key information. * The current web page's URL: the link of the page you're  currently on. * The open tabs: the tabs you have opened. * The previous actions: a sequence of past actions that you  performed.
+# 2. The action you generated in the failed run. 
+3. The correct action that you should take.
+4. Demonstration actions in later steps on the same page.
+Based on the information, please generate a short and  concise guideline that guide you to issue the correct action.  Important: The guideline should be general enough to  generalize to all similar tasks, not only this task. Therefore  do not include any task-specific information in your  guideline, for example a user name, a specific forum, the  specific text you want to enter, or any number ID in [] in  front of each element, for example [123], the numbers are  randomly generated therefore never include them in your  guideline. However, for other non-specific elements like
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3bb4/3bb4ae57-c221-413e-a1dd-6bbdfd8baee4.png" style="width: 50%;"></div>
+Here are the information you need: {Observation} Input
+"link 'Forums'" or "button 'Create submission'", you should  specifically include them in the exact text in your guideline.  When referring to a url in your guideline, specify it as  detailed as possible, only replace the task specific  information as a palceholder, for example, replace a forum  iphone with <forum_name> and specify the url in full, starts  with http://.  The guideline should be less than 128 tokens. Please refer to "the previous actions" and "Demonstration  actions in later steps" to generate more accurate  descriptions of your purpose and the sequence of actions to  achieve the purpose. make sure to emphasize the order of  the actions, do not miss any single action, and put them in  1. 2. 3. ..., for example 'after you typed in all the text, you  should do these sequentially: 1. ..., 2. ... . You must strictly  follow the order."  When you mention multiple steps of actions, also mention  in the guideline that you should refer to the PREVIOUS  ACTIONS to reason about which actions you did and what  you should do next. Specify that you should not repeatedly  issue the same action, but should move on to the next  action instead.  Only speicify what to do or what not to do, don't explain  why.  It is important to clearly specify when to issue a stop action  when the stop action is either the correct action or in the  'Demonstration actions in later steps on the same page.', do  not specify the 'answer' in 'stop [answer]' because answer is  different for different tasks, and do not mention anything  about stop if this action is neither in "The correct action that  you should take." nor "Demonstration actions in later steps  on the same page.".  Please strictly adhere to the 'correct action that you should  take', do not propose other actions. 
+"link 'Forums'" or "button 'Create submission'", you should  specifically include them in the exact text in your guideline.  When referring to a url in your guideline, specify it as  detailed as possible, only replace the task specific  information as a palceholder, for example, replace a forum  iphone with <forum_name> and specify the url in full, starts  with http://.  The guideline should be less than 128 tokens. Please refer to "the previous actions" and "Demonstration  actions in later steps" to generate more accurate  descriptions of your purpose and the sequence of actions to  achieve the purpose. make sure to emphasize the order of  the actions, do not miss any single action, and put them in  1. 2. 3. ..., for example 'after you typed in all the text, you  should do these sequentially: 1. ..., 2. ... . You must strictly  follow the order."  When you mention multiple steps of actions, also mention  in the guideline that you should refer to the PREVIOUS  ACTIONS to reason about which actions you did and what  you should do next. Specify that you should not repeatedly  issue the same action, but should move on to the next  action instead.  Only speicify what to do or what not to do, don't explain  why.  It is important to clearly specify when to issue a stop action  when the stop action is either the correct action or in the  'Demonstration actions in later steps on the same page.', do  not specify the 'answer' in 'stop [answer]' because answer is  different for different tasks, and do not mention anything  about stop if this action is neither in "The correct action that  you should take." nor "Demonstration actions in later steps  on the same page.".  Please strictly adhere to the 'correct action that you should  take', do not propose other actions. 
+# State Matching Prompt
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a826/a8268767-70d9-4131-b0e7-7c7b8fe03b9d.png" style="width: 50%;"></div>
+Figure 12. Our prompt template for state matching (Sections 3.3 and 3.4) in all the WebShop, ALFWorld, and WebArena domains.
+# Guideline Selection Prompt for WebShop and ALFWorld
+{Task description}. You will be equipped with the following resources: 1. A list of action guidelines with valuable guidelines.  2. Trajectory history, which includes recent observations and actions. Not all guidelines are useful to generate the next action. Please select the guidelines that are useful and relevant to the next  action given the trajectory and recent observations. To generate the next action, which guidelines from the provided guidelines  are most useful to directly tell you what to do for the next action? You can select up to 2 guidelines, and put the indices of the  selected guidelines in a python list. For example if you select guideline 1, 5, answer: [1, 5]. If none of them are useful for  generating the next action, answer the empty list []. Instruction
+Input
+Figure 13. Our prompt template for selecting most relevant state-aware guidelines during the test time (Equation (4) from Section 3.4) in the WebShop and ALFWorld domains.
+# Guideline Selection Prompt for WebArena
+{Task description}. At each time step, you need to generate one action given the current observation.  You will be equipped with the following resources: 1. A list of action guidelines with valuable guidelines.  2. The intent of the task, which is the objective/goal that you should achieve.  3. Trajectory history, which includes the current observation and a sequence of past actions. Not all guidelines are useful to generate the next action. Please select the guidelines that are useful and relevant to the next  action given the current observation and past actions. To generate the next action, which guidelines from the provided guidelines are most useful to directly tell you what to do for  the next action? You can select 3 guidelines (or less if there are less than 3 guidelines), and put the number indices of the  selected guidelines in a python list. For example if you want to select guideline 2 and 5, answer [2, 5]. If none of them are  relevant, answer []. Instruction
+Figure 14. Our prompt template for selecting most relevant state-aware guidelines during the test time (Equation (4) from Section 3.4) in the WebArena domain.
+Figure 14. Our prompt template for selecting most relevant state-aware guidelines during the test t the WebArena domain.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f8f9/f8f93d4c-7914-483b-9616-efc865309897.png" style="width: 50%;"></div>
+State-Aware Guideline:
+•
+When on the Postmill page, if you want to create a new forum, you can click on the link 'Forums'.
+•
+When on the Postmill page, if you want to interact with a specific user's content, you can directly navigate to their profile page by using the
+action: goto.
+•
+When you are on the Postmill page, if you want to navigate to your profile, you should do these sequentially: 1. click the button with your
+username, referring to its ID. 2. click the 'Profile' link.
+•
+When on the Postmill page, if you want to post a question, you can do these sequentially: 1. click on the 'Forums' link, 2. select the
+appropriate forum, and 3. click on the 'Submit' link or button within that forum.
+•
+When on the Postmill page, if you want to report the count of comments with more downvotes than upvotes for the latest post's user, you
+should refer to the current page's information and issue a stop action with the count.
+State: You are on the List of forums page.
+State-Aware Guideline:
+•
+When you are on the List of forums page, if you want to find a specific category of forums, you can click on the link 'Alphabetical'.
+State: You are on the Create submission page.
+State-Aware Guideline:
+•
+When on the Create submission page, if you have typed in all the text and need to submit the form, you should do these sequentially: 1. 
+scroll  to bring the submit button into view, 2. click the button 'Create submission’. 
+State: You are on the Create new forum page.
+State-Aware Guideline:
+•
+When on the Create new forum page, if you want to complete the forum creation process, you can follow these steps sequentially: 1. type 
+into the already focused textbox, 2. type into the next required textbox, 3. type into the subsequent required textbox, 4. scroll down, and 5. 
+click the button 'Create forum'. 
+State: You are on the page of a post.
+State-Aware Guideline:
+•
+When you are on the page of a post and have typed in all the text, you should do these sequentially: 1. scroll  to reveal additional options 
+or buttons, 2. click the button 'Edit submission', and 3. issue a stop action.
+State: You are on the edit_biography page of a user.
+State-Aware Guideline:
+•
+When you are on the edit_biography page of a user, if you want to change the biography, you should do these sequentially: 1. click on the 
+existing biography text, 2. press [Meta+a] to select all text, 3. press [Backspace] to delete it, 4. type the new biography into the textbox, and 
+5. click the 'Save' button.
+State: You are on the main page of a forum.
+State-Aware Guideline:
+•
+When you are on the main page of a forum, if you want to subscribe to the forum after opening a thread, you can do these sequentially: 1. 
+click on the button 'Subscribe'. 
+•
+When you are on the main page of a forum, if you want to review the top posts, you should do these sequentially: 1. click the button 'Sort 
+by:' to change the sorting order, 2. click the link 'Top' to sort posts by top submissions. 
+•
+When you are on the main page of a forum and you want to upvote the newest post, you should do these sequentially: 1. click the button 
+'Sort by: Hot' to change the sorting order to 'New', 2. click the upvote button next to the first post after sorting. 
+State: You are on the submissions page of a user.
+State-Aware Guideline:
+•
+When you are on the submissions page of a user, if you want to dislike all submissions by a specific user in a certain subreddit, you should 
+do these sequentially: 1. scroll  to bring more elements into view, 2. click on the button 'Downvote＇for each relevant submission, and 3. 
+issue a stop action after all dislikes are completed. 
+State: You are on the top page of a forum.
+State-Aware Guideline:
+•
+When you are on the top page of a forum, if you want to find specific posts, you can do these sequentially: 1. click the button 'From: Past 
+24 hours' to change the time filter, 2. click the link 'All time' to view posts from all time.
+State: You are on the new page of a forum.
+State-Aware Guideline:
+•
+When you are on the new page of a forum, if you want to upvote the newest post and have already clicked an upvote button, you should 
+issue a stop action without repeating the upvote.
+Figure 15. Example states and corresponding guidelines for WebArena.
+18
+Figure 15. Example states and corresponding guidelines for WebArena.

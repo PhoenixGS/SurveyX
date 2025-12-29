@@ -1,0 +1,316 @@
+# Unlearnable Algorithms for In-context Learning
+
+Andrei Muresanu 1, 3, Anvith Thudi, 2, 3, Michael R. Zhang 2, 3, Nicolas Papernot 2, 3
+1 University of Waterloo, 2 University of Toronto, 3 Vector Institute
+
+Machine unlearning is a desirable operation as models get increasingly deployed on data with unknown provenance. However, achieving exact unlearning—obtaining a model that matches the model distribution when the data to be forgotten was never used—is challenging or inefficient, often requiring significant retraining. In this paper, we focus on efficient unlearning methods for the task adaptation phase of a pretrained large language model (LLM). We observe that an LLM’s ability to do in-context learning for task adaptation allows for efficient exact unlearning of task adaptation training data. We provide an algorithm for selecting few-shot training examples to prepend to the prompt given to an LLM (for task adaptation), ERASE, whose unlearning operation cost is independent of model and dataset size, meaning it scales to large models and datasets. We additionally compare our approach to fine-tuning approaches and discuss the trade-offs between the two approaches. This leads us to propose a new holistic measure of unlearning cost which accounts for varying inference costs, and conclude that in-context learning can often be more favourable than fine-tuning for deployments involving unlearning requests.
+
+# Introduction
+
+After a machine learning model is deployed, it may become necessary to deploy a new model that does not use part of the original training set. This can occur because of legislation on the “right to be forgotten” [Mantelero, 2013] or because of unknown data provenance (e.g., some data may have come from untrustworthy sources). Machine unlearning addresses this challenge of modifying a model to behave as if it were trained without including a certain datapoint. Formally, the objective of machine unlearning is, given a datapoint x to unlearn and a model trained on some dataset D, to reproduce the model (distribution) that is equivalent to training on D \ x [Cao and Yang, 2015]. The baseline solution is to retrain on D \ x, however, one is generally interested in when machine unlearning can be achieved with less cost than this baseline. That is, solutions to unlearning that are efficient. Towards this, work has shown faster machine unlearning algorithms for statistical query learning algorithms [Cao and Yang, 2015], clustering algorithms [Ginart et al., 2019], and random forests [Brophy and Lowd, 2021]. For deep neural networks (DNNs), known methods for exact unlearning [Bourtoule et al., 2021] still have a cost on the order of training (and can come with performance degradation). In summary, although classical methods have known “efficient” machine unlearning algorithms, developing approaches compatible with deep neural networks is still an open problem and one that is desirable to solve, due to the high cost of retraining on large datasets and models. We observe that the paradigm introduced by large language models (LLMs) paves new approaches for efficient exact unlearning for deep learning. Indeed, large language models typically learn from data in two phases: 1) with an unsupervised task-agnostic objective and 2) with a task adaptation method for a specific downstream task. In this paradigm, we observe that there are efficient exact unlearning operations
+
+∗ Correspondence to andrei.muresanu@uwaterloo.ca, anvith.thudi@mail.utoronto.ca, michael@cs.toronto.edu, and nicolas.papernot@utoronto.ca
+
+∗ Correspondence to andrei.muresanu@uwaterloo.ca, anvith.thudi@mail.utoronto.ca, las.papernot@utoronto.ca
+
+to unlearn data introduced in the second phase when using in-context learning to do task adaptation. In-context learning is an approach that describes the task via a prompt that illustrates the desired input to output mapping using training examples. The prompt is given to a LLM, together with a desired test example. The output of this approach has been shown to perform as well as (or even better than) fine-tuning for some tasks [Brown et al., 2020]. In-context learning offers trade-offs with respect to unlearning. The model’s weights are unchanged and thus require no unlearning. However, in-context learning necessitates selecting training examples for the prompt, and so the unlearning definition requires re-selecting in-context examples as if given just the training dataset without the unlearning points. In other words, the in-context learning algorithm might have selected different training examples to include in the prompt had the dataset been different. This change in selection can be nontrivial if the algorithm to pick the best in-context examples uses information about the whole dataset (e.g., clustering), which is what is done in effective in-context learning algorithms for certain tasks. In this paper, we propose an in-context learning algorithm with comparable accuracy to those algorithms, but whose re-selection of examples when unlearning has a cost independent of the model and dataset size. Our algorithm, similar to previous in-context learning algorithms, performs clustering of in-context examples and selects the examples closest to the centroids in each cluster. However, unlike past work, we use quantized k-means [Ginart et al., 2019] for clustering which has known efficient unlearning operations. Intuitively, quantization introduces stability to clusters, allowing for minimal changes to recompute clustering. As such, we call our in-context learning method Efficient Removal and Selection of Examples (ERASE). Our evaluation of ERASE shows our method has comparable accuracy to previous in-context learning methods that use the whole dataset and fine-tuning approaches. Hence we have shown that efficient exact unlearning operations of DNNs (with costs independent of model and dataset size) are possible in the task adaptation stage of LLMs, making progress towards a core problem of unlearning. However, in making progress towards efficient unlearning we observe a new problem: this focus on unlearning operations ignores the potential additional deployment costs introduced by changing the training algorithm for efficient unlearning operations. This is particularly relevant when going from fine-tuning to in-context learning which increases inference cost due to the additional prompt. Towards a more holistic understanding of machine unlearning costs, we observe that all the training algorithms we study for LLMs (in-context learning algorithms and fine-tuning algorithms) that have more efficient unlearning operations also increase inference costs. We hence propose a new holistic metric for unlearning cost, which is the number of inferences per unlearning request before which the algorithm is cheaper than retraining with SGD (or similar gradient based algorithms). This metric reflects the trade-off we observed between the unlearning operation cost and inference cost. Using this more holistic measure of cost, we can capture and analyze the nuance in the number of examples selected for in-context learning—more examples achieves higher accuracies but comes with a higher holistic unlearning cost than fine-tuning algorithms. However, using fewer examples with in-context learning methods can be cheaper to unlearn than the fine-tuning alternatives, suggesting that in-context learning is still favourable for deployment involving unlearning. We present our empirical findings on the Big-Bench Instruction Induction (BBII) [Zhou et al., 2023] tasks. To summarize, our main contributions are:
+1. The first work exploring exact unlearning of in-context learning methods and identifying the trade-off between inference cost and unlearning cost found in exact unlearning methods for deep learning. We further propose a new unlearning cost metric to study efficient exact unlearning. This metric characterizes a more holistic evaluation of training, inference, and unlearning cost.
+2. Proposing an exact unlearning algorithm ERASE for in-context learning, which relies on quantized k-means, with dataset-independent unlearning operation costs and performance comparable to effective in-context learning example selection baselines.
+3. Demonstrating in-context methods can be more efficient for unlearning (even when using this holistic cost metric) while still being as performative as fine-tuning algorithms. This suggests that in-context
+
+learning can be favourable for domains that require exact unlearning. For example, we find 2-shot ERASE is more efficient for unlearning than finetuning if there are fewer than ∼ 5, 200 test queries per unlearning request on the Big-Bench Sports Understanding dataset.
+
+# 2 Related Work
+
+Towards efficient unlearning for deep neural networks, a broad literature has considered various approximate notions of unlearning. Approximate unlearning aims to obtain similar models to having not trained on the given datapoint in a predefined metric. Examples of unlearning metrics include ℓ 2 distance in the weights [Thudi et al., 2022a] or that the model distributions are close in some divergence [Golatkar et al., 2020]. Another objective is that the unlearnt models are not vulnerable to privacy attacks against the point to unlearn [Graves et al., 2021, Baumhauer et al., 2022, Guo et al., 2019]. A consensus for metrics to use for approximate unlearning has not yet been reached. 1 Moreover, it is not clear if approximate notions of unlearning are suitable for some applications of unlearning, such as legal requirements. Our work avoids this ambiguity by focusing on exact machine unlearning. Past work on unlearning LLMs use approximate notions of unlearning and focus on unlearning the pretrained data [Pawelczyk et al., 2023, Yao et al., 2023, Jang et al., 2022, LLMS, Chen and Yang, 2023]. Unlike past work, we study exact unlearning, and moreover, focus on the task adaptation stage of an LLM. A seperate body of literature related to unlearning (what is considered in this paper) focuses on knowledge unlearning where the goal is to remove an undesired “behaviour” (as opposed to unlearning specific datapoints), and we refer the reader to Si et al. [2023] for a survey on this literature.
+
+# 3 Exact Unlearning Methods for the Task Adaptation of LLMs
+
+In this section, we describe prior algorithms for the task adaptation phase of LLMs and the cost of their exact unlearning operations. In particular, we recall SISA [Bourtoule et al., 2021] which encapsulates typical SGD-based approaches to fine-tuning and its unlearning costs. We then describe two baseline algorithms for in-context learning and their unlearning costs. In analyzing these methods, we also describe their inference cost, as we will see a cost comparison between fine-tuning and in-context learning would be unfair without capturing inference costs. Indeed, they can be significantly higher for in-context learning.
+
+Measuring Cost Before describing what unlearning looks like for various in-context learning methods, we first recall the online model of [Ginart et al., 2019] for unlearning. Specifically, given a model trained on a dataset D with some training algorithm T, we consider a stream of unlearning requests x 1, · · ·, x i, for each of which we must produce the output of the training algorithm if it was just given D \ {x 1}, D \ {x 1, x 2}, · · · D \ {x 1, · · ·, x i}. Do note, in the cases where the training algorithm is random, we must produce an identical distribution of final models. We measure unlearning cost as the average cost over a uniformly sampled i.i.d stream of unlearning requests from the training dataset. In particular, focusing on only unlearning one point, the unlearning cost is the expected cost to unlearn a point over all points in the dataset (sampled uniformly). We note that requests may not always be uniformly sampled [Gupta et al., 2021], and that manipulation to the order of datapoints can lead to increased compute costs [Shumailov et al., 2021], but do not consider these adversarial settings in this paper. On measuring inference costs, in this section we use big O notation and highlight variables that scale the inference costs for the different algorithms.
+
+1 For example, there is a Neurips competition on standardizing metrics: https://unle
+
+1 For example, there is a Neurips competition on standardizing metrics: https://unlearning-challenge.github.io
+
+1 For example, there is a Neurips competition on standardizing metrics: https://unlearning-challenge.github.io
+
+# 3.1 Fine-tuning
+
+The typical exact unlearning approach for fine-tuning with SGD-based algorithms is Sharded, Isolated Sliced, and Aggregated training (SISA) [Bourtoule et al., 2021]. Specifically, n-SISA constructs an ensemble of n models trained on different equal sized partitions of the dataset D (effectively training each model for 1 /n th the cost of the original model): this is called sharding. The second part of SISA is slicing, which is to limit the training on any given point to a specific interval of training, e.g., the first 3 epochs. However as seen in Figure 3 (in Appendix A), our models converge after one epoch of SISA fine-tuning. Hence, in this paper, we assume each model trains on a data point only once and do not further use SISA slicing Now given a request to unlearn a datapoint, only one of the smaller training runs needs to be redone and in expectation half of that training run needs to be redone, giving an asymptotic unlearning rate of O (1
+n × cost to train one model fully on D). However, the inference cost for n-SISA is now O (n ∗ f (t)) where t is the number of tokens in the inference question and f represents the cost of inference per token. For a Transformer with a constant attention window (as in our experiments), the cost is O (n ∗ t) and we set f (t) = O (t) for the rest of the paper.
+
+# 3.2 In-context Learning
+
+In-context learning example selection algorithms output a set of k in-context examples from a dataset D which are then prepended to the input given to an LLM. In particular, they make no modification to the parameters and the only dependence on the dataset D is the set of examples to prepend. Hence unlearning in-context learning algorithms amounts to reproducing the distributions of in-context examples the method would output if given just D \ {x ∗}. A baseline in-context learning method is to randomly sample in-context examples [Zhang et al., 2022]. To reproduce the distribution of in-context examples, one needs to resample from D \ {x 1, · · ·, x k} once to replace x ∗ if it was sampled as an in-context examples (x ∗ ∈{x 1, · · ·, x k}), which is O (1) cost. Hence random sampling has constant unlearning cost with respect to the dataset properties. However, random sampling is not always the most performative (i.e., highest test accuracy) choice of in-context learning. For certain tasks, a more effective in-context learning algorithm is Auto Chain-of-Thought [Zhang et al., 2022] (ACoT), which takes embeddings of the examples in D and produces k clusters from them using kmeans++. ACoT then picks the example from each cluster that is closest to the centroid. The approach to unlearning ACoT would require redoing kmeans++ on D \ {x} which has cost O (| D | d) when fixing the number of iterations in kmean++, where d is the dimension of the embedded examples. Hence, assuming negligible change to the dataset size over m unlearning requests, we have the unlearning cost over m examples is O (m | D | d). Hence for those tasks where ACoT is the most accurate algorithm, we have unlearning operation costs that scale with dataset size. Contrasting these unlearning operation costs with n-SISA, we see that these in-context learning methods have unlearning operation costs independent of model size (the cost of one gradient computation to train a model scales with model size), meaning their unlearning operations efficiently scale to LLMs (though ACoT’s unlearning operation cost still scales with dataset size). However, note that for all in-context learning methods, the prepending of k in-context examples increases the cost to run inference. In particular, the inference cost is O (t + k × s), where s is the average number of tokens in an in-context example, and one has to run a forward pass over k of them alongside the original test example of t tokens. We present the different unlearning operation and inference costs in Table 1 (which includes the in-context learning algorithm we will propose), where we now see a spectrum of increasingly more efficient unlearning algorithms: no model dependence for all in-context learning methods and furthermore no dataset dependence with random sampling and our algorithm.
+
+Cost
+n-SISA
+ACoT
+ERASE
+Random In-context Set
+Unlearning Operation
+O( m
+n Train(D,model))
+O(m|D|d)
+O((m2d5/2/ϵ)
+O(m)
+Inference Operation
+O(n × t)
+O(t + k × s)
+O(t + k × s)
+O(t + k × s)
+Table 1: Unlearning and inference costs of different exact unlearning methods for m data points, where D is the dataset, d is the dimension of the embeddings used for the in-context examples, and ϵ is the quantization parameter in ERASE . Here m is assumed small such that changes to dataset size are insignificant for fine-tuning and in-context learning. Here k is the number of in-context examples, t is the number of tokens in the input question, and s is the average number of tokens in an in-context example. Here O suppresses the multiplicative factor for running inference on one token, which depends on the size of the model.
+
+Algorithm 1 In-context Learning with ERASE
+Require: A set of training examples D, the desired number of in-context examples k, and quantization
+parameter ϵ
+Ensure: Examples q(i) = [q(i)
+1 , q(i)
+2 , . . . q(i)
+k ] for in-context learning
+1: for each example q in D do
+2:
+Encode q with feature extractor e.g., Sentence-BERT
+3: end for
+4: Cluster all the encoded example representations into k clusters using quantized k-means with quantization
+parameter ϵ
+5: for each cluster i = 1, . . . , k do
+6:
+Sort examples q(i) = [q(i)
+1 , q(i)
+2 , . . .] in the ascending order of the ℓ2 distance to the quantized cluster
+centroid
+7: end for
+8: Return q(i)
+1
+for i = 1, . . . , k
+# 4 Methodology
+
+We now proceed to propose a new in-context learning algorithm given the current takeaways from the brief taxonomy provided in Section 3. We further propose a new holistic measure of unlearning costs given the trends observed between inference cost and unlearning cost.
+
+# 4.1 A New In-context Learning Method for Unlearning
+
+The discussion in Section 3.2 reveals a gap for an in-context learning algorithm that is as accurate as ACoT on the tasks it does better than random sampling, but does not have an unlearning operation cost that scales with the size of the dataset. We now propose such an algorithm, which we term ERASE for Efficient Removal And Selection of Examples, described in Algorithm 1. Past work highlighted the role of selecting diverse examples for accurate in-context learning [Zhang et al., 2022], and our algorithm ERASE builds on this. ERASE takes the set of training examples D and computes the Sentence-Bert embeddings for each q ∈ D. It then clusters the embeddings into k cluster (the desired number of in-context examples) and orders the examples in ascending ℓ 2 distance to the centroid: i.e., for each cluster i ∈ [k] returns a list q (i) = [q (i) 1, q (i) 2, · · ·]. ERASE then finally returns q i 1 ∀ i ∈ [k], the set of examples closest to each centroid. Note that this algorithm is similar to ACoT [Zhang et al.,
+
+2022]. However, ERASE uses quantized k-means [Ginart et al., 2019] to cluster. This is as quantized k-means allows for dataset size independent unlearning of the clusters (which is the main cost for unlearning the selection of in-context examples). Intuitively, quantized k-means quantizes the intermediate centroids c i → ˆ c i ∈ ϵ ∗ Z d + θ for some θ ∈ Unif ([− 1 / 2, 1 / 2] d) and quantization parameter ϵ to make final cluster centroids stable, making it such that with high probability 1 − O (1 /ϵ | D |) removing a datapoint does not change the final clusters and hence unlearning can be achieved by doing nothing. However, quantized k-means introduces an additional quantization parameter ϵ. Increasing ϵ makes unlearning more efficient, as cluster assignments are more stable, while introducing more approximation to the clustering algorithm (potentially affecting the quality of the cluster for downstream use). In particular, the unlearning operation cost for m points is O (m 2 d 5 / 2 /ϵ) in expectation where d is the dimension of the embedding vectors, as stated in Theorem 4.1 in [Ginart et al., 2019]. The proof follows by bounding the probability a deletion request changes the centroids (which introduces the 1 / (ϵ | D |) dependence), and noting the cost to check this is independent of the dataset size and that the (1 / | D |) probability cancels the | D | factor involved in retraining from scratch if the centroids change. The choice of ϵ will affect the performance between using ERASE and ACoT as increasing it will deteriorate the performance of ERASE , but as will be seen in Section 5, we found a fixed value of ϵ = 0. 05 led to comparable accuracy to ACoT on the tasks we evaluated on.
+
+# 2 On More Holistic Unlearning Costs
+
+The unlearning operation costs presented in Table 1 describe how in-context learning allows for efficient unlearning operations in the task adaptation stage of an LLM. However, highlighted by the inference costs reported in the taxonomy are the extra costs needed to deploy a model when modifying the task adaptation algorithm to have more efficient unlearning operations. For example, not discussed (to the best of our knowledge) in the literature is the impact n-SISA has on increasing inference costs. Similarly, in-context learning methods increase inference costs, as described in Table 1. In fact, despite having more efficient unlearning operations, these modified learning algorithms may become more costly than the baseline of finetuning with 1-SISA if there are a large number of test queries per unlearning request.
+
+Holistic Unlearning Cost Given the observed trade-off between inference cost and cost per unlearning operation, we propose to use how many test queries per unlearning request can be made after which an algorithm is as expensive as 1-SISA (i.e., finetuning with SGD with no modifications) to measure holistic cost. We use this to compare the unlearning efficiency of in-context learning to SISA.
+Definition 4.1 (Holistic Unlearning Cost). We compute the holistic unlearning cost for a method M with unlearning operation cost U M and inference cost I M, as the number of inferences per unlearning request upon which M costs the same as 1-SISA 2, given by
+
+C (M) = (U M − U 1-SISA) / (I 1-SISA − I M)
+
+This measure notably also describes specifically when variants of n-SISA are more expensive to deploy than 1-SISA, and also up to when in-context learning methods are cheaper than the fine-tuning baselines. We note that other work has studied when in-context learning can be less performative for a given amount of compute than finetuning [Liu et al., 2022], and our work is inspired by such analysis and its relevance for unlearning algorithms.
+
+Method
+WinoWhy
+Timedial
+Sports Understanding
+Logical Fallacy Detection
+4-SISA
+1.4 × 103
+0.2 × 102
+2.7 × 103
+1.3 × 103
+2-shot In-context Methods
+2.5 × 103
+0.4 × 102
+5.2 × 103
+2.2 × 103
+3-shot In-context Methods
+1.7 × 103
+0.3 × 102
+3.4 × 103
+1.5 × 103
+4-shot In-context Methods
+1.2 × 103
+0.2 × 102
+2.6 × 103
+1.1 × 103
+Table 2: Number of inferences per unlearning request to match 1-SISA costs: higher is now bett that using 4 in-context examples is more expensive than 0-shot 4-SISA, as it can handle fewer per unlearning request.
+
+# 5 Experiments
+
+We now explore the effectiveness of our method ERASE compared to other in-context learning methods and the unlearning baseline of fine-tuning with SISA [Bourtoule et al., 2021], in both test accuracy and (holistic) unlearning costs. In doing so we answer whether our method can perform on par with ACoT, and whether doing task adaptation using ERASE (or in-context learning methods in general) is more cost-effective for unlearning than SISA.
+
+# 5.1 Experimental Setup
+
+LLMs now commonly use a causal decoder architecture [Zhao et al., 2023]. Within this architecture class, we observe similar performance across pre-training procedures. Therefore, we use the popular LLaMA [Touvron et al., 2023] as a representative base model within all experiments. We evaluated all methods on a suite of 15 tasks. All experiments were run on a single node containing four A40 Nvidia GPUs.
+
+Task Selection The 15 tasks we evaluate on are from Big-Bench [Srivastava et al., 2023]. Big-Bench tasks are designed to be difficult for LLMs to solve. From Big-Bench we selected tasks to emphasize challenging scenarios and isolate in-context learning ability. Our task selection process started with considering only tasks from the Big-Bench Instruction Induction (BBII) [Zhou et al., 2023] subset of Big-Bench, which are curated to be difficult and lack any instructional content within examples. We then filter out any BBII tasks with less than 200 examples, to ensure each task has adequate examples for fine-tuning and evaluation. We chose to exclude the Dyck Languages task from BBII because its format is prohibitive toward log probability based evaluations. To have a more comprehensive dataset, we supplement these with 5 additional tasks from the broader Big-Bench dataset which the untuned version of LLaMA solves with no higher than a 40% normalized aggregate score. Finally, we remove the “task prefix” from the prompts of all tasks. This step helps isolate in-context learning ability from confounding variables such as instruction following ability.
+Fine-Tuning Setup We fine-tune all model parameters using a pipeline based on Alpa [Zheng et al., 2022]. We use a loss mask to update gradients based only on the log probabilities of answer tokens. We mask all tokens within the example input and task setup (e.g., the tokens for “Input:” and “Output:”), fine-tuning only on the token within the answer string. Our prompts are in Appendix C. We use a block size of 256 tokens and batch size of 8. We use the Adam optimizer [Kingma and Ba, 2017] with β 1 = 0. 9, β 2 = 0. 98, weight decay of 0.01, and learning rate of 1e-5. We also use 10 warm-up steps with a linear schedule. See Appendix B for more information.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7bb1/7bb12303-cb06-4d2d-8c31-bf6d54c7d268.png" style="width: 50%;"></div>
+Figure 1: Comparison of normalized aggregate score on 4 bigbench tasks between random selection of in-context examples, ACoT, and ERASE alongside dimension reduction variant of ERASE and ACoT (using UMAP). All methods are tested in the 4-shot setting. Recall normalized aggregate score reports model performance such that 0 represents random performance and 100 represents the performance of human experts. We see that ERASE performs comparably to ACoT and better than random selection, and dimension reduction makes slight improvements.
+
+Evaluation Setup Our evaluation of performance follows the process outlined by the BigBench dataset [Srivastava et al., 2023]. All BigBench tasks we used are JSON tasks. JSON tasks have two types of evaluation metrics: generative and multiple-choice. Given an input, generative metrics require the model to generate some text. This text is then compared to a predefined correct answer with either no formatting or very little formatting. Multiple-choice metrics evaluate the model’s output on a small set of multiple-choice options. The metric then either assigns the most likely choice as the model’s answer or looks at the difference between the model’s output distribution and the target distribution. We use the metric(s) recommended for the task, giving preference to using log-probability based multiple-choice metrics because continuous evaluation metrics provide smoother and more predictable changes in model performance [Schaeffer et al., 2023]. We report the performance on each task by the model’s normalized aggregate score, which is normalized such that 0 represents random performance and 100 represents the performance of a human expert (definition in Appendix D).
+
+# 5.2 ERASE is comparable to Auto Chain-of-Thought
+
+Here we compare ERASE to the other in-context learning algorithms described in Section 3 which were not optimized for unlearning. In particular, we investigate how ERASE compares to ACoT when ACoT outperforms random sampling (i.e. example selection is important), and hence enables dataset independent unlearning operation costs on those tasks. More generally, we investigate how the modifications made to obtain more efficient unlearning operations interact with test accuracy for in-context learning. We compare ERASE to ACoT and random selection of in-context sets in Figure 1. We find that ACoT and ERASE outperform random selection on most tasks, i.e., the more expensive to unlearn methods perform better. We find that ERASE outpeforms ACoT on three out of the four tasks. We furthermore evaluate dimension reduction variants (using UMAP) of the clustering methods to understand whether embedding dimension affects the comparison between ACoT and ERASE . Considering the effect of dimension reduction, we see it slightly boosts (or matches) the performance for ERASE and ACoT. However, both ACoT and ERASE still perform comparably across the 4 tasks after dimension reduction. We conclude that dimension reduction has minimal relative impact on performance between ACoT and ERASE , hence not affecting the previous claim of comparability in accuracy between the two methods. To conclude, we observe that ERASE has comparable accuracy to ACoT, despite having more efficient unlearning operations. We proceed to compare the accuracy of ERASE against the fine-tuning baselines.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/09aa/09aae143-f536-426c-9eca-83665ca1a0e8.png" style="width: 50%;"></div>
+Figure 2: A comparison of normalized aggregate score of 2, 3, 4-shot ERASE to 1, 2, 4-SISA, and no finetuning on 15 bigbench tasks. Recall normalized aggregate score reports model performance such that 0 represents random performance and 100 represents the performance of human experts. We see on several tasks that ERASE performs comparably to the SISA variants; LLaMA is capable of in-context learning with ERASE on these tasks. We repeat experiments with ERASE 10 times to estimate the standard deviation and evaluate all methods on the entire test set.
+
+# Few Shot ERASE is comparable to SISA variants
+
+The question we now ask is: can our in-context learning algorithm ERASE perform as well as the SISA variants (the baseline for fine-tuning with unlearning), and hence lead to efficient unlearning operations on those tasks? To do this, we first compare the performance of ERASE with a different number of in-context examples vs. SISA with a different number of shards. Increasing the number of in-context examples is expected to increase performance while increasing inference cost, while increasing the number of shards for SISA reduces the unlearning operation cost while also increasing inference cost [Bourtoule et al., 2021]; this ablation will help us later understand which method has a better holisitic unlearning cost versus performance trade-off. In particular, we consider several baselines: SISA with ensembles of size 4, 2, and 1. We do not test beyond 4 models per ensemble as we want each model in the ensemble to fine-tune on at least 20 examples for all tasks (as Figure 3 in Appendix A shows convergence in normalized aggregate score occurs after 20 examples). In all implementations of SISA, we do not use slicing as we train for only a single epoch and hence every datapoint is only used once (and implicitly sliced). In Figure 2, we compare the test accuracy of the methods. We see that ERASE using 3 or 4 in-context examples can be as accurate as all the SISA variants for several tasks, with 2-shot ERASE being as accurate as the most efficient to unlearn SISA variants.
+
+With this understanding of the predictive performance of ERASE relative to SISA, we turn to whether it is cheaper to deploy in-context learning than SISA in the presence of unlearning requests. To do this, we report the numerical cost (measured in FLOPS) per unlearning operation and per inference for the different methods in Table 3 and Table 4 (in Appendix A) respectively. This is reported for 4 tasks where in-context learning performs as well as SISA. In particular, we computed the expected cost per unlearning operation for SISA by taking the flops used to train an individual model in the ensemble and dividing by 2 (as dividing by 2 captures the expected length of training that needs to be redone if one logs checkpoints). Compared to the costs of SISA, which do not scale favourably to LLMs as they are model size dependent, the model and dataset-independent unlearning costs of in-context methods are practically 0. For inference costs, we use the Flops Profiler package [Li, 2023], measuring base LLaMA to have an inference cost of 264996864 ∗ (1 + context length) FLOPS and evaluated the expected context lengths for all methods. To compare holistic unlearning costs, we report the number of inferences per unlearning request after which a method is more expensive than the baseline (1-SISA) in Table 2. We find that the best-performing version of in-context learning (the 4-shot version) costs more than the SISA variants to unlearn despite having a more efficient unlearning operation; that is, they can handle fewer inferences per unlearning request before being more expensive than the baseline. However, considering 2 and 3-shot ERASE, (and generally in-context learning) which still performs favourably to the most efficient SISA variants for many tasks, we see it is now more efficient than 4-SISA. 3 We hence conclude that in-context learning can be more favourable for deployments subject to unlearning requests at the task adaptation phase.
+
+# 6 Discussion
+
+# 6.1 On Lower-Bounds to Holistic Unlearning Cost
+
+Given this new holistic unlearning cost metric, an open question is whether there are provable lower-bounds on how holistically efficient unlearning can be in certain settings while still having an accurate learning algorithm. In particular, it raises the question of whether there is a fundamental trade-off between inference cost and unlearning operation cost in certain machine learning setups. Notably, such a bound would imply a trade-off between how much data any learning algorithm can be “invariant” to (i.e., can unlearn by doing nothing) and how efficiently such invariance can be checked. This is as an unlearning algorithm that does not change inference cost by checking if removing a training datapoint changes the final model and if not, do nothing. Hence we believe this problem is of fundamental interest to the machine learning community in general and may illustrate an underlying difficulty of exact unlearning.
+
+# 6.2 On Unlearning Definitions
+
+We wish to reiterate here the distinction between exact and approximate unlearning, and the issues that are still common to both. Approximate unlearning attempts to emulate exact unlearning in a manner that is sufficient for specific goals of unlearning. However, the reasons to unlearn may be several-fold in practice (legal, performative, etc) and not amenable to any specific metric, hence difficult for approximate unlearning. This said, exact unlearning is also not immune to problems of applicability. In particular, exact unlearning can still suffer issues of not being auditable [Thudi et al., 2022b], meaning additional requirements are potentially needed to satisfy legal requirements. Exact unlearning can also still leak privacy if not done with additional privacy requirements [Gupta et al., 2021], e.g., if an adversary gains access to the model before and after the unlearning operation for a data point they may be able to infer what the data point
+
+3 Note that 4-SISA is more efficient to deploy than 3 and 2-SISA by Definition 4.1
+
+at 4-SISA is more efficient to deploy than 3 and 2-SISA by De
+
+to unlearn was. It may be that satisfying these extra requirements on unlearning can change the ratios between inferences and unlearning requests we observed (for a given test accuracy), and the preference for in-context learning. Furthermore, note we assumed a stream of individual unlearning requests, but if they were aggregated into batches, then 1-SISA unlearning operation cost does not scale with the number of requests making it more desirable.
+
+As was seen in Figure 2, we observed ERASE often has comparable accuracy to SISA. However, this was not always the case, and we observed a large variance in the relative performance between tasks. Furthermore, we are not aware of work that predicts when in-context learning is accurate (relative to fine-tuning) and we do not have an explanation for our observed variance in competitiveness. Given that in-context learning is now known to be important for unlearning, we believe an important open problem is predicting when in-context learning can be done for a task (without needing to do fine-tuning to compare).
+
+# 7 Conclusion
+
+In this paper, we explored exact unlearning for the task adaptation stage of an LLM, and in particular, exact unlearning of in-context learning methods. In doing so, we proposed a new in-context learning method whose unlearning operation has a cost independent of the dataset and model size, yet has performance comparable to methods with dataset-dependent unlearning costs. In comparing in-context learning’s effectiveness for unlearning to typical fine-tuning, we made the observation that methods that make the unlearning operation more efficient also increase inference cost. Hence we proposed a new holistic measure of unlearning cost that accounts for the added inference cost, and concluded that in-context learning can be advantageous compared to fine-tuning for deployments involving unlearning requests.
+
+# Impact Statement
+
+Our work enables efficient exact unlearning for task adaptation, and as such demonstrates how an entity can easily remove data from the dataset used to adapt a model. Such a method enables entities to easily remove data from untrustworthy sources, at the request of users, or adhere to regulations. However, such a method may also enable entities to deny having collected/used certain data, and hence potential misuse.
+
+# Acknowledgements
+
+We thank Eleni Triantafillou and Jamie Hayes for helpful comments on earlier versions of this work. We would like to acknowledge our sponsors, who support our research with financial and in-kind contributions: Amazon, Apple, CIFAR through the Canada CIFAR AI Chair, DARPA through the GARD project, Intel, Meta, NSERC through the Discovery Grant, the Ontario Early Researcher Award, and the Sloan Foundation. Anvith Thudi is supported by a Vanier Fellowship from the Natural Sciences and Engineering Research Council of Canada. Michael Zhang is supported by the NSERC CGS Fellowship. Resources used in preparing this research were provided, in part, by the Province of Ontario, the Government of Canada through CIFAR, and companies sponsoring the Vector Institute.
+
+# References
+
+L. Bourtoule, V. Chandrasekaran, C. A. Choquette-Choo, H. Jia, A. Travers, B. Zhang, D. Lie, and N. Papernot. Machine unlearning. In 2021 IEEE Symposium on Security and Privacy (SP), pages 141–159. IEEE, 2021.
+J. Brophy and D. Lowd. Machine unlearning for random forests. In International Conference on Machine Learning, pages 1092–1104. PMLR, 2021.
+T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan, P. Shyam, G. Sastry, A. Askell, et al. Language models are few-shot learners. Advances in neural information processing systems, 33:1877–1901, 2020.
+Y. Cao and J. Yang. Towards making systems forget with machine unlearning. In 2015 IEEE symposium on security and privacy, pages 463–480. IEEE, 2015.
+J. Chen and D. Yang. Unlearn what you want to forget: Efficient unlearning for llms. arXiv preprint arXiv:2310.20150, 2023.
+A. Ginart, M. Guan, G. Valiant, and J. Y. Zou. Making ai forget you: Data deletion in machine learning. Advances in neural information processing systems, 32, 2019.
+A. Golatkar, A. Achille, and S. Soatto. Eternal sunshine of the spotless net: Selective forgetting in deep networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 9304–9312, 2020.
+L. Graves, V. Nagisetty, and V. Ganesh. Amnesiac machine learning. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 35, pages 11516–11524, 2021.
+C. Guo, T. Goldstein, A. Hannun, and L. Van Der Maaten. Certified data removal from machine learning models. arXiv preprint arXiv:1911.03030, 2019.
+V. Gupta, C. Jung, S. Neel, A. Roth, S. Sharifi-Malvajerdi, and C. Waites. Adaptive machine unlearning. Advances in Neural Information Processing Systems, 34:16319–16330, 2021.
+J. Jang, D. Yoon, S. Yang, S. Cha, M. Lee, L. Logeswaran, and M. Seo. Knowledge unlearning for mitigating privacy risks in language models. arXiv preprint arXiv:2210.01504, 2022.
+D. P. Kingma and J. Ba. Adam: A method for stochastic optimization, 2017.
+C. Li. Flops profiler python package, 2023. URL https://pypi.org/project/flops-profiler/.
+H. Liu, D. Tam, M. Muqeeth, J. Mohta, T. Huang, M. Bansal, and C. A. Raffel. Few-shot parameter-efficient fine-tuning is better and cheaper than in-context learning. Advances in Neural Information Processing Systems, 35:1950–1965, 2022.
+I. LLMS. Who’s harry potter? approximate unlearn.
+A. Mantelero. The eu proposal for a general data protection regulation and the roots of the ‘right to be forgotten’. Computer Law & Security Review, 29(3):229–235, 2013.
+M. Pawelczyk, S. Neel, and H. Lakkaraju. In-context unlearning: Language models as few shot unlearners. arXiv preprint arXiv:2310.07579, 2023.
+R. Schaeffer, B. Miranda, and S. Koyejo. Are emergent abilities of large language models a mirage?, 2023.
+I. Shumailov, Z. Shumaylov, D. Kazhdan, Y. Zhao, N. Papernot, M. A. Erdogdu, and R. J. Anderson. Manipulating sgd with data ordering attacks. Advances in Neural Information Processing Systems, 34: 18021–18032, 2021.
+
+N. Si, H. Zhang, H. Chang, W. Zhang, D. Qu, and W. Zhang. Knowledge unlearning for llms: Tasks, methods, and challenges. arXiv preprint arXiv:2311.15766, 2023.
+A. Srivastava, A. Rastogi, A. Rao, and et al. Beyond the imitation game: Quantifying and extrapolating the capabilities of language models, 2023.
+A. Thudi, G. Deza, V. Chandrasekaran, and N. Papernot. Unrolling sgd: Understanding factors influencing machine unlearning. In 2022 IEEE 7th European Symposium on Security and Privacy (EuroS&P), pages 303–319. IEEE, 2022a.
+A. Thudi, H. Jia, I. Shumailov, and N. Papernot. On the necessity of auditable algorithmic definitions for machine unlearning. In 31st USENIX Security Symposium (USENIX Security 22), pages 4007–4022, 2022b.
+H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux, T. Lacroix, B. Rozi`ere, N. Goyal, E. Hambro, F. Azhar, A. Rodriguez, A. Joulin, E. Grave, and G. Lample. Llama: Open and efficient foundation language models, 2023.
+Y. Yao, X. Xu, and Y. Liu. Large language model unlearning. arXiv preprint arXiv:2310.10683, 2023.
+Z. Zhang, A. Zhang, M. Li, and A. Smola. Automatic chain of thought prompting in large language models. arXiv preprint arXiv:2210.03493, 2022.
+W. X. Zhao, K. Zhou, J. Li, T. Tang, X. Wang, Y. Hou, Y. Min, B. Zhang, J. Zhang, Z. Dong, Y. Du, C. Yang, Y. Chen, Z. Chen, J. Jiang, R. Ren, Y. Li, X. Tang, Z. Liu, P. Liu, J.-Y. Nie, and J.-R. Wen. A survey of large language models, 2023.
+L. Zheng, Z. Li, H. Zhang, Y. Zhuang, Z. Chen, Y. Huang, Y. Wang, Y. Xu, D. Zhuo, E. P. Xing, J. E. Gonzalez, and I. Stoica. Alpa: Automating inter- and intra-operator parallelism for distributed deep learning, 2022.
+Y. Zhou, A. I. Muresanu, Z. Han, K. Paster, S. Pitis, H. Chan, and J. Ba. Large language models are human-level prompt engineers, 2023.
+
+Method
+WinoWhy
+Timedial
+Sports Understanding
+Logical Fallacy Detection
+1-SISA
+71 × 1012
+70 × 1012
+71 × 1012
+70 × 1012
+4-SISA
+14 × 1012
+14 × 1012
+14 × 1012
+14 × 1012
+In-context Methods
+≈0
+≈0
+≈0
+≈0
+Table 3: Unlearning costs of different exact unlearning methods, measured in FLOPS, for four different tasks: lower is better. All tasks have roughly the same unlearning cost for each SISA method despite having dramatically different input lengths because examples for all tasks fit entirely within the model’s context window. Therefore, because fine-tuning requires no token generation, it means that all examples require only a single forward pass to compute the required fine-tuning log probabilities regardless of length. When compared to the costs of the SISA methods, we have the unlearning costs for in-context methods are ≈ 0 given they are model size independent; notably random in-context sets are O (1) (just the cost of resampling).
+
+Method
+WinoWhy
+Timedial
+Sports Understanding
+Logical Fallacy Detection
+1-SISA
+13.5 × 109
+78.6 × 109
+7.0 × 109
+14.9 × 109
+4-SISA
+54.2 × 109
+314.4 × 109
+27.9 × 109
+59.7 × 109
+2-shot In-context Methods
+42.1 × 109
+238.1 × 109
+20.7 × 109
+46.1 × 109
+3-shot In-context Methods
+55.5 × 109
+323.7 × 109
+27.6 × 109
+61.5 × 109
+4-shot In-context Methods
+70.4 × 109
+395.5 × 109
+34.5 × 109
+76.7 × 109
+Table 4: Inference costs of different exact unlearning methods, measured in FLOPS, for four different tasks: lower is better. We see that in-context methods, using 4 in-context examples here, have the largest cost. We calculated these costs by computing the inference cost per token for the model, the average number of tokens in an input, and the average number of token in an in-context example for each task
+
+# B Hyperparamter Tuning
+
+We found that the learning rate was the only hyperparameter with a significant impact on final performance after fine-tuning. To tune our learning rate, we fine-tune our model on the intent recognition dataset for the rates: 5e-5, 1e-5, 5e-6, 1e-6, 5e-7, 1e-7 and choose the one with the lowest test perplexity (1e-5). Finally, we try three different number of warm-up iterations: 10, 15, and 40 steps, and find that 10 warm-up steps performed best.
+
+# C Prompts
+
+We briefly describe how we prompted an LLM for inference during: fine-tuning, zero-shot inference, and few-shot inference. This formatting is relevant to how we measured inference cost. For completeness, we also describe the expected output during fine-tuning.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/970c/970ced17-aa69-47b7-8cf7-b99189b4dcd3.png" style="width: 50%;"></div>
+1. Fine-tuning Input: “[test example input]” Output: “[test example output]”
+2. Zero-Shot inference Input: “[test example input]”
+3. Few-Shot inference Input: “Input: [in-context example 1 input] Output: [in-context example 1 output] Input: [in-context example 2 input] Output: [in-context example 2 output] ... Input: [in-context example k input] Output: [in-context example k output] Input: [example input]”
+
+1. Fine-tuning Input: “[test example input]” Output: “[test example output]”
+2. Zero-Shot inference Input: “[test example input]”
+
+3. Few-Shot inference Input: “Input: [in-context example 1 input] Output: [in-context examp 1 output] Input: [in-context example 2 input] Output: [in-context example 2 output] ... Inpu [in-context example k input] Output: [in-context example k output] Input: [example input]”
+
+# Normalized Aggregate Score
+
+We state the formula for normalized aggregate score as defined in Srivastava et al. [2023] below, where for a given task raw preferred metric is the model’s performance using the task’s preferred evaluation metric, low score is the lowest possible score (typically random choice), and high score is the highest possible score (typically expert human performance):
+
+[normalized aggregate score] = [normalized preferred metric] = 100 × [raw preferred metric] − [low score]
+[high score] − [low score]
+
+[normalized aggregate score] = [normalized preferred metric] = 100 × [raw preferred metric] − [low score]
+[high score] − [low score]
+
+[normalized aggregate score] = [normalized preferred metric] = 100 × [raw preferred metric] − [low score]
+[high score] − [low score]
+
+[hig
+[normalized aggregate score] = [normalized preferred metric] = 100 × [raw pre
+

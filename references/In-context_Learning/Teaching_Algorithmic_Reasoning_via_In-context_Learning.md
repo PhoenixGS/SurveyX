@@ -1,0 +1,521 @@
+Hattie Zhou*1, Azade Nova2, Hugo Larochelle2, Aaron Courville1, Behnam Neyshabur†2, and Hanie Sedgh
+1Mila, Universit´e de Montreal 2Google Research
+1Mila, Universit´e de Montreal 2Google Research
+15 Nov 2022
+Abstract
+Large language models (LLMs) have shown increasing in-context learning capabilities through scaling up model and data size. Despite this progress, LLMs are still unable to solve algorithmic reasoning problems. While providing a rationale with the final answer has led to further improvements in multi-step reasoning problems, Anil et al. (2022) showed that even simple algorithmic reasoning tasks such as parity are far from solved. In this work, we identify and study four key stages for successfully teaching algorithmic reasoning to LLMs: (1) formulating algorithms as skills, (2) teaching multiple skills simultaneously (skill accumulation), (3) teaching how to combine skills (skill composition) and (4) teaching how to use skills as tools. We show that it is possible to teach algorithmic reasoning to LLMs via in-context learning, which we refer to as algorithmic prompting. We evaluate our approach on a variety of arithmetic and quantitative reasoning tasks, and demonstrate significant boosts in performance over existing prompting techniques. In particular, for long parity, addition, multiplication and subtraction, we achieve an error reduction of approximately 10x, 9x, 5x and 2x respectively compared to the best available baselines.
+# 1 Introduction
+Large language models (LLMs) have shown impressive progress in recent years, driven by the scaling up of models and training data sizes (Kaplan et al., 2020; Wei et al., 2022a; Hoffmann et al., 2022) that has led to improved performance and sample efficiency (Brown et al., 2020; Chen et al., 2021; Chowdhery et al., 2022). One area with significant room for improvement is the ability of LLMs to perform complex reasoning tasks. In this realm, mathematical reasoning (Saxton et al., 2019) provides a unique challenge as a domain. It requires the ability to parse, to logically deconstruct a problem into sub-problems and recombine them, and to apply knowledge of rules, transformations, processes, and axioms. The idea of providing a rationale with the final answer was first proposed by Ling et al. (2017) and recently revived for LLMs in the form of scratchpad (Nye et al., 2021) and chain-of-thought (Wei et al., 2022b). It has led to improvements in performance on multi-step reasoning problems (Wang et al., 2019) such as arithmetic, commonsense, and symbolic reasoning tasks (Nye et al., 2021; Wei et al., 2022b; Lewkowycz et al., 2022a; Wang et al., 2022a,b; Anil et al., 2022; Zhou et al., 2022). However, despite significant progress, these models still struggle with out-ofdistribution (OOD) generalization on reasoning tasks (Nogueira et al., 2021; Kim et al., 2021; Anil et al., 2022). To successfully generalize out-of-distribution on many of these reasoning tasks, the model needs to learn the underlying algorithm for solving a task. We refer to this behavior as algorithmic reasoning (Kaiser and Sutskever, 2015; Veliˇckovi´c and Blundell, 2021). While following an algorithm can be seen as a form of instruction following, algorithms are generally more complex with a larger number of steps, though each step of the algorithm may be simpler and more concise than typical instructions. The benefit of being able to learn algorithms is that since they are input independent by nature, they are immune to OOD performance degradation when executed properly. Moreover, algorithms can be specified without ambiguity and hence provide a good test bed to probe model capabilities.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/66ba/66ba60f5-037b-43f1-9e6c-c056f9d37db8.png" style="width: 50%;"></div>
+Figure 1: The four learning stages investigated in this work (from left to right): (i) Teaching an algorithm as a skill (Section 3) (ii) Skill Accumulation, i.e., teaching multiple skills simultaneously (Section 4) (iii) Skill Composition, i.e. the ability to learn a complex skill through building upon simpler ones (Section 5) (iv) Using Skills as Tools to solve problems (Section 6). We teach these algorithms in-context using our proposed algorithmic prompting approach, which does not involve any further training of the underlying model. One surprising capability of LLMs is in-context learning (Brown et al., 2020), which refers to the ability to learn a task from a few examples being presented within a prompt. In-context learning does not require any weight updates, and provides a powerful platform for specialized skill acquisition without losing the generality of the underlying model. Moreover, various prompting strategies have shown significant potential in solving certain types of reasoning problems (Jung et al., 2022; Zhou et al., 2022; Wei et al., 2022b; Kojima et al., 2022). Nonetheless, Anil et al. (2022) considered two algorithmic reasoning tasks and showed that while rationale-based prompting allow LLMs to generalize to longer problem instances, they are still far from solving simple algorithmic tasks such as parity. In this work, we investigate how to teach algorithms and compositions of algorithms to LLMs via in-context learning. This setup is reminiscent of how similar skills are taught to children in school. We identify and explore four key stages for teaching algorithms as skills to LLMs (Figure 1). We begin by studying the shortcomings of existing approaches and proposing ways to alleviate them. We focus on arithmetic algorithms such as addition, subtraction and multiplication as they have been widely benchmarked (Saxton et al., 2019; Hendrycks et al., 2021) and famously fail at out-of-distribution generalization even for the best performing models on the MATH benchmark (Lewkowycz et al., 2022b). While one can avoid learning these algorithms by using external tools such as a calculator (Cobbe et al., 2021), such approach cannot scale to higher levels of abstraction where a model needs to use “soft algorithms” and certain steps must be flexibly applied in different situations.
+# Contributions: Our main contributions are as follows:
+• We introduce Algorithmic Prompting, which involves providing a detailed description of the algorithm execution on running examples, and using explicit explanation and natural language instruction to remove ambiguity. For a comparison of algorithmic prompting to existing prompting techniques, see Section 2 and Table 1. • We demonstrate that algorithmic prompting significantly outperforms existing prompting techniques on several algorithmic tasks. In particular, for long parity, addition, multiplication and subtraction, we achieve an error reduction of approximately 10x, 9x, 5x and 2x respectively compared to the best available baselines (Section 3 and Table 2). • Our ablation studies reveal the impact of non-ambiguous explanations, and show that unlike other prompting approaches, errors in the algorithmic examples affect performance significantly (Section 3.1). • We study the model’s ability to simultaneously learn multiple algorithms via a single prompt, as well as its ability to compose the learned algorithms in order to solve more complex tasks (Sections 4 and 5).
+• We explore various approaches to leverage a learned algorithm as a tool to solve math word problems. We show that while it is possible to improve the performance in settings that require complex calculations, the model’s general reasoning capability reduces due to the phenomenon of interference (Section 6).
+# 2 Algorithmic prompting
+Nye et al. (2021) proposed the idea of getting the model to show its work, i.e, breaking the problem down and asking the model to output the intermediate steps used in solving the task. The authors show that by finetuning LLMs on such data – which they refer to as scratchpad – they can greatly improve performance on multi-step computation problems. This was taken further by Wei et al. (2022b) to the in-context learning setting, where they showed that providing rationales in the prompts significantly increases the model’s ability to solve multi-step reasoning problems. They refer to this approach as chain-of-thought. The main intuition behind the scratchpad approach is that by having intermediate computations in the output, the model can refer to them directly instead of relying on its internal representation space for those calculations. For chain-of-thought, one hypothesis is that the rationales loosely provide the model with a “thinking pattern” that it can reference when tackling a problem. By encouraging the model to output an explanation along with the answer, we steer it towards solving problems by breaking them into steps that logically follow from each other. Inspired by these perspectives, we hypothesize that if we increase the specificity and applicability of these thinking patterns, we can also increase the amount by which the model adheres to these patterns in its problem solving. As we will illustrate, this approach leverages both the scratchpad ideas of showing intermediate computations and the chain-of-thought ideas of providing an explanation for each step. As a motivating example, consider the standard addition algorithm. This method right-aligns the two numbers being added and calculates the sum of pairs of single digits from each number, going from right to left. For every pair of digits, there is a possible carry that needs to be added to the next digit sum. If we use a scratchpad-style illustration, then for a question like 182 + 376, the model would see that the digit-sum 2 + 6 generates a carry of 0, while 8 + 7 generates a carry of 1. However, the rules of carry is highly ambiguous from just this example. Ideally, we expect the model to conclude that when a + b > 9, it generates a carry of 1, and when a + b ≤9, it generates a carry of 0. But from the scratchpad-style example the model could have concluded that the carry is 1 whenever we add two even digits together and 0 otherwise, or that the first digit-pair generates a carry of 1, the second digit-pair generates a carry of 0, and so on. In order for the model to extrapolate the correct pattern, it must be biased in such a way that the general and correct rule is the default interpretation. Such alignment, however, can not be reliably expected from current models. We hypothesize that existing prompting methods fail to sufficiently constrain the model’s interpretation of the prompting information, and result in unexpected and undesirable model behaviors on tasks that require precise algorithmic reasoning. We push the limits of rationale-based prompting by drastically increasing the amount of detail included in the rationales, while specifying the steps of an algorithm within this information. We refer to this strategy as Algorithmic Prompting, and contrast this approach with other types in Table 1. We show that it can achieve significant systematic generalization on several algorithmic reasoning tasks, and ground our exploration in the four capabilities identified in Figure 1.
+# 2.1 Experimental setup
+Baselines: We compare the proposed algorithmic prompt to few-shot and chain-of-thought baselines in our experiments. The few-shot baseline refers to the simple approach of presenting examples of question and answer pairs with no additional explanation. The chain-of-thought baseline provides a rationale along with the final answer in the few-shot examples. In order to generate the rationale for various tasks, we follow the method introduced in Kojima et al. (2022) and use the phrase ”let’s think step by step” to get a model-generated rationale for the few-shot examples.
+Evaluation metric: We measure both in-distribution and OOD performance in all experiments. For the in-contex learning setting considered in this work, the data distribution is determined by the answer lengths of the prompting examples. Thus, questions with answer lengths that fall within those seen in the prompt are considered in-distribution and those with longer lengths are considered out-of-distribution. The choice of length is natural given that it is a
+Table 1: Comparison of different prompting strategies studied in this work. The number of ⋆indicates the level to which each strategy exhibits the given characteristic. In this work, we refer to the basic approach of presenting only input-target pairs with no additional explanation as few-shot, and we refer to prompts that provide explicit instructions but no running examples of a task as instruction-only. We see that algorithmic prompt includes both qualities of natural language explanation and explicit intermediate
+Prompt strategy
+Input-target pairs
+Natural language
+rationale
+Intermediate com-
+putations
+Rationale diversity
+Few-shot
+⋆⋆⋆
+-
+-
+-
+Chain-of-thought
+⋆⋆⋆
+⋆⋆⋆
+⋆
+⋆⋆⋆
+Scratchpad
+⋆⋆⋆
+-
+⋆⋆
+-
+Instruction-only
+-
+⋆⋆⋆
+-
+⋆⋆⋆
+Algorithmic
+⋆⋆⋆
+⋆⋆
+⋆⋆⋆
+⋆
+measure of complexity in the tasks we consider, and length generalization has a rich history as a measure of systemati generalization (Csord´as et al., 2021; Anil et al., 2022). Thus, length generalization provides a good indication fo whether the model has learned the underlying algorithm.
+Experimental setting: For all the experiments in the paper, we use the Codex model code-davinci-002 from OpenAI (Chen et al., 2021). This model has a maximum context length of 8000 tokens. Task examples are sampled uniformly at each length. All results are sampled once using a temperature of 0 and default settings for other hyperparameters. See Section A.2 for task details.
+# 3 Teaching algorithms as skills
+# 3.1 Two-number addition
+We begin our analysis by studying the two-number addition task and explore the effectiveness of various prompting strategies with differing levels of ambiguity. The addition problem takes the form a + b = c where a, b, and c are positive integers. We present an algorithmic prompt for addition and compare its performance against the few-shot, chain-of-thought, instruction-only, and scratchpad methods. An illustration of these prompting strategies for addition is shown in Figure 10, and the prompts can be found in Section B.1. For all addition experiments, we use 3 prompt examples and restrict these examples to having answers of up to 5 digits in length. We then evaluate on questions up to 19 digits in length. The length of 19 is chosen because this is the level after which the model begins to run out of context. A similar choice is used for all algorithms considered in Section 3. Figure 2(a) shows the performance of algorithmic prompting against existing methods on addition problems. These results demonstrate that algorithmic prompt achieves near perfect performance and OOD generalization on addition, while few-shot, chain-of-thought, and instruction-only have decreasing performance as the length of the answer increases. These results illustrate the benefit of incorporating algorithmic steps, unambiguous explanations, and demonstrations on running examples in our prompt. In Section A.3, we provide a detailed error analysis for the algorithmic prompt. We observe that most of the errors occur in the early steps of an algorithm, where there are more remaining digits to process, rather than later steps, where the model needs to extrapolate to longer lengths. Impact of unambiguous explanations: Figure 2(b) compares the performance of using scratchpad and detailed scratchpad as prompts. With detailed scratchpad, we add more intermediate steps to illustrate how the values of the answer (A) and the carry (C) is derived (see Figure 10). We further include an additional version that converts the numbers from space-delimited to comma-delimited, as we observed that comma is a more effective deliminator for Codex. We find that the scratchpad template performs extremely poorly as a prompt1, but including additional details leads to a significant boost in performance. We conjecture that the abysmal performance of scratchpad as a few-shot
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/75ef/75ef86d5-634f-46db-b4f6-a225e8b6a66f.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Various prompting strategies on addition</div>
+Figure 2: Accuracy on addition questions of increasing length for different prompting methods. Addition questions are of the form a + b = c, where a, b, and c are positive integers. The number of digits in answer plotted in the x-axis refers to the length of c. Accuracy is measured over 2000 total examples sampled uniformly over the length of c. The max length for examples in the prompt is 5. Left: We see that algorithmic prompt shows near-perfect length generalization even on extremely long addition questions, and significantly outperforms its simple few-shot and chain-of-thought counterpart. Right: using scratchpad-style output as a prompt leads to abysmal performance, but adding a few extra details to the scratchpad format leads to non-trivial generalization. prompt is due to the structure of the solution format being sufficiently regimented to move the model away from its memorized solutions, but not clear enough for the model to extract the true underlying rules and adapt them to new examples. We also compare the algorithmic prompt to two less-detailed variants. One version (nonexplicit calculation) omits the explicit equation showing how the carry value is derived. This shares the same intuition as the original motivating example. The second version (uncommon operation) requires the model to index the correct digit for a given step. The indexing of a digit at a variable position is a more uncommon operation than the indexing of the digit at the same position each time. In our final addition prompt, we introduce a mechanism that allows the model to avoid the indexing operation by copying the unprocessed digits over to each step and always taking the last digit. Figure 3(a) illustrates the relative gains that come from the disambiguation of these two aspects of the algorithm. Prompts used for the ambiguity ablation studies can be found in Section B.2. In Section A.3 we study the role of natural language within the algorithmic prompt, and find that including natural language descriptions leads to clear performance improvements over using only intermediate computations. Is the model actually learning the algorithm through in-context learning? Min et al. (2022) have shown that it is not necessary to provide the correct question-answer pairings in the few-shot prompt, suggesting that the model does not rely on the demonstrations themselves to figure out the right way to solve the given task. However, in order to claim that we are teaching algorithms in-context, we would like to understand whether the model is actually following the algorithm as it is prescribed in the prompt. To do so, we validate that 1) mistakes in the intermediate output steps lead to mistakes in the final answer, and 2) errors in the prompt significantly impact performance. We first look at the errors that the model makes. We find that for every addition question where the final answer was correct, all intermediate steps were also correct. Next, we analyze the performance of the model when we introduce errors into the algorithmic steps in the prompt. We introduce errors into the second digit of the calculation step (digit1 + digit2 + carry = answer), and keep all other elements the same as before. We consider two types of errors: irregular errors where only a subset of the steps contain an error, and systematic errors where all of the steps presented in the prompt contain an error. With irregular errors (prompt shown in Section B.2.3), the model still has a chance of extrapolating the correct rule based on the unchanged steps. With systematic errors (prompt shown in Section B.2.4), the model should not derive the correct rule if it was truly learning from context, rather than simply mapping to the output format and overriding the individual steps with what it has learned from its pretraining. Figure 3(b) shows that there is a small degradation in performance with irregular errors, while the accuracy drops to near 0% with systematic errors, thus confirming the expected behavior of a model that is actually learning in-context. This is in contrast to the findings in which providing shuffled targets (Min et al., 2022) or wrong patterns in chain-of-thought (Madaan and
+Figure 2: Accuracy on addition questions of increasing length for different prompting methods. Addition questions are of the form a + b = c, where a, b, and c are positive integers. The number of digits in answer plotted in the x-axis refers to the length of c. Accuracy is measured over 2000 total examples sampled uniformly over the length of c. The max length for examples in the prompt is 5. Left: We see that algorithmic prompt shows near-perfect length generalization even on extremely long addition questions, and significantly outperforms its simple few-shot and chain-of-thought counterpart. Right: using scratchpad-style output as a prompt leads to abysmal performance, but adding a few extra details to the scratchpad format leads to non-trivial generalization. prompt is due to the structure of the solution format being sufficiently regimented to move the model away from its memorized solutions, but not clear enough for the model to extract the true underlying rules and adapt them to new examples. We also compare the algorithmic prompt to two less-detailed variants. One version (nonexplicit calculation) omits the explicit equation showing how the carry value is derived. This shares the same intuition as the original motivating example. The second version (uncommon operation) requires the model to index the correct digit for a given step. The indexing of a digit at a variable position is a more uncommon operation than the indexing of the digit at the same position each time. In our final addition prompt, we introduce a mechanism that allows the model to avoid the indexing operation by copying the unprocessed digits over to each step and always taking the last digit. Figure 3(a) illustrates the relative gains that come from the disambiguation of these two aspects of the algorithm. Prompts used for the ambiguity ablation studies can be found in Section B.2. In Section A.3 we study the role of natural language within the algorithmic prompt, and find that including natural language descriptions leads to clear performance improvements over using only intermediate computations.
+# Is the model actually learning the algorithm through i
+it is not necessary to provide the correct question-answer pairings in the few-shot prompt, suggesting that the model does not rely on the demonstrations themselves to figure out the right way to solve the given task. However, in order to claim that we are teaching algorithms in-context, we would like to understand whether the model is actually following the algorithm as it is prescribed in the prompt. To do so, we validate that 1) mistakes in the intermediate output steps lead to mistakes in the final answer, and 2) errors in the prompt significantly impact performance. We first look at the errors that the model makes. We find that for every addition question where the final answer was correct, all intermediate steps were also correct. Next, we analyze the performance of the model when we introduce errors into the algorithmic steps in the prompt. We introduce errors into the second digit of the calculation step (digit1 + digit2 + carry = answer), and keep all other elements the same as before. We consider two types of errors: irregular errors where only a subset of the steps contain an error, and systematic errors where all of the steps presented in the prompt contain an error. With irregular errors (prompt shown in Section B.2.3), the model still has a chance of extrapolating the correct rule based on the unchanged steps. With systematic errors (prompt shown in Section B.2.4), the model should not derive the correct rule if it was truly learning from context, rather than simply mapping to the output format and overriding the individual steps with what it has learned from its pretraining. Figure 3(b) shows that there is a small degradation in performance with irregular errors, while the accuracy drops to near 0% with systematic errors, thus confirming the expected behavior of a model that is actually learning in-context. This is in contrast to the findings in which providing shuffled targets (Min et al., 2022) or wrong patterns in chain-of-thought (Madaan and
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a2b2/a2b23a09-43c2-4e0c-8172-1eb56bc6f141.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Variants of scratchpad prompting on addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ea8c/ea8cb7f0-6324-480c-861b-65c25cb8af6e.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Algorithmic prompts with varying ambiguity</div>
+Figure 3: Accuracy on addition questions of increasing length for variants on the algorithmic prompt. Left: Two examples of rule ambiguity that we address in the final addition prompt are non-explicit carry calculation (Nonexplicit Calculation) and digit indexing (Uncommon Operation). We observe a significant difference in performance before and after reducing the ambiguity of these operations. Right: Errors are introduced to the algorithmic prompt in the digit value of the second number in the equation. Irregular errors are introduced to a minority subset of steps in the algorithmic examples, while systematic errors are introduced to all steps of the examples. We see that irregular errors have a minor impact on the performance, and systematic errors completely destroy the model’s ability to solve this task. This suggests that the model is following the algorithm as it is specified in-context, rather than loosely mimicking the format of the algorithm. Yazdanbakhsh, 2022) do not materially impact model’s performance. Thus, algorithmic prompting differs from other approaches and constrains the model’s behavior towards what is actually being taught in-context.
+# 3.2 Teaching other algorithms using algorithmic prompting
+To validate that the performance of algorithmic prompting is not specific to two-number addition, we evaluate model performance on three other algorithms: subtraction, multiplication, and parity. Similar to addition, the maximum length evaluated in this section is based on the length that can fit into context for algorithmic prompts. Subtraction: We follow a similar strategy as addition. We discuss the peculiarities of the subtraction algorithm in more detail in Section 4, where we combine both addition and subtraction problems. The performance at length 14 is summarized in Table 2. We see that algorithmic prompting significantly outperforms the few-shot baseline. Multiplication: For multiplication, we consider questions in the form of a × b = c. Multiplication requires O(n2) steps if we use a strategy similar to the addition algorithm which takes O(n) steps. Inspired by this complication, we explore whether the model’s existing zero-shot or few-shot capabilities can be leveraged in conjunction with algorithmic prompting to reduce the complexity of the required instructions. Therefore, instead of using singledigit multiplication in each step, we perform direct calculations for 1-digit × n-digit numbers. Instead of doing n2 single-digit calculations for two n-digit numbers, we now only need to perform n steps of 1 × n-digit multiplication. To choose a reasonable value of n for this experiment, we evaluate the model’s zero-shot accuracy in 1 × n-digit multiplication (shown in Figure 13). We see that after n = 3, the zero-shot performance deteriorates drastically. Thus, we restrict to n ≤3. If a number has more than 3 digits, we break it down into groups of ≤3 digits and add the resulting sub-components appropriately. For simplicity, we consider the problems where at least one of a and b is less than 1000, so that we only need to perform the group splitting on one of the two numbers. More details can be found in Section A.4. Performance at length 7 is shown in Table 2, and performance across different lengths is shown in Figure 4. We see that the multiplication algorithmic prompt performs well compared to its few-shot and chain-ofthought counterparts, thus illustrating the potential of utilizing a model’s inherent abilities within the scaffolding of more structured algorithmic instructions. Parity: We consider the problem of calculating parity of a given binary list. This task has been studied extensively in Anil et al. (2022), and despite the intrinsic simplicity of the algorithm, it is far from being solved. Performance at length 20 is shown in Table 2. We see that algorithmic prompt significantly outperforms random chance on this
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5c80/5c806eed-baab-41fb-b90a-33b3f86fb01b.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Algorithmic prompts with errors</div>
+task, which is even greater than the few-shot performance reported in Anil et al. (2022). More details can be found in Figure 14 and Section A.4. Table 2: Performance on addition, subtraction, multiplication, and parity tasks. For addition we use the few-shot baseline and evaluate at length 19. For subtraction we use the few-shot baseline and evaluate at length 14. For multiplication we use the chainof-thought baseline and evaluate at length 7. These lengths are chosen based on the maximum task length that could fit into context for the algorithmic prompt. For parity we evaluate at length 20 which is the longest instance reported in Anil et al. (2022).
+Method
+Addition
+Subtraction
+Multiplication
+Parity
+Algorithmic prompt
+90.5%
+65.6%
+79.7%
+95.0%
+Best available baseline
+9.5%
+16.7%
+5.5%
+50.0%
+# 4 Skill Accumulation
+So far we have demonstrated the ability to teach single-algorithms through in-context learning. In this section, we study the model’s ability to simultaneously learn multiple algorithms and choose the applicable one when solving problems, which we refer to as skill accumulation. To do so, we use the addition-subtraction task. We expand on the addition problem to allow for both positive and negative numbers. Thus, the problems now have four possibilities: a + b, −a + b, −a −b, a −b. We refer to questions of the form a + b as addition-only questions, and the rest as subtraction-only questions. For subtraction questions, the ordering of the two numbers matter. To see this, consider the examples 43 −250 = −207 and 543 −250 = 293. When we process the digits from right to left, the answer depends on whether the first number is greater than or less than the second number in absolute value, not just on the values of the two digits. Thus, subtraction requires a different – albeit similar – algorithm to addition. For a sense of the relative complexity of the two settings, note that the subtraction algorithm we use runs in 2n steps, while the addition algorithm runs in n steps. To succeed at this task, the model needs to demonstrate the ability to follow different processing paths when the question is addition or subtraction. Figure 5 shows the performance of the combined addition-subtraction prompt, with the accuracy broken down by question type. We see that the model is able to effectively execute the correct algorithm based on the individual questions. The model exhibits lower accuracy on subtraction questions compared to addition-only questions, reflecting the increased complexity of the subtraction algorithm. Comparing the performance on addition-only questions to the addition prompt from Section 3.1, we see that there is minimal change in performance despite having an extra other algorithm present in the prompt. Nonetheless, we note that the prompt development for this task is non-trivial, and the best performance required adding all combinations of positive and negative numbers. Thus, scaling to larger number of algorithms may call for more efficient strategies. To further study the effects of teaching addition alongside subtraction, we evaluate two subtraction-only prompts. The first one removes the addition-only prompt examples from the combined addition-subtraction prompt. In the combined prompt, 6 examples are provided, with 2 of them being addition-only examples. After removing the additiononly examples, we are left with 4 subtraction-only examples in the prompt. The second subtraction-only prompt matches the number of shots as the original combined prompt, but includes only subtraction-only examples for all 6 shots. The results are shown in Figure 6(a). We see that using only the 4 subtraction-only prompt examples (Combined Algo, Sub examples-only) results in a significant decrease in performance compared to the combined algorithmic prompt. However, when we are able to match the same number of shots (6) as the combined prompt (Sub-only Algo), we can recover the original performance. This demonstrates the synergy and positive transfer when simultaneously learning algorithms that share similarities. As a control experiment, we also observe in Figure 6(b) that adding more shots to an addition-only prompt does not improve performance beyond the original prompt, which supports the conclusion that addition-only performance using the combined prompt is not harmed by having other algorithms in the same prompt.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/12b4/12b47282-16c2-4e84-ba74-18f9e86464c7.png" style="width: 50%;"></div>
+<div style="text-align: center;">4 5 Number of Digits in Answer</div>
+Figure 4: Performance of algorithmic prompt on multiplication questions, where at least one of the two numbers in the question is less than 1000. We use 2 shots of up to 6-digits in answer length in all the prompts. The algorithmic prompt for multiplication leverages direct 1 × n-digit calculations by the model to simplify the number of algorithmic steps required, showcasing an ability to utilize the pretrained model’s zero or few-shot capabilities within a larger algorithmic scaffolding. Algorithmic prompt shows superior length generalization compared to the baselines.
+# 5 Skill Composition
+In this section, we explore the model’s ability to learn multiple algorithms that build on top of each other. This is a desirable property because it enables the model to learn a more complex algorithm without having to relearn simpler sub-components of that algorithm and enables modularization of complex algorithms. To establish a framework for skill composition, we explore two extensions to the addition algorithm: 1) adding multiple numbers together, and 2) solving multiplication by turning it into an addition problem (e.g. by converting 3 ∗7 into 7 + 7 + 7). The ability to add multiple numbers builds on top of the ability to add two numbers together. Solving multiplication as addition further builds on the addition of multiple numbers. An illustration can be found in Figure 16. The evaluation dataset contains 1000 examples sampled uniformly by length of answer. The performance on composite tasks are shown in Figure 7. We teach these algorithms in-context by creating a composite prompt that includes 2 examples from the 2-number addition prompt, 1 example of addition of 3 numbers, and 1 example of converting multiplication into addition. This forms a simple composition strategy (Algo - (Simple Comp)). This prompt can be found in Section B.7. We also consider two ablations of the composite algorithmic prompt. The algorithm for n-number addition involves wrapping 2-number additions within a larger loop of n −1 addition problems. Thus, we could provide even more information by converting the 2-number addition prompt examples into the same loop format as the 3-number addition example. This version (Algo - (Augmented Comp)) provides an upper estimate on multi-number addition and multiplication-as-addition. The second ablation (Algo - (No Comp)) only presents the example that illustrates the extended skill. This has no composition and provides a lower estimate on the performance of the two extended skills, and illustrates the improvement that comes from having first learned the component algorithms. See Figure 17 for an illustration of the different composition strategies. In-context skill composition is limited by the context length of current models. Unlike the previous experimental results, these composition tasks include a number of questions that were incomplete for the algorithmic prompt. To separate out the issue of context length from the ability of the model to follow an algorithm, in Figure 7 we report performance on only the questions for which the algorithmic prompt could fit into context. This subset is also used for all baselines. Figure 7 shows that the algorithmic prompt significantly outperforms few-shot and chain-of-thought baselines. Moreover, we observe that there is minimal difference between the simple composition and augmented composition strategies, and that the ”no composition” approach performs much worse than its composed counterparts.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ff80/ff80db29-d4a2-459a-9bc6-9f7334a428de.png" style="width: 50%;"></div>
+Figure 5: Accuracy on addition and subtraction questions using a combined prompt. We use 6 shots of up to 5-digits in answer length in the prompt (2 shots of addition and 4 shots of subtraction examples). Performance is split into additiononly (add-only) questions and subtraction-only (sub-only) questions. “Comb Algo” refers to the combined algorithmic prompt with both addition and subtraction examples, while “single algo” refers to the algorithmic prompt for addition in Section 3.1. There is minimal degradation in performance for addition-only questions using the combined prompt compared to the single algorithm addition-only prompt.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3797/37970ff1-4f62-4e60-9f8d-3906e2b302d5.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Subtraction-only prompts on subtraction</div>
+Figure 6: Left: Performance on subtraction-only questions. ”Combined Algo” refers to using 4 examples of subtraction questions and 2 examples of addition questions within the prompt. ”Sub-only Algo” refers to using 6 examples of subtraction questions within the prompt. ”Combined Algo, Sub examples-only” refers to using 4 examples of subtraction questions within the prompt. We see that removing addition-only examples from the prompt significantly harms performance on subtraction-only questions, thus showing the positive transfer that comes from having addition examples. Right: Performance on addition-only questions using addition-only prompts with different number of shots. We see that performance of the original addition prompt on the addition task is already saturated on the number of shots.
+showing the positive transfer that comes from having addition examples. Right: Performance on addition-only questions using addition-only prompts with different number of shots. We see that performance of the original addition prompt on the addition task is already saturated on the number of shots. In order to move past context length limitations, we experiment with two strategies. First, we introduce a secondpass strategy where we keep only the last completed algorithmic step in the model’s output, and perform a second inference pass using the original prompt and the last output step. This simple approach benefits from the fact that all relevant state variables are outputted in each step of the algorithm. We report performance on the entire dataset using the second pass strategy in Figure 18, and show that a significant portion of the incomplete questions can be corrected using this approach. Second, we leverage a dialogue-like approach where models loaded with different prompts call on each other to perform sub-components of an algorithm, so that the outputs of these sub-components do not need to persist inside a model’s context once the answer is derived. We describe this approach in more detail in Section 6 and Section A.6, and the performance is shown in Figure 20. This approach allows us to achieve performance comparable to those in Figure 7 on the full dataset.
+# 6 Using skills as tools
+In this section, we study the behavior of the model when using a given algorithm as a step in solving a larger mathematical reasoning problem. Such problems (e.g GSM8k benchmark (Cobbe et al., 2021)) usually consist of two components: 1) the informal mathematical reasoning component which requires the model to come up with the correct solution steps to arrive at the answer based on the information provided in the question and 2) the calculation of arithmetic operations used in the solution steps. Prior works have focused on improving the informal mathematical reasoning component (Wei et al., 2022b; Wang et al., 2022b; Zelikman et al., 2022; Kojima et al., 2022), and have opted to increase calculation accuracy through the use of an external calculator (Cobbe et al., 2021) or indirectly through improved pretraining of the LLM itself (Lewkowycz et al., 2022b). In this paper, we study how the model can leverage a learned algorithm to improve the quality of the second component, i.e., arithmetic operations inside a broader reasoning process. Although an external calculator can be used in this case, this will not be possible in general for more abstract skills such as simplifying mathematical equations. Dataset: We consider the following two math word problem datasets: GSM8k and GSM8k-Hard. GSM8k (Cobbe et al., 2021) consists of high-quality mathematical reasoning problems presented as natural language questions. Figure 8 shows an example question and answer pair from GSM8k with chain-of-thought rationale. In order to study the ability to use the addition algorithm while solving GSM8k questions, we simplify the task by filtering for a subset of GSM8k whose solutions consist of only addition steps. The filtering procedure results in 108 pure-addition GSM8k questions. To further illustrate the potential of leveraging skills as a form of tool use, we create a hard dataset called
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/bda6/bda6a8c1-4bd7-4cbd-93ae-c33f5b980579.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Addition-only prompt on addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/04c9/04c9f35d-bc04-44d8-a4f4-a6b6234b3d67.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Multi-number addition</div>
+Figure 7: Performance on compositions of skills. ”Algo” indicates algorithmic prompting. ”Simple Comp” refers to a simple composition strategy where previously taught algorithms are transferred as is. ”Augmented Comp” adjusts the previously taught algorithm to match the format of the new task. This simulates a version where the full prompt specializes to the new task. ”No Comp” uses only the part of the ”Simple Comp” prompt that describes the new task. This simulates the comparison to learning a new skill from scratch without first learning its stepping stones. We observe that the composed algorithmic templates demonstrate better generalization than the baseline methods. Note that for multiplication, we evaluate the algorithmic methods on a harder task than the few-shot baselines, since we force the model to convert the question into the addition of a number n times, while for other baselines we simply perform 1 × n-digit multiplication directly. GSM8k-Hard, which consists of 50 examples from the pure-addition subset of the GSM8k. In this dataset, we increase the numerical values used in the questions, thus making the task more difficult for the model. The number of digits in the answer range from 3 to 12, with an average length of 7.2. In the original GSM8k addition-only subset, the number of digits range from 1 to 5 with an average length of 2.4. An example is presented in Figure 9(b). We first evaluate how augmenting the algorithmic prompt into the chain-of-thought would affect the performance. We then show how algorithmic prompt can be used as tool use (Parisi et al., 2022), where a model queries another source for a particular type of information.
+# 6.1 Augmenting informal mathematical reasoning
+In this section, we evaluate whether the chain-of-thought prompt can be augmented with the algorithmic prompt for the addition operation. To do so, we use a single prompt to illustrate both the informal mathematical reasoning skill and the addition skill. Specifically, we embed the addition algorithm within the chain-of-thought solutions whenever the solution calls for the summing of numbers. There are two challenges in augmenting algorithmic prompt to the chain-of-thought prompt: 1) since there are many instances of addition in the chain-of-thought examples, this prompt would take up a large number of tokens, and 2) we have seen previously that combining similar skills like addition and subtraction within the same prompt did not result in any interference (with evidence of positive transfer), but since informal mathematical reasoning and arithmetic operations are very different skills, this may no longer be the case. To address the first challenge (lengthy prompt), we only embed the addition algorithm in a subset of the prompt examples, and we indicate these augmented examples through the <ALGO> flag while the remaining examples use the <NONALGO> flag. These flags allow us to control whether the model should perform addition using the algorithm or by direct calculation. Thus, for each setting, we run two experiments by appending the <ALGO> or <NONALGO> flag to the test question. For more details about this approach, see Section A.7. For the second challenge (interference), we hypothesize that explicitly presenting the summary of the solution may
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a1a4/a1a4cd95-589f-4dbe-b4cc-4475f23be873.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Multiplication-as-addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f783/f7834539-bf59-445e-aa71-c47be05afefd.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Performance on GSM8k addition-only subset</div>
+Figure 9: Addition algorithm as tool use in solving GSM8k questions. Left: Ablation study with or without algorithmic output in the prompt or output. ”W/ algo” indicates that algorithmic output is embedded within prompt examples, and ”no algo” indicates that only chain-of-thought rationale is included in the prompt. <ALGO> flag indicates that algorithmic reasoning is encouraged in the output, while <NONALGO> flag indicates that calculations are done directly by the model. ”Plan” indicates a chain-of-thought strategy that summarizes the solution plan before executing individual reasoning steps. We see that having algorithmic output within context leads to significant interference with the model’s informal mathematical reasoning abilities. This is alleviated by using a summary before the algorithmic output, but not fully. Right: An example question-answer pair from the GSM8k-Hard addition dataset, which includes GSM8k-like questions with large numerical values. help to disentangle the two skills (i.e. informal mathematical reasoning and arithmetic operation). Thus we explore a version of chain-of-thought where the answer begins with an overall plan/summary of the solution steps, before the individual steps are explained. We refer to this version as “with plan”, and refer to the baseline version without a summary as “no plan”. The actual prompt is shown in Section B.13. Figure 9(a) shows the results using this approach. First, we evaluate the impact of including algorithmic output in the prompt by comparing the chain-of-thought baseline with (“no plan no algo”) and without (“no plan w/ algo”) algorithmic output for addition questions. We find that including algorithmic output in the examples significantly disrupts the model’s informal mathematical reasoning abilities in the <ALGO> experiment, but leaves the <NONALGO> performance relatively unchanged. This demonstrates the existence of interference between the two skills. We conjecture that this occurs when we mix highly different skills within the same context. The informal mathematical reasoning component relies on the model’s pretraining knowledge, while the algorithmic component is regimented and requires the model to follow specific instructions, and the different nature and format of these two skills appears to interfere with their performance. Next, we evaluate the impact of having a solution plan at the beginning of the output. Comparing the performance of “w/ plan w/ algo” and “no plan w/ algo”, we see that the solution plan alleviates some of the interference seen in the <ALGO> experiment. Nonetheless, the performance is still much worse than the same version without algorithmic output (“w/ plan no algo”). In summary, we identify an interference phenomenon which may occur when combining skills of different kind within the same context, and find that using flags in the prompt can be a simple way of directing a model’s attention as <NONALGO> experiments do not suffer from interference in the way that <ALGO> experiments do.
+# 6.2 Algorithmic prompt as tool use
+Motivated by context length limitations and the interference issue that we have identified, we propose a way to alleviate these problems through a dialogue-like interaction between models loaded with different prompts. In this approach, we utilize one model for performing the informal mathematical reasoning steps and a separate model for doing algorithmic addition calculations. To enable a dialogue-like interaction, we teach the first model to output specific tokens to indicate when a separate model should be consulted. See Figure 9(b) for an example of how these tokens are used. We then extract the addition question using these tokens and send it to the second model loaded with the addition algorithmic prompt, which executes the addition algorithm and returns the answer back to the first model. The first
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4798/4798fbb5-6560-4909-bda3-6baa3f384fec.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Example of tool use for GSM8k-Hard.</div>
+model would then continue with the rest of the answer without needing to keep the algorithmic output in its context. Creswell and Shanahan (2022) uses a similar multi-model and multi-prompt strategy in order to separate out selection from inference in reasoning problems. This approach can be considered a form of tool use (Parisi et al., 2022), where a model queries another source for a particular type of information. The performance on the GSM8k-Hard dataset is shown in Table 3. Logical accuracy refers to the correctness of the solution setup, while addition accuracy refers to the correctness of the calculations steps within the solution setup. We see that despite removing the algorithm output from the context of the first model, we still observe interference coming from the use of specific tokens in the informal natural language solution steps. Nonetheless, the method that leverages algorithmic tool use still achieves double the accuracy as the baseline chain-of-thought method without algorithmic prompting. Lastly, this result illustrates the ability of dialogue-based tool use to bypass context length limitations, as a single model would not have fit all the output within its context. In Section A.6, we showcase the possibility of leveraging this dialogue-based tool use in the skill composition setting from Section 5, and demonstrate the model’s ability to call on previously learned algorithms as subroutines inside more complex algorithms while also resolving context length limitations. Table 3: Performance on GSM8k-Hard addition dataset with or without algorithmic tool use. We see that the overall performance is doubled when we call on a second model loaded with the algorithmic addition prompt to perform addition calculations, demonstrating the potential of leveraging in-context algorithmic skills as a form of tool-use. Moreover, we observe that this performance gain comes directly from more accurate addition accuracy, and the model that performs informal mathematical reasoning still suffers from interference due to the use of specific tokens in the logical reasoning output, as shown in the decreased logical accuracy.
+Method
+Overall Accuracy
+Logical Accuracy
+Addition Accuracy
+Chain-of-thought w/ Algo call
+55.8%
+57.7%
+98.4%
+Chain-of-thought wo/ Algo call
+27.4%
+70.6%
+61.9%
+# 7 Conclusion and Future Work
+Motivated by the potential of in-context learning as a general mechanism for compositional skill acquisition in LLMs, we studied teaching algorithmic reasoning via in context learning. We identified and studied the fundamental building blocks towards this goal and investigated four settings: teaching an algorithm as a skill, skill accumulation, skill composition and using skills as tools. We investigated the shortcomings of existing approaches and proposed algorithmic prompt to alleviate them, showing that it leads to significant performance boost in various algorithmic reasoning tasks. Our work suggests that it may be possible to convert longer context length to better reasoning performance by providing more thorough solution examples. This highlights the ability to leverage long contexts (either through increasing context length or other means such as implementing recurrence or an external memory) and generate more informative rationales as promising research directions. We identified the interference phenomenon for tool use application and investigated different ways to reduce its effect. Our observations about interference suggest that teaching the model the ability to retrieve or selectively attend to specific instructions when solving the particular problem is an important future direction. Moreover, given that there are ongoing efforts in the community to increase the context length of LLMs, it is of interest to design more challenging tasks for each of the four introduced settings and investigate what capabilities can be taught to LLMs when having access to extremely large context length.
+# Acknowledgments
+This work was done during Hattie Zhou’s internship at Google Research. We thank Guy Gur-Ari, Ethan Dyer, Yuhua (Tony) Wu and Jason Yosinski for fruitful discussions.
+# A Appendix
+# A.1 Additional Related work
+Mathematical reasoning (Chiang and Chen, 2018; Saxton et al., 2019) has been subject of interest for a long time. Faldu et al. (2021) summarizes the mathematical reasoning benchmarks that are in the form of math-word problems. In addition to this class of benchmarks, formal mathematics in the form of theorem-proofs (Rabe et al., 2020; Li et al., 2020; Polu and Sutskever, 2020; Welleck et al., 2021; Jiang et al., 2022; Wu et al., 2022) has been considered extensively. In this work we focus on algorithmic reasoning for arithmetic tasks and solving GSM8k (Cobbe et al., 2021) problems. Algorithmic reasoning is typically approached via using structured architectures such as graph neural networks(GNN and modifying the architecture align to the algorithms under consideration (Kaiser and Sutskever, 2015; Chiang and Chen, 2018; Xu et al., 2019; Gordon et al., 2019; Yan et al., 2020; Chen et al., 2020; Xhonneux et al., 2021; Veliˇckovi´c and Blundell, 2021) or to the input format (Thawani et al., 2021). However, in this work we focus on teaching algorithmic reasoning to general purpose transformer-based (Vaswani et al., 2017) models. There has been some recent works investigating in-context learning phenomena. Razeghi et al. (2022) showed that the performance of LLMs on mathematical calculations correlates with term frequency in the training data. Min et al. (2022) investigate which parts of the (input, output) pairs in the prompt play a role in model’s performance on 12 NLP tasks. Madaan and Yazdanbakhsh (2022) investigate this for chain-of-thought prompts and conclude that the combination of text and patterns together play a role. Jones and Steinhardt (2022) compares failure modes of LLMs to human biases in the context of few-shot prompts.
+# A.2 Additional information on experimental setup
+In Table 4, we provide a summary of experimental settings for all arithmetic and parity experiments in this paper. Table 4: Evaluation setting for arithmetic and parity tasks. Questions are sampled uniformly based on answer lengths, with an average of 100 samples per length. *For composition tasks of multi-number addition and multiplication-as-addition, the number of shots indicate the number of prompt examples that illustrate the particular composition skill, but more examples of other skills may be included in the prompt. See the corresponding sections for more details.
+Task
+Answer lengths used in evaluation
+No. of shots in prompt
+Max answer length in prompt
+Two-number addition
+2 - 19
+3
+5
+Subtraction (combined)
+2 - 14
+6 (2 addition, 4 subtraction)
+5
+Multiplication
+2 - 7
+2
+6
+Parity
+2 - 30
+2
+8
+Multi-number addition
+2 - 10
+1*
+4
+Multiplication-as-addition
+2 - 10
+1*
+2
+# A.3 Additional results on two-number addition
+This section includes additional details and results for Section 3. In Figure 10, we provide an illustration of differen prompting strategies for two-number addition with differing levels of detail in the explanation.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2985/2985d24f-f35f-4bb4-9fc2-3a99e295c58d.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 10: Examples of the two-number addition prompt using different techniq</div>
+The role of natural language within algorithmic prompt: Since the algorithmic prompt leverages both natural language descriptions and intermediate computations, we disentangle the two components and study the role that natural language plays in the algorithmic prompt. To do so, we consider the following ablations: 1) a symbols-only
+version of the original algorithmic prompt for addition, where we strip away most of the natural language descriptions, but still retain the use of certain keywords such as Len and Max (Section B.2.5), 2) a symbols-only version where keywords Len and Max are replaced with random words VBZ and UXO (Section B.2.6), and 3) a symbols-only version where keywords are replaced with adversarial words Str and Min, which are associated with known other operations in the pretraining distribution. The results of the ablations are shown in Figure 11. We see that there is a small but clear drop in performance when we move from the original prompt to the symbols-only prompt. We observe a further drop when certain keywords are replaced by uninformative symbols. These results point to the usefulness of leveraging the natural language understanding of LLMs in specifying aspects of the algorithm. Moreover, we see that using misleading symbols leads to a significant drop in performance, which further illustrates the model’s reliance on its pretraining when interpreting the algorithmic instructions.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/90d5/90d56449-c0d3-4f9a-adfc-2419299b9dc1.png" style="width: 50%;"></div>
+<div style="text-align: center;">Number of Digits in Answer</div>
+Figure 11: Performance of various symbols-only algorithmic prompts on the two-number addition task. Symbols-only prompt strips natural language from the original prompt, but keeps the use of keywords such as Len and Max. Uninformative symbols replaces Len and Max with random words VBZ and UXO. Misleading symbols replaces Len and Max with other known words Str and Min. We see that the symbols-only prompt performs worse than the original algorithmic prompt, and that removing the use of known keywords and replacing them with uninformative symbols results in a further drop in performance. This illustrates the usefulness of natural language descriptions in the prompt. Using misleading symbols leads to a significant drop in performance, further demonstrating the model’s reliance on its pretraining when interpreting the algorithmic instructions.
+Error analysis: We perform an error analysis for the results of using algorithmic prompting for two-number addition. Details of various error categories are found in Table 5. We see that the model can reliably perform single-step operations, such as identifying the max number of digits, calculating two-digit sums (with carry), and copying the previous carry value to the next step. However, the model struggles with multi-step operations such as separating digits by comma and copying all digits within a list from the previous step. We also see that most of the errors happen in the earlier steps of solving the problem. This is illustrated in Figure 12. The first steps have the most number of unprocessed digits, which may explain why they are the most error prone as the model struggles to copy the lists of digits from step to step.
+# A.4 Additional results on teaching other algorithms
+This section includes additional details and figures for Section 3.2.
+Multiplication: The prompt used for this experiment is displayed in Section B.4.2. We use 2 shots of up to 6-digits in answer length in the prompt. The zero-shot performance of Codex on 1-digit × n-digit multiplication is shown in
+<div style="text-align: center;">Table 5: Error analysis of two-number addition algorithmic prompt results. We see that the most error-prone steps are faithfu copying a list from a previous step, followed by counting and separating out digits into list format.</div>
+Error Category
+Overall Accuracy
+Wrong Questions Only
+Count of first number digits
+99.55%
+88.46%
+Count of second number digits
+99.04%
+75.64%
+Identify max number of digits between first and second number
+100.0%
+100.0%
+Convert first number to list format
+99.6%
+89.74%
+Convert second number to list format
+99.19%
+79.49%
+Copy unprocessed digits from first number
+99.55%
+88.46%
+Copy unprocessed digits from second number
+97.88%
+46.15%
+Extract last digit from unprocessed first number digits
+99.9%
+97.44%
+Extract last digit from unprocessed second number digits
+99.85%
+96.15%
+Copy previous carry value in two-digit calculation step
+100.0%
+100.0%
+Sum of two digits calculation
+100.0%
+100.0%
+Calculate new carry value from two-digit calculation step
+99.8%
+94.87%
+Copy previously accumulated answer digits
+99.14%
+78.21%
+Insert new value from two-digit calculation result into answer
+99.65%
+91.03%
+Figure 13. Based on the zero-shot performance, we restrict the direct multiplication by the model to questions with 3 or fewer digits. As seen in the prompt, we explain how to break large numbers into groups of 3 or fewer digits in natural language. This natural language description is detailed enough such that the model can correctly extrapolate to creating multiple splits for long numbers, even though it has only seen examples of single splits in the prompt. This illustrates the benefit of using natural language instructions along with showing the intermediate calculation steps, and showcases the model’s ability to extrapolate beyond just length generalization. Parity: Similar to (Anil et al., 2022) we investigate the parity problem as an example of length generalization. We use algorithmic prompting for parity and compare its performance to a few-shot baseline, as well as to a scratchpadstyle prompt as discussed in Anil et al. (2022). Figure 14 captures the performance of these three approaches on lists of varying sizes. We use 2 shots of up to 8-digits in answer length in the prompt. Each point in Figure 14 represents average over 100 random samples and we use the same examples for all methods. We observe that the algorithmic prompt significantly outperforms both baselines. While the baselines’ performance reaches random chance (50%) around length 5, algorithmic prompt maintains an accuracy of around 80% for lists of up to 30 digits. Section B.5 and B.6 depict the prompts used in this experiment.
+Figure 13. Based on the zero-shot performance, we restrict the direct multiplication by the model to questions with 3 or fewer digits. As seen in the prompt, we explain how to break large numbers into groups of 3 or fewer digits in natural language. This natural language description is detailed enough such that the model can correctly extrapolate to creating multiple splits for long numbers, even though it has only seen examples of single splits in the prompt. This illustrates the benefit of using natural language instructions along with showing the intermediate calculation steps, and showcases the model’s ability to extrapolate beyond just length generalization.
+Parity: Similar to (Anil et al., 2022) we investigate the parity problem as an example of length generalization. We use algorithmic prompting for parity and compare its performance to a few-shot baseline, as well as to a scratchpadstyle prompt as discussed in Anil et al. (2022). Figure 14 captures the performance of these three approaches on lists of varying sizes. We use 2 shots of up to 8-digits in answer length in the prompt. Each point in Figure 14 represents average over 100 random samples and we use the same examples for all methods. We observe that the algorithmic prompt significantly outperforms both baselines. While the baselines’ performance reaches random chance (50%) around length 5, algorithmic prompt maintains an accuracy of around 80% for lists of up to 30 digits. Section B.5 and B.6 depict the prompts used in this experiment.
+# A.5 Additional results for Skill Accumulation
+This section includes additional details and figures on skill accumulation from Section 4. We study whether the superior performance of the algorithmic prompt can be attributed to the fact that it is much longer than the few-shot prompt. To control for this variation, we perform an ablation on the addition-subtraction of the few-shot baseline. We generate n examples of addition and subtraction, such that the total number of tokens is equal to the number of tokens used in the algorithmic prompt. The results are shown in Figure 15, and we find that having more few-shot examples does not improve performance.
+# A.6 Additional results for Skill Composition
+This section includes additional details and figures on skill composition from Section 5. In Figure 16, we provide an illustrative demonstration of the change in the prompt when going from two-number addition to multi-number addition
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cfcd/cfcdebe0-495b-42f1-a480-e3a6e5639095.png" style="width: 50%;"></div>
+<div style="text-align: center;">Progress Ratio to Completion</div>
+to multiplication-as-addition, showing the progression in complexity. In Figure 18, we include the results for the entire evaluation dataset, including examples that ran out of context in the first pass through the model. In Figure 19, we show the same results but using the count of numbers being added as the x-axis. We employ a second-pass strategy, where we append the last completed step from the first-pass output to the original test question, and perform another inference pass using the new prompt. We observe that this simple secondpass strategy allows us to correctly solve a portion of the questions that were previously incomplete. However, the performance is still significantly below the hypothetical upper estimate performance achieved by first-pass completed questions. In Figure 20, we use a dialogue-like approach where we employ two models loaded with specialized prompts. For multi-number addition, we prompt one model with an example that explains how to solve multi-number addition problems as a sequence of two-number addition problems, and prompt a second model with the algorithmic prompt for two-number addition. Within the prompt for multi-number addition, we employed specialized tokens to indicate the start and end of a two-number addition problem that the model needs to query the addition-prompted model for. We extract the two-number addition question and send it to the second model, then retrieve the answer and allow the first model to continue with its output. We use the same strategy for multiplication-as-addition. The prompt of this first model can be found in Section B.10 for multi-number addition, and Section B.11 for multiplication-as-addition. We find in Figure 20 that we are able to generalize out-of-distribution from a single prompt example, and avoid context length limitations when evaluated on the longest problems in the evaluation data.
+# A.7 Additional results for Tool Use
+This section includes additional details and figures for tool use in Section 6. In order to teach the model to use the additional algorithm for addition questions, we want to augment the chainof-thought examples with algorithmic output for all addition equations. However, this would take up a lot of context without much gain in how well the addition algorithm is learned. Thus, we employ a strategy of choosing only 2 of the prompt examples to augment with algorithmic output, while another 6 examples are presented without algorithmic output. To differentiate the two types of approaches, we add the flag <ALGO> at the start of the answer for the 2 algorithmic output examples, and add the flag <NONALGO> for the others. At evaluation time, we evaluate performance with algorithmic output by appending the <ALGO> flag to the end of the prompt, and we append <NONALGO> to get a non-algorithmic baseline using the same prompt. This flag-based strategy is simple yet effective, with 86% of <ALGO> examples and 0% of <NONALGO> examples exhibiting algorithmic output. See Section B.13 for the actual prompt.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/da4e/da4e69f2-1649-4045-850e-0db4b650796d.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/e4ca/e4ca0aeb-7238-4b31-807d-5cb1b895ad73.png" style="width: 50%;"></div>
+<div style="text-align: center;">Number of Elements in the List (List length)</div>
+Figure 14: Investigating the performance of algorithmic prompting on parity problem and comparing it to scratchpad few-shot prompt of Anil et al. (2022) as well as few-shot prompting OpenAI’s Codex. Each point on the Algorithmic plot corresponds to 100 random samples of a binary list of the same length. Sections B.5, B.6 depict the prompts used for algorithmic and scratchpad methods. The number of examples used in the prompt is two. The scratchpad method uses the prompt from Figure 9 in (Anil et al., 2022). Chain-of-thought values are directly copied from Figure 7 in Anil et al. (2022) (few shot finetuning - few shot eval), and correspond to prompt from Figure 10 in Anil et al. (2022).
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5f37/5f37a759-3258-4478-92d4-4768fe990c3e.png" style="width: 50%;"></div>
+<div style="text-align: center;">Number of Digits in Answer</div>
+Figure 15: Accuracy on combined addition-subtraction questions using a few-shot prompt. Since the algorithmic prompt use more tokens in the prompt, we perform an ablation for the few-shot baseline and use n number of examples in the prompt, wher n is chosen such that the prompt length matches the algorithmic prompt. We see that there is no improvements in performanc beyond the 6 examples used in the baseline.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7b87/7b870105-1c1d-4527-b5c5-045df1acbb1a.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 16: Illustration of the tasks and algorithmic prompting strategies considered for skill composition in Section 5. The actual prompts use algorithmic prompting for each addition question. Starting from simple two-number addition, we explore multi-number addition which decomposes the problem into a set of two-number addition questions, then extend it further to multiplication-asaddition which converts a multiplication question into an equivalent multi-number addition question.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/80a2/80a2fa71-4353-4477-bad8-21103c8c03dd.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 17: Illustration of various composition strategies. The actual prompts use algorithmic prompting for each addition question. Simple composition combines the prompt from a previously taught skill to new examples illustrating the composed skill Augmented composition changes the previous prompt examples so that they are treated as special cases of the new composed skill No composition includes only examples illustrating the new composed skill.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/bb10/bb109e77-af54-4a83-92f9-bc82b7f111f7.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Multi-number addition</div>
+Figure 18: Performance on compositions of skills. Due to length of the algorithmic output for this task, a number of the longest examples exceed the context length limit for Codex. We employ a second pass strategy to get a final answer for the incomplete questions, where we keep in-context only the last completed state from the first pass. The dotted lines consider only questions for which the model completes the output within one pass, and provide an upper estimate on performance. The dashed lines consider all incomplete questions as false, and provide an lower estimate on performance. We observe that although the algorithmic prompting methods are suffering from having to do a second pass for the longer samples in this task, they still demonstrate better generalization than the baseline methods. Note that for multiplication, we evaluate the algorithmic methods on a harder task than the few-shot baselines, since we force the model to convert the question into the addition of a number n times, while for other baselines we simply perform 1 × n-digit multiplication directly.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5caa/5caa5ec0-fc73-4c67-bc04-79062c2c3201.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Multiplication-as-addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f158/f15839a6-3ebc-4990-a9c6-228260f502e1.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Multi-number addition</div>
+Figure 19: Performance on compositions of skills with the x-axis being the count of numbers being added instead of the number of digits in answer used in Figure 18. Due to length of the algorithmic output for this task, a number of the longest examples exceed the context length limit for Codex. We employ a second pass strategy to get a final answer for the incomplete questions, where we keep in-context only the last completed state from the first pass. The dotted lines consider only questions for which the model completes the output within one pass, and provide an upper estimate on performance. The dashed lines consider all incomplete questions as false, and provide an lower estimate on performance. We observe that although the algorithmic prompting methods are suffering from having to do a second pass for the longer samples in this task, they still demonstrate better generalization than the baseline methods. Note that for multiplication, we evaluate the algorithmic methods on a harder task than the few-shot baselines, since we force the model to convert the question into the addition of a number n times, while for other baselines we simply perform 1 × n-digit multiplication directly.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f572/f5728bd0-22b8-4f31-990b-8da3c54c3499.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Multi-number addition</div>
+Figure 20: Performance on compositions of skills with algorithmic calls. Due to length of the algorithmic output for this task, a number of the longest examples exceed the context length limit for Codex. We employ a dialogue-like strategy to get a final answer for the incomplete questions, where we allow models loaded with different prompts to interact with each other through the use of specialized tokens learned in-context. The dashed lines consider all incomplete questions as false, and provide an lower estimate on performance. “Algo Call” refers to this dialogue-like method, which is akin to the “No Composition” setup since we do not include the two-number addition examples in the prompt. We find that we are able to generalize out-of-distribution from a single prompt example of digits length 2, and avoid context length limitations when evaluated on the longest problems in the evaluation data.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9ef8/9ef8edbe-d1e0-44d7-bc73-3bc06f58c818.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Multiplication-as-addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6e89/6e8934c6-32d6-4e3f-a35c-88066cda4821.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Multiplication-as-addition</div>
+# B Prompt examples
+# B.1 Addition prompt strategies
+For addition prompts, we use 3-shot with the examples 128+367, 9980+29, and 802+7145 in order. For conciseness we may include only subsets of the prompt questions in the prompt examples.
+# B.1.1 Algorithmic prompt for addition
+<div style="text-align: center;">B.1.2 Few-shot prompt for addition</div>
+Q: 128+367=
+A: 495.
+Q: 9980+29=
+A: 10009.
+Q: 802+7145=
+A: 7947.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f63d/f63d0b09-ccd1-4523-87b9-bbbd6f23687c.png" style="width: 50%;"></div>
+<div style="text-align: center;">B.1.4 Instruction addition prompt for addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/89f2/89f20a7e-ddcf-468a-8386-9fe770d5e7a9.png" style="width: 50%;"></div>
+Input:
+128+367
+Target:
+<scratch>
+1 2 8 + 3 6 7 , C: 0
+1 2 + 3 6 , 5 C: 1
+1 + 3 , 9 5 C: 0
+, 4 9 5 C: 0
+4 9 5
+</scratch>4 9 5.
+Input:
+9980+29
+Target:
+<scratch>
+9 9 8 0 + 2 9 , C: 0
+9 9 8 + 2 , 9 C: 0
+9 9 , 0 9 C: 1
+9 , 0 0 9 C: 1
+, 0 0 0 9 C: 1
+1 0 0 0 9
+</scratch>1 0 0 0 9.
+<div style="text-align: center;">B.1.6 Detailed scratchpad prompt for addition</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f623/f6234b2e-2aa8-4643-b171-357d0aaeabce.png" style="width: 50%;"></div>
+Input:
+128+367
+Target:
+<scratch>
+1 2 8 has 3 digits.
+3 6 7 has 3 digits.
+1 2 8 + 3 6 7 , C=0 , 8 + 7 + 0 = 1 5 , A->5 , C->1
+1 2 + 3 6 , A=5 , C=1 , 2 + 6 + 1 = 9 , A->9 , C->0
+1 + 3 , A=9 5 , C=0 , 1 + 3 + 0 = 4 , A->4 , C->0
++ , A=4 9 5 , C=0 , END
+</scratch>
+4 9 5
+Input:
+9980+29
+Target:
+<scratch>
+9 9 8 0 has 4 digits.
+2 9 has 2 digits.
+9 9 8 0 + 2 9 , C=0 , 0 + 9 + 0 = 9 , A->9 , C->0
+9 9 8 + 2 , A=9 , C=0 , 8 + 2 + 0 = 1 0 , A->0 , C->1
+9 9 + , A=0 9 , C=1 , 9 + 0 + 1 = 1 0 , A->0 , C->1
+9 + , A=0 0 9 , C=1 , 9 + 0 + 1 = 1 0 , A->0 , C->1
++ , A=0 0 0 9 , C=1 , 0 + 0 + 1 = 1 , A->1 , C->0
++ , A=1 0 0 0 9 , C=0 , END
+</scratch>
+1 0 0 0 9
+# B.2 Algorithmic prompt ablations for addition B.2.1 Algorithmic prompt with uncommon operations for addition
+The uncommon indexing operation is highlighted in red.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3452/3452263c-25c2-4bae-8dd3-cd7c60e3399a.png" style="width: 50%;"></div>
+# B.2.2 Algorithmic prompt with non-explicit carry for addition
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4d2e/4d2e7f18-4853-49db-a5cd-32c52d96c9c1.png" style="width: 50%;"></div>
+# B.2.3 Algorithmic prompt for addition with irregular errors
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8ebc/8ebc209a-69a2-426b-9899-80359ef76db0.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2b44/2b44b4a2-e83d-493c-879e-6b7fc65b8d31.png" style="width: 50%;"></div>
+<div style="text-align: center;">B.2.5 Symbols-only algorithmic prompt for addition</div>
+Problem: 128+367=
+Explanation:
+FN=128, FN=[1,2,8].
+SN=367, SN=[3,6,7].
+Len(FN)=3, Len(SN)=3, MaxLen=3.
+Len(FN)=3.
+FN=[1,2,8].
+Len(SN)=3.
+SN=[3,6,7].
+FN[3]=8.
+SN[3]=7.
+C[3]=0.
+8+7+0=15, 15>10,
+15%10=5.
+Len(A)=1.
+A=[5].
+(15-5)/10=1, C[2]=1.
+Len(FN)=2.
+FN=[1,2].
+Len(SN)=2.
+SN=[3,6].
+FN[2]=2.
+SN[2]=6.
+C[2]=1.
+2+6+1=9, 9<10, 9%10=9.
+Len(A)=2.
+A=[9,5].
+(9-9)/10=0, C[1]=0.
+Len(FN)=1.
+FN=[1].
+Len(SN)=1.
+SN=[3].
+FN[1]=1.
+SN[1]=3.
+C[1]=0.
+Since 1+3+0=4, 4<10,
+4%10=4.
+Len(A)=3.
+A=[4,9,5].
+(4-4)/10=0, C[0]=0.
+Len(FN)=0 and Len(SN)=0 and C[0]=0.
+Done.
+The final Answer is [4,9,5].
+<div style="text-align: center;">B.2.6 Symbols-only algorithmic prompt for addition without keywords</div>
+In this prompt, we do not use the keywords Len and Max.
+Problem: 128+367=
+Explanation:
+FN=128, FN=[1,2,8].
+SN=367, SN=[3,6,7].
+VBZ(FN)=3, VBZ(SN)=3, UXOVBZ=3.
+VBZ(FN)=3.
+FN=[1,2,8].
+VBZ(SN)=3.
+SN=[3,6,7].
+FN[3]=8.
+SN[3]=7.
+C[3]=0.
+8+7+0=15, 15>10, 15%10=5.
+VBZ(A)=1.
+A=[5].
+(15-5)/10=1, C[2]=1.
+VBZ(FN)=2.
+FN=[1,2].
+VBZ(SN)=2.
+SN=[3,6].
+FN[2]=2.
+SN[2]=6.
+C[2]=1.
+2+6+1=9, 9<10, 9%10=9.
+VBZ(A)=2.
+A=[9,5].
+(9-9)/10=0, C[1]=0.
+VBZ(FN)=1.
+FN=[1].
+VBZ(SN)=1.
+SN=[3].
+FN[1]=1.
+SN[1]=3.
+C[1]=0.
+Since 1+3+0=4, 4<10,
+4%10=4.
+VBZ(A)=3.
+A=[4,9,5].
+(4-4)/10=0, C[0]=0.
+VBZ(FN)=0 and VBZ(SN)=0 and C[0]=0.
+Done.
+The final Answer is [4,9,5].
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/811a/811a384f-2308-48f9-9f15-f855f710c63a.png" style="width: 50%;"></div>
+<div style="text-align: center;">B.2.7 Symbols-only algorithmic prompt for addition with misleading keywords In this prompt, we replace the keywords Len and Max with Str and Min.</div>
+In this prompt, we replace the keywords Len and Max with Str and Min.
+Problem: 128+367=
+Explanation:
+FN=128, FN=[1,2,8].
+SN=367, SN=[3,6,7].
+Str(FN)=3, Str(SN)=3, MinStr=3.
+Str(FN)=3.
+FN=[1,2,8].
+Str(SN)=3.
+SN=[3,6,7].
+FN[3]=8.
+SN[3]=7.
+C[3]=0.
+8+7+0=15, 15>10, 15%10=5.
+Str(A)=1.
+A=[5].
+(15-5)/10=1, C[2]=1.
+Str(FN)=2.
+FN=[1,2].
+Str(SN)=2.
+SN=[3,6].
+FN[2]=2.
+SN[2]=6.
+C[2]=1.
+2+6+1=9, 9<10, 9%10=9.
+Str(A)=2.
+A=[9,5].
+(9-9)/10=0, C[1]=0.
+Str(FN)=1.
+FN=[1].
+Str(SN)=1.
+SN=[3].
+FN[1]=1.
+SN[1]=3.
+C[1]=0.
+Since 1+3+0=4, 4<10,
+4%10=4.
+Str(A)=3.
+A=[4,9,5].
+(4-4)/10=0, C[0]=0.
+Str(FN)=0 and Str(SN)=0 and C[0]=0.
+Done.
+The final Answer is [4,9,5].
+# B.3 Addition-subtraction prompt strategies B.3.1 Algorithmic prompt for addition-subtraction
+# B.3 Addition-subtraction prompt strategies
+For the addition-subtraction prompt, we use prompt examples 128 + 367, 9980 + 29, 29 −570, −99 −21, 483 −389, and −30 + 8002 in order.
+Problem: 128+367=?
+Explanation:
+Let’s think step by step.
+128+367=128+300+67=428+67=495.
+The final Answer is 495.
+Problem: 9980+29=?
+Explanation:
+Let’s think step by step.
+9980+29=9980+20+9=10000+9=10009.
+The final Answer is 10009.
+Problem: 29-570=?
+Explanation:
+Let’s think step by step.
+29-570=29-500-70=-471-70=-541.
+The final Answer is -541.
+Problem: -99-21=?
+Explanation:
+Let’s think step by step.
+-99-21=-99-20-1=-119-1=-120.
+The final Answer is -120.
+Problem: 483-389=?
+Explanation:
+Let’s think step by step.
+483-389=483-300-80-9=183-80-9=103-9=94.
+The final Answer is 94.
+Problem: -30+8002=?
+Explanation:
+Let’s think step by step.
+-30+8002=-30+8000+2=-30+8002=7972.
+The final Answer is 7972.
+Problem: 128+367=?
+Explanation:
+Let’s think step by step.
+128+367=128+300+67=428+67=495.
+The final Answer is 495.
+Problem: 9980+29=?
+Explanation:
+Let’s think step by step.
+9980+29=9980+20+9=10000+9=10009.
+The final Answer is 10009.
+Problem: 29-570=?
+Explanation:
+Let’s think step by step.
+29-570=29-500-70=-471-70=-541.
+The final Answer is -541.
+Problem: -99-21=?
+Explanation:
+Let’s think step by step.
+-99-21=-99-

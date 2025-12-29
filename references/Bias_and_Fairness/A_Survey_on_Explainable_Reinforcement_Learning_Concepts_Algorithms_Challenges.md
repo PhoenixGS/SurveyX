@@ -1,0 +1,507 @@
+# A Survey on Explainable Reinforcement Learning: Concepts, Algorithms, and Challenges
+# A Survey on Explainable Reinforcement Lea Algorithms, and Challenges
+YUNPENG QING, Zhejiang University, China SHUNYU LIU, Zhejiang University, China JIE SONG, Zhejiang University, China HUIQIONG WANG∗, Zhejiang University, China MINGLI SONG, Zhejiang University, China
+Reinforcement Learning (RL) is a popular machine learning paradigm where intelligent agents interact with the environment to fulfill a long-term goal. Driven by the resurgence of deep learning, Deep RL (DRL) has witnessed great success over a wide spectrum of complex control tasks. Despite the encouraging results achieved, the deep neural network-based backbone is widely deemed as a black box that impedes practitioners to trust and employ trained agents in realistic scenarios where high security and reliability are essential. To alleviate this issue, a large volume of literature devoted to shedding light on the inner workings of the intelligent agents has been proposed, by constructing intrinsic interpretability or post-hoc explainability. In this survey, we provide a comprehensive review of existing works on eXplainable RL (XRL) and introduce a new taxonomy where prior works are clearly categorized into agent model-explaining, reward-explaining, state-explaining, and task-explaining methods. We also review and highlight RL methods that conversely leverage human knowledge to promote learning efficiency and performance of agents while this kind of method is often ignored in XRL field. Some challenges and opportunities in XRL are discussed. This survey intends to provide a high-level summarization of XRL and to motivate future research on more effective XRL solutions. Corresponding open source codes are collected and categorized at https://github.com/Plankson/awesomeexplainable-reinforcement-learning. CCS Concepts: • Computing methodologies →Reinforcement learning; • General and reference → Surveys and overviews. Additional Key Words and Phrases: Deep Learning, Reinforcement Learning, Explainability. ACM Reference Format: Yunpeng Qing, Shunyu Liu, Jie Song, Huiqiong Wang, and Mingli Song. 2023. A Survey on Explainable Reinforcement Learning: Concepts, Algorithms, and Challenges. J. ACM 1, 1, Article 1 (January 2023), 38 pages. https://doi.org/XXXXXXX.XXXXXXX
+# CCS Concepts: • Computing methodologies →Reinforcement learning; • General and reference → Surveys and overviews.
+Additional Key Words and Phrases: Deep Learning, Reinforcement Learning, Explainability. ACM Reference Format: Yunpeng Qing, Shunyu Liu, Jie Song, Huiqiong Wang, and Mingli Song. 2023. A Survey on Explainable Reinforcement Learning: Concepts, Algorithms, and Challenges. J. ACM 1, 1, Article 1 (January 2023), 38 pages. https://doi.org/XXXXXXX.XXXXXXX
+# 1 INTRODUCTION
+Reinforcement learning [202] is inspired by human trial-and-error paradigm [152] in which interacting with the environment is a common way for human learning without the guidance of others [102]. Through interactions, humans acquire experiential knowledge regarding cause and effect, action outcomes, and goal attainment within the environment. This acquired experience is subsequently leveraged implicitly to formulate our mental models [163, 226, 235], enabling us to resolve the encountered tasks efficiently [25, 179]. Similarly, RL autonomously learns from interacting with environments to purposefully understand environment dynamics and influence future events. Technically, RL learns to map from environment state to action so as to maximize
+∗Corresponding author
+Authors’ addresses: Yunpeng Qing, Zhejiang University, Hangzhou, China, qingyunpeng@zju.edu.cn; Shunyu Liu, Zhejiang University, Hangzhou, China, liushunyu@zju.edu.cn; Jie Song, Zhejiang University, Hangzhou, China, sjie@zju.edu.cn; Huiqiong Wang, Zhejiang University, Hangzhou, China, huiqiong_wang@zju.edu.cn; Mingli Song, Zhejiang University, Hangzhou, China, brooksong@zju.edu.cn.
+2023. 0004-5411/2023/1-ART1 $15.00 https://doi.org/XXXXXXX.XXXXXXX
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cdeb/cdeb5c7b-e1e9-4d8b-9f98-d3811915c10b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 1. An overview of the survey. We categorize existing explainable reinforcement learning (XRL) approaches into four branches based on the explainability of different parts in the RL process: agent model, reward, state and task. The more fine-grained categorization will be discussed detailedly in later sections. Each category is demonstrated with a part of representative works in the figure with different colors.</div>
+Fig. 1. An overview of the survey. We categorize existing explainable reinforcement learning (XRL) approaches into four branches based on the explainability of different parts in the RL process: agent model, reward, state, and task. The more fine-grained categorization will be discussed detailedly in later sections. Each category is demonstrated with a part of representative works in the figure with different colors. the cumulative reward [199]. In recent years, the fast development of deep learning [16, 203] promotes the fusion of deep learning and reinforcement learning. Therefore, Deep Reinforcement Learning (DRL) [48, 66, 144, 145, 186] has emerged as a new RL paradigm. With the powerful representation capability of the deep neural network [6, 58, 240], DRL has achieved considerable performance in many domains [18, 27, 32, 41, 117, 125, 129, 194]. Particularly in game-based tasks such as AlphaZero [194] and OpenAI Five [18], DRL methods have achieved remarkable success by outperforming human professional players. However, in complex real-world scenarios like autonomous driving [28, 43, 83, 222, 223] and power system dispatch [118, 123, 126, 236, 237, 252],
+both high performance and user-oriented explainability should be taken into account to ensure security and reliability. Therefore, the lack of explainability in DRL is the main bottleneck for employing DRL in the real world instead of the simulated environment. Conventional DRL methods are limited by low explainability owing to the intricate backbone of deep neural network (DNN) [72, 103, 195, 204]. It is intractable to track and explain each parameter within a neural and scale up to the entire network. Therefore, we have no idea about which implicit features the DNN takes into consideration and how the DNN handles these features. This drawback leads to the fact that the DRL model is becoming a black box [88, 242] where experts cannot understand how the agent perceives the environment or why the agent chooses a specific action. The lack of transparency in DRL hinders its application, as individuals are reluctant to trust the agent, particularly when the agent action contradicts their expectation without providing an explanation for the decision-making process. For instance, in the context of auto-navigation tasks [37, 164], individuals may experience confusion when the navigator agent provides abnormal guidance without providing a reason, which could be a simple precautionary measure to avoid traffic congestion. Furthermore, the lack of explainability also causes obstacles for inserting human knowledge and guidance into the training process [67, 175]. Despite the availability of prior human knowledge in specific forms [62, 63, 191, 244, 247], agents face limitations in effectively extracting and utilizing this information form human. To remedy the low-explainability problem, many pieces of explainable research have been conducted in several machine learning fields like explainable face recognition [47, 89, 174, 227] in Computer Vision (CV) and explainable text classification [7, 122, 196] in Natural Language Process (NLP). Explainable Artificial Intelligence (XAI) aims to enhance the explainability and transparency of models by providing explanations catering to both experts and non-experts. XAI delves into the inner workings of black-box models, automatically extracting or generating explanations to elucidate why a specific input leads to a particular output. Explanations can take various forms, such as natural language explanations [42, 71, 248], saliency maps [61, 87], or even video explanations [187]. By employing XAI techniques, models gain the ability to identify potential flaws and present them to domain experts for further analysis and improvement. In the field of eXplainable Reinforcement Learning (XRL), many preliminary studies have been done to construct the XRL model and have gained certain achievements in producing explanations. To have a complete view of them and summarize current XRL techniques, several surveys of XRL have been conducted [38, 56, 79, 139, 166, 217, 225]. Heuillet et al. [79] review XRL approaches focusing on the types of explanation and target user and categorize current XRL methods into two distinct groups based on how explanations are generated: intrinsic XRL derived from the model structure and post-hoc XRL obtained from data processing. This classification is directly derived from the taxonomy of XAI [8]. The preliminary taxonomy for XRL itself is unrelated to RL, which needs further improvement to be specialized by considering specific entities in RL. Puiutta and Veith [166] also adopted the conventional XAI taxonomy, distinguishing between post-hoc and intrinsic methods based on the timing of explanation generation, as well as global and local methods depending on the range of available explanations. However, their description only covers a small portion of XRL methods and does not aim to provide a comprehensive overview of XRL. Wells and Bednarz [225] enumerate varieties of XRL approaches. However, their focus is primarily on XRL frameworks that incorporate visualization as a means of explanation. Vouros [217] limit the scope to the state-of-art XRL approaches and simply categorize the explanation content into agent preference and goal influence. Dazeley et al. [38] proposed a conceptual architecture for XRL from the causal perspective. This theoretical architecture is clear and rigorous, which takes not only perception, action, and event, but also the goal, expectation, and disposition into account. However, current XRL frameworks mostly focus on perceptions and action causes for the outcome of events, which means that the existing XRL technique can only be represented by a much simpler
+form of the causal framework. Glanois et al. [56] make a clear bound between explainability and interpretability. Meanwhile, they divide the approaches into three types: explaining the agent inputs for understandable representation, explaining the transition model for the environment dynamics, and explaining the preference model for the action selection of RL agents. It inspires us to focus on the process and structure of RL for the XRL paradigm. Recently, Milani et al. [139] proposed a RL-oriented taxonomy for distinguishing between XRL frameworks based on the primary goals of RL explanations: Feature Importance, Learning Process and MDP, and Policy-level. However, the drawback of their taxonomy lies in the overlapping and inconsistency it introduces, making it difficult to clearly categorize certain methods and creating ambiguity in the placement of different techniques. For example, program-represented policy methods [215, 216] of learn an intrinsically interpretable policy in Feature Importance category also make explanation for long-term goal under policy-level category. Similarly, several methods [124, 131] summarizing with transitions in policylevel category also perform identify training points that belong to learning process and MDP category. All of these surveys propose new taxonomies on XRL from different perspectives. However, these surveys have the following limitations: (1) Although many of them proposed their own understanding for XRL [119, 141, 148, 217], the XRL field currently is still lacking standard criteria, especially for its definition and evaluation approaches. (2) Current taxonomies proposed by researchers do not align with the existing XRL methods. One part of the work employs the XAI taxonomy to categorize existing research, ignoring the significant components of RL such as reward and policy, which is unable to cover all the XRL methods comprehensively. Meanwhile, traditional XAI focuses on machine learning predicting with labeled or unlabeled data, which is quite different from RL about interaction with the environment to maximize rewards. This difference in the target leads XAI taxonomy to be inappropriate for XRL. The other part introduces novel taxonomies for XRL but falls short of accurately summarizing and distinguishing existing XRL methods. The XRL community requires a more concise taxonomy directly derived from the RL paradigm to categorize various XRL works clearly. Such a taxonomy is crucial for comprehending and advancing XRL techniques. (3) In current XRL surveys and frameworks, there is a lack of consideration for the role of human participation. Only a limited number of papers have attempted to integrate human prior knowledge, such as sampled trajectories of human annotation [52] and online collaborations involving human command [51], into the XRL learning process. The results of these studies strongly indicate that incorporating human prior knowledge is an effective approach for achieving both high explainability and performance. To advance the further development of XRL, this survey makes a more comprehensive and specialized review of XRL concepts and algorithms. We first clarify the concepts of RL explainability, then we give a systematic overview of the existing evaluation metrics for XRL, encompassing both subjective and objective assessments. We proposed a new taxonomy that categorizes current XRL works according to the central target of explanation: agent model, reward, state, and task, precisely capturing the central component in the RL paradigm. Since making the whole RL paradigm explainable is currently difficult, all of the works turn to get partial explainability directly on components of RL paradigms. This taxonomy is much more specialized than the general coarse-grained intrinsic/post-hoc or global/local taxonomies in XAI, providing clearer distinctions among existing XRL methods and a comprehensive illustration of the RL decision-making process. Meanwhile, by assigning each method to a specific category aligning with its primary objective and specific implementation details, the taxonomy avoids ambiguity or confusion in the category process. Meanwhile, given that there is currently only a small amount of research on human-integrated XRL and its importance, we make an attempt to summarize these works and organize them into our taxonomy. As we know, few researchers have looked into this field of integrating human knowledge into XRL. Our work can be summarized below:
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+· We give a formal definition of XRL by summarizing existing literature. What’s more, we also propose a systematic evaluation architecture of XRL from objective and subjective aspects. · To make up for the shortcomings of lacking RL-based architecture in the XRL community, we propose a new RL-based taxonomy for current XRL works. The taxonomy is based on the explainability of different central targets of the reinforcement learning framework: agent model, reward, state, and task. The taxonomy can be viewed in Figure 2. · Noticing that currently human-intergrated XRL is an emerging direction, based on our new XRL taxonomy we give a systematic review of these approaches that combines XRL frameworks with human prior knowledge to get higher performance and better explanation. The remain of this survey is organized as follows. In Section 2, we recall the necessary basic knowledge of reinforcement learning. Next, we discuss the definition of XRL, as well as giving some possible evaluation aspects for explanation and XRL approaches in Section 3. In Section 4, we describe our categorization as well as provide works of each type and sub-type in detail, the abstract figure of our taxonomy can be viewed in Figure 2. Then, we discuss XRL works that are combined with human knowledge according to our taxonomy in Section 5. After that, we summarize current challenges and promising future directions of XRL in Section 6. Finally, we give a conclusion of our work in Section 7. The structure of this paper and our taxonomy work is shown in Figure 1.
+# 2 BACKGROUND
+The reinforcement Learning paradigm considers the problem of how an agent interacts with the environment to maximize the cumulative reward, where the reward is a feedback signal according to the response action of the agent in different states. Concretely, the interaction process can be formalized as a Markov Decision Process (MDP) [44]. An MDP is described as a tuple 𝑀= ⟨S, A, 𝑃, 𝑅,𝛾⟩, where S is the state space, A is the action space, 𝑃: S × A × S →[0, 1] is the state transition function, 𝑅: S×A →R is the reward function, and𝛾∈[0, 1] is a discount factor. At each discrete time step 𝑡, the agent observes the current state 𝑠𝑡∈S and chooses an action 𝑎𝑡∈A. This causes a transition to the next state 𝑠𝑡+1 drawn from the transition function 𝑃(𝑠𝑡+1|𝑠𝑡,𝑎𝑎). Moreover, the agent can receive a reward signal 𝑟𝑡according to the reward function 𝑅(𝑠𝑡,𝑎𝑡). The core object of the agent is to learn an optimal policy 𝜋∗that maximizes the expected discounted return E𝜋[𝐺𝑡] = E𝜋[�∞ 𝑖=0 𝛾𝑖𝑟𝑡+𝑖]. To tackle this problem, existing reinforcement learning methods can be mainly categorized into two classes: value-based methods and policy-based ones.
+# 2.1 Value-based Methods
+The value-based methods [145] tend to assess the quality of a policy 𝜋by the action-value functio 𝑄𝜋defined as: ∑︁
+𝑄𝜋(𝑠,𝑎) = E𝜋[ ∞ ∑︁ 𝑖=0 𝛾𝑖𝑟𝑡+𝑖|𝑠𝑡= 𝑠,𝑎𝑡= 𝑎],
+∑︁ which denotes the expected discounted return after the agent executes an action 𝑎at state 𝑠. policy 𝜋∗is optimal if:
+There is always at least one policy that is better than or equal to all other policies [202]. All optimal policies share the same optimal action-value function defined as 𝑄∗. It is easy to show that 𝑄∗ satisfies the Bellman optimality equation: � �
+𝑄∗(𝑠,𝑎) = E𝑠′∼𝑃(·|𝑠,𝑎) � 𝑅(𝑠,𝑎) + 𝛾max 𝑎′∈A 𝑄∗(𝑠′,𝑎′) � .
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023
+# To estimate the optimal action-value function 𝑄∗, Deep 𝑄-Networks (DQN) [145] uses a neural network 𝑄(𝑠,𝑎;𝜃) with parameters 𝜃as an approximator. We optimize the network of DQN by minimizing the following temporal-difference (TD) loss: � �
+L(𝜃) = E(𝑠,𝑎,𝑟,𝑠′)∼D � (𝑦−𝑄(𝑠,𝑎;𝜃))2�
+� � where D is the replay buffer of the transitions, 𝑦= 𝑟+ 𝛾max𝑎′ 𝑄(𝑠′,𝑎′;𝜃−) and 𝜃−represents the parameters of the target network. After the network converges, the final optimal policy can be obtained by a greedy policy 𝜋(𝑠) = arg max𝑎∈A 𝑄(𝑠,𝑎;𝜃). Due to the encouraging results accomplished by DQN, several follow-up works [15, 30, 33, 70, 78, 138, 146, 183, 213, 224] progressively enlarged the family of DQN and has recently demonstrated extraordinary capabilities in multiple domains [29, 120, 158, 214]. However, while these value-based methods can handle high-dimensional observation spaces, they are restricted to problems with discrete and low-dimensional action spaces
+# 2.2 Policy-based Methods
+To solve the problems with continuous and high-dimensional action spaces, policy-based methods have been proposed as a competent alternative. One of the conventional policy-based methods is stochastic policy gradient (SPG) [202], which seeks to optimize a policy function 𝜋𝜙: S × A → [0, 1] with parameters 𝜙. SPG directly maximizes the expected discounted return as the objective J (𝜙) = E𝜋𝜙[�∞ 𝑡=0 𝛾𝑡𝑟𝑡]. To update the policy parameters 𝜙, we can perform the gradient of this objective as follows: � �
+∇𝜙J (𝜋𝜙) = E𝑠∼𝜌𝜋,𝑎∼𝜋𝜙 � ∇𝜙log 𝜋𝜙(𝑎|𝑠)𝑄𝜋(𝑠,𝑎) �
+� � where 𝜌𝜋(𝑠) is the state distribution and 𝑄𝜋(𝑠,𝑎) is the action value. To estimate the action value 𝑄𝜋(𝑠,𝑎), a simple and direct way is to use a sample discounted return 𝐺. Furthermore, to reduce the high variance of the action-value estimation while keeping the bias unchanged, a general method is to subtract an estimated state-value baseline 𝑉𝜋(𝑠) from return [202]. This yields the advantage function 𝐴𝜋(𝑠,𝑎) = 𝑄𝜋(𝑠,𝑎) −𝑉𝜋(𝑠), where an approximator 𝑉(𝑠;𝜃) with parameters 𝜃is used to estimate the state value. This method can be viewed as an actor-critic architecture where the policy function is the actor, and the value function is the critic [45, 59, 73, 144, 184–186, 232]. On the other hand, the policy in the actor-critic architecture can also be updated through the deterministic policy gradient (DPG) [48, 114, 193] for continuous control: � �
+∇𝜙J (𝜇𝜙) = E𝑠∼𝜌𝜇� ∇𝑎𝑄𝜇(𝑠,𝑎)|𝑎=𝜇𝜙(𝑠)∇𝜙𝜇𝜙(𝑠) � .
+� � where 𝜇𝜙(𝑠) : S →A with parameters 𝜙is a deterministic policy. Moreover, we directly instead approximate the action-value function 𝑄𝜇(𝑠,𝑎) with a parameterized critic 𝑄(𝑠,𝑎;𝜃), where the parameters 𝜃are updated using the TD loss analogously to the value-based case. By avoiding a problematic integral over the action space, DPG provides a more efficient policy gradient paradigm than the stochastic counterparts [193].
+# 3 EXPLAINABLE RL DEFINITIONS AND MEASUREMENT
+This section sets the ground for enhancing RL framework with explainability. Although various papers in this field make their efforts to give a precise definition of explainable RL, neither standard criteria nor clear consensus has been reached in the XRL community. Meanwhile, a large number of current works view being explainable as a kind of subjective perception that is unnecessary to focus on. Such a vague definition will hinder the understanding of XRL papers and evaluation metrics of XRL frameworks. After reviewing the existing literature, we make further detailed descriptions of the XRL concepts and summarize the current evaluation metrics of XRL.
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+# 3.1 Definition of XRL
+In this section, we make a formal definition of XRL, which varies slightly among existing literature due to the diverse range of criteria proposed by different pieces of literature on XRL. Reviewing these works, many of them [98, 141] define explainability through interaction with people. Miller [141] define RL explainability as the degree to which human can understand the decision made by the agent, and Kim et al. [98] asset that explainability is the degree to which human can consistently predict the result of the model. Meanwhile, many works [139, 166] directly follow taxonomy from eXplainable Artificial Intelligence (XAI) to divide explainability of RL into explainability and interpretability that stands for producing user-oriented explanation and being self-interpretable respectively without give an overall formal definition. Concluding from existing literature, XRL aims to provide explainable and transparent elucidation on the decision-making process undertaken by RL agents in sequential decision-making contexts. RL explainability involves enabling humans to comprehensively understand the decision-making process and outcomes of the agent, facilitating the prediction of its behavior and ensuring the production of user-oriented explanations. Conditioned on the way to the explanation in the surveyed papers, the explainability of current XRL methods can be further categorized as follows: (1) Intrinsic explainability of agent architecture: The inner agent architecture is able to be designed to be explainable. Such explainability refers to the capability of whether the decision-making and inner logic of the agent are transparent and easy to understand during the whole training and testing process. The typical architecture includes decision tree [192], hierarchical agent [190], logic rule [91], etc. (2) Extrinsic explainability of decision outcome: Extrinsic explainability involves providing supplementary post-hoc explanations that accompany the chosen action output. The extrinsic explanation contains the aspects that the agent takes into account when producing action with specific state inputs. This kind of explanation includes salience map [85], attention distribution [110], shapley value among agent [79], etc.
+Intrinsic explainability is a kind of capability that is determined while the agent is constructed while the extrinsic explainability needs to have not only a completed agent but also the input data and execution on it, which makes the extrinsic explainability a post-hoc property. The XRL field is constituted with such two kinds of explanation.
+# 3.2 Evaluation Framework
+After giving a clear description of explainability, we turn to the evaluation of XRL. Unfortunately, there is still no consensus about how to measure the explainability of RL framework. Some initial work has been made to formulate some approaches or aspects for evaluation. Doshi-Velez and Kim [39] proposed the idea that evaluates explainability in three levels that include application, human, and function. Hoffman et al. [84], Mohseni et al. [147] make further contributions on giving reasonable metrics for explainable AI. We summarize their work and give an evaluation framework for the explainable RL paradigm:
+3.2.1 Subjective Assessment. Subjective assessment assesses explainable frameworks based on human feedback. Users receive the explanation and construct the mental model of how a person understands the model process and structure [163, 226, 235]. Therefore, conversely evaluating the mental model can be a feasible way to verify the effectiveness of the explanation. The subjective assessment aims to capture and measure the mental model of the user. However, it is hard to directly measure the mental model of human users in their minds. Current approaches to the mental model
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+(1) User Prediction (S.UP): The accuracy of human prediction on both task and RL agent illustrates the effectiveness of the mental model reconstructed by RL explanation. A quantitative way is to make the user predict the agent decision 𝑎pred, compare to the real agent action 𝑎RL and calculate the hit rate � 𝑁|𝑎pred−𝑎RL|2/𝑁, where N is the overall test time [11, 95, 154, 171, 173]. The questionnaire method can also quantitatively evaluate the accuracy of prediction [99, 104, 106, 167], in which participants give out their task-related knowledge degree on RL agent decision and agent explanation. (2) User Confidence (S.UC): User confidence evaluates the reliability of RL explanation, instead of user prediction metrics fully trusting on RL explanation. User confidence stands for the persuasiveness of RL explainability [21, 53, 105]. The questionnaire method is a feasible approach to measure the confidence of user [17, 35, 115, 116, 134]. For trust and reliance aspects, many researchers [153, 165] track the action and intentions of users in the questionnaire to measure their trust and reliance on the explanations. Lim et al. [116] and Gedikli et al. [53] also explore the complexity of explanation by measuring response time Δ𝑡of user. (3) Descriptiveness (S.D): A large portion of XRL literature directly gives the descriptions of the explanation in case-study like state feature visualization [61, 238] and specific programmatic policy [215, 216] to illustrate the explainability in case-study. Despite the strong logic of the description in enhancing the persuasiveness of explanations, it should be noted that the description does not provide precise quantitative results. Currently, many XRL papers employ this approach to claim and demonstrate the explainability of their work [110, 121, 162, 206], leading us to consider descriptiveness as an informal subjective metric. ubjective assessment implicitly evaluates the effectiveness of RL explanation through human eedback. Presently, the development of questionnaire designing methodologies [77, 113] enables he creation of well-designed questionnaires for human users. Questionnaires effectively quantify rediction accuracy as well as user confidence, thereby making them widely used for measuring xplainability [134, 187]. However, all of these subjective metrics are susceptible to potential biases temming from subjective human judgment. Therefore, evaluation performers must ensure the airness of tested human participants. .2.2 Objective Assessment. Objective assessment entails the quantitative evaluation of explana-
+(1) User Prediction (S.UP): The accuracy of human prediction on both task and RL agent illustrates the effectiveness of the mental model reconstructed by RL explanation. A quantitative way is to make the user predict the agent decision 𝑎pred, compare to the real agent action 𝑎RL and calculate the hit rate � 𝑁|𝑎pred−𝑎RL|2/𝑁, where N is the overall test time [11, 95, 154, 171, 173]. The questionnaire method can also quantitatively evaluate the accuracy of prediction [99, 104, 106, 167], in which participants give out their task-related knowledge degree on RL agent decision and agent explanation. (2) User Confidence (S.UC): User confidence evaluates the reliability of RL explanation, instead of user prediction metrics fully trusting on RL explanation. User confidence stands for the persuasiveness of RL explainability [21, 53, 105]. The questionnaire method is a feasible approach to measure the confidence of user [17, 35, 115, 116, 134]. For trust and reliance aspects, many researchers [153, 165] track the action and intentions of users in the questionnaire to measure their trust and reliance on the explanations. Lim et al. [116] and Gedikli et al. [53] also explore the complexity of explanation by measuring response time Δ𝑡of user. (3) Descriptiveness (S.D): A large portion of XRL literature directly gives the descriptions of the explanation in case-study like state feature visualization [61, 238] and specific programmatic policy [215, 216] to illustrate the explainability in case-study. Despite the strong logic of the description in enhancing the persuasiveness of explanations, it should be noted that the description does not provide precise quantitative results. Currently, many XRL papers employ this approach to claim and demonstrate the explainability of their work [110, 121, 162, 206], leading us to consider descriptiveness as an informal subjective metric. ubjective assessment implicitly evaluates the effectiveness of RL explanation through human edback. Presently, the development of questionnaire designing methodologies [77, 113] enables he creation of well-designed questionnaires for human users. Questionnaires effectively quantify rediction accuracy as well as user confidence, thereby making them widely used for measuring xplainability [134, 187]. However, all of these subjective metrics are susceptible to potential biases emming from subjective human judgment. Therefore, evaluation performers must ensure the irness of tested human participants. 2.2 Objective Assessment. Objective assessment entails the quantitative evaluation of explanaons by relying solely on objective outputs, such as agent actions and cumulative rewards, thereby iminating the need for human feedback. These objective metrics provide quantitative evaluations  the agent effectiveness and avoid the potential biases introduced by subjective human judgment. (1) Decision Performance (O.DP): Decision performance refers to the cumulative rewards 𝐺𝜋 that RL agent 𝜋achieves. It is crucial not to sacrifice performance in favor of explainability. Therefore, O.DP is necessary for all types of XRL methods to evaluate XRL effectiveness while all existing XRL methods do consider it as a fundamental indicator [13, 110, 124, 206, 208, 216]. (2) Fidelity (O.F): Fidelity measures the alignment between the generated explanation and the explained model, ascertaining the extent to which the explanation accurately portrays the behavior of the agent [147]. The quantification of fidelity varies depending on the employed methodologies. Concerning the intrinsic explanation of agent architecture, fidelity is assessed by measuring the disparity between the inexplainable policy 𝜋RL and the intrinsic explainable
+(1) User Prediction (S.UP): The accuracy of human prediction on both task and RL agent illustrates the effectiveness of the mental model reconstructed by RL explanation. A quantitative way is to make the user predict the agent decision 𝑎pred, compare to the real agent action 𝑎RL and calculate the hit rate � 𝑁|𝑎pred−𝑎RL|2/𝑁, where N is the overall test time [11, 95, 154, 171, 173]. The questionnaire method can also quantitatively evaluate the accuracy of prediction [99, 104, 106, 167], in which participants give out their task-related knowledge degree on RL agent decision and agent explanation. (2) User Confidence (S.UC): User confidence evaluates the reliability of RL explanation, instead of user prediction metrics fully trusting on RL explanation. User confidence stands for the persuasiveness of RL explainability [21, 53, 105]. The questionnaire method is a feasible approach to measure the confidence of user [17, 35, 115, 116, 134]. For trust and reliance aspects, many researchers [153, 165] track the action and intentions of users in the questionnaire to measure their trust and reliance on the explanations. Lim et al. [116] and Gedikli et al. [53] also explore the complexity of explanation by measuring response time Δ𝑡of user. (3) Descriptiveness (S.D): A large portion of XRL literature directly gives the descriptions of the explanation in case-study like state feature visualization [61, 238] and specific programmatic policy [215, 216] to illustrate the explainability in case-study. Despite the strong logic of the description in enhancing the persuasiveness of explanations, it should be noted that the description does not provide precise quantitative results. Currently, many XRL papers employ this approach to claim and demonstrate the explainability of their work [110, 121, 162, 206], leading us to consider descriptiveness as an informal subjective metric.
+3.2.2 Objective Assessment. Objective assessment entails the quantitative evaluation of explan tions by relying solely on objective outputs, such as agent actions and cumulative rewards, thereb eliminating the need for human feedback. These objective metrics provide quantitative evaluation of the agent effectiveness and avoid the potential biases introduced by subjective human judgmen
+eliminating the need for human feedback. These objective metrics provide quantitative evaluations of the agent effectiveness and avoid the potential biases introduced by subjective human judgment. (1) Decision Performance (O.DP): Decision performance refers to the cumulative rewards 𝐺𝜋 that RL agent 𝜋achieves. It is crucial not to sacrifice performance in favor of explainability. Therefore, O.DP is necessary for all types of XRL methods to evaluate XRL effectiveness while all existing XRL methods do consider it as a fundamental indicator [13, 110, 124, 206, 208, 216]. (2) Fidelity (O.F): Fidelity measures the alignment between the generated explanation and the explained model, ascertaining the extent to which the explanation accurately portrays the behavior of the agent [147]. The quantification of fidelity varies depending on the employed methodologies. Concerning the intrinsic explanation of agent architecture, fidelity is assessed by measuring the disparity between the inexplainable policy 𝜋RL and the intrinsic explainable policy 𝜋XRL, denoted as 𝐷(𝜋RL, 𝜋XRL) [127], where the function 𝐷represents a distance metric.
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+For extrinsic explanations on decision outcome, fidelity can be assessed by exploring how finetuning actions on significant states in explanation introduces changes in the accumulative return [65]. (3) Robustness (O.R): Robustness refers to the stability and reliability of the RL explanation when faced with various changes and disturbances [101, 201]. The assessment of robustness involves evaluating and validating the generated explanation under different conditions. Current evaluation methods add perturbation on state input [22, 22, 151] or model parameters [1, 2, 54], utilizing the difference of generated explanation to determine whether the explanation remains stable.
+For extrinsic explanations on decision outcome, fidelity can be assessed by exploring how finetuning actions on significant states in explanation introduces changes in the accumulative return [65]. (3) Robustness (O.R): Robustness refers to the stability and reliability of the RL explanation when faced with various changes and disturbances [101, 201]. The assessment of robustness involves evaluating and validating the generated explanation under different conditions. Current evaluation methods add perturbation on state input [22, 22, 151] or model parameters [1, 2, 54], utilizing the difference of generated explanation to determine whether the explanation remains stable.
+Objective assessment evaluates RL explainability rigorously and fairly. However, the lack of human feedback may lead to imprecise measurement of explainability correctness. Meanwhile, current objective assessment metrics are limited to the specific type of explanation. The field of RL explainability currently lacks universally accepted measurement methods, necessitating further research attention to address this gap.
+# 4 EXPLAINABILITY IN RL
+We construct the taxonomy of eXplainable Reinforcement Learning (XRL) based on the central target of explanation under the RL paradigm. These approaches typically do not give explanations for all aspects of the entire RL process like reward and task at the same time due to the complexity and intractability. Instead, they focus on making certain aspects of the RL paradigm understandable to human users while maintaining performance. The underlying model for an RL task can be segmented into several components, namely state, action, reward, agent model, and task. In our taxonomy, we organize existing explainable RL research based on these components: agent modelexplaining methods that directly show the decision-making mechanism of XRL agent, rewardexplaining methods that show how different factors within reward function influence agent policy, state-explaining methods that illustrate the state features at different time stages affecting agent behavior, and task-explaining methods that explain how the agent divide the complex task into subtasks and gradually complete these subtasks in long term. These XRL methods are further categorized based on the employed technique. We present this taxonomy in Figure 2. The detailed descriptions of these different XRL paradigm methods are presented in the following subsection.
+# 4.1 Agent Model-explaining
+Classical RL frameworks primarily aim to optimize the decision-making capability of the agent without focusing on the internal decision-making logic. In contrast, agent model-explaining XRL methods not only achieve high-performing agents but also extract the underlying decisionmaking mechanism of agent model to generate explanations. We categorize current agent modelexplaining XRL methods into two types: self-explainable and explanation-generating techniques. Self-explainable methods aim to generate explanations by the transparent inner agent model itself, whereas explanation-generating techniques provide explanations based on predetermined reasoning mechanisms.
+Classical RL frameworks primarily aim to optimize the decision-making capability of the agent without focusing on the internal decision-making logic. In contrast, agent model-explaining XRL methods not only achieve high-performing agents but also extract the underlying decisionmaking mechanism of agent model to generate explanations. We categorize current agent modelexplaining XRL methods into two types: self-explainable and explanation-generating techniques. Self-explainable methods aim to generate explanations by the transparent inner agent model itself, whereas explanation-generating techniques provide explanations based on predetermined reasoning mechanisms. 4.1.1 Self-explainable. A self-explainable model is intentionally designed to be self-explanatory throughout the training process, which is accomplished by imposing limitations on the complexity of the model structure [40, 166]. Such a model is also known as an intrinsic model [166], as it embodies transparency and ease of understanding. The explanation logic is inherently integrated within the agent model itself. Our work provides a comprehensive overview of the current self-explainable agent model in the XRL field and categorizes them into two types based on the approximating target of the explainable agent model: value and policy. This classification can be found in Table 1.
+4.1.1 Self-explainable. A self-explainable model is intentionally designed to be self-explanatory throughout the training process, which is accomplished by imposing limitations on the complexity of the model structure [40, 166]. Such a model is also known as an intrinsic model [166], as it embodies transparency and ease of understanding. The explanation logic is inherently integrated within the agent model itself. Our work provides a comprehensive overview of the current self-explainable agent model in the XRL field and categorizes them into two types based on the approximating target of the explainable agent model: value and policy. This classification can be found in Table 1.
+i): Value-based. The Q-value in RL measures the expected discounted sum of rewards that an agent would receive from a given state (𝑠,𝑎). This value can also be employed to construct a deterministic or energy-based policy[66, 114, 145]. Due to its direct influence on the agent policy, many value-based agent model-explaining XRL frameworks primarily concentrate on the Q-value model. The Linear Model U-tree (LMUT) [121] combines the concepts of imitation learning (IL) and continuous U-tree (CUT) [211], which can be considered as an advanced version of CUT for value function estimation. Similar to a typical decision tree, LMUT internal nodes store dataset features, while the leaf nodes represent a partition of the input space. However, in LMUT, each leaf node contains a linear model that approximates the Q-value instead of a simple constant. The Q-value approximation, denoted as 𝑄𝑈𝑇 𝑁𝑡, is obtained from the linear model within the corresponding LMUT leaf node. This approximation acts as an explanation by quantifying the individual effects of different features in LMUT. The researchers outline the training process for LMUT, which involves two steps: (1) data gathering phase counting all transitions𝑇within LMUT and modifying Q-values;
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b915/b915e758-05ef-4674-9104-cb1b4dee700d.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Agent Model-explaining</div>
+<div style="text-align: center;">(c) State-explaining</div>
+Fig. 2. Diagrams of different types of explainable reinforcement learning frameworks. These diagrams illustrate how different types of XRL framework makes different parts of the reinforcement learning model produce explanation and help experts get an insight into the reinforcement learning process. Note that these diagrams are just abstractions of the approaches that we will talk about. The more detailed learning process of the agent is not included in these diagrams. 𝑎,𝑟,𝑠refer to the action, reward, and states at time 𝑡. (a) constructs the agent on an explainable model to illustrate the inner mechanism of the agent. (b) reconstructs reward function 𝑟towards an explainable one 𝑟′. And 𝑟′ is constructed by quantifying the quantitative impact of various key factors, represented as 𝑓1, 𝑓2, · · · , 𝑓𝑛, on resolving the task. These key factors encompass crucial elements like final goal features and multi-agent cooperation. (c) adds a state analyzer submodule to quantify the influences of state features for each state input 𝑠. (d) gets an architectural level explainability in complex tasks by task division and multilevel agents. The high-level agent schedules low-level agents by the subtask signal 𝑔, which could be utilized as explanation.
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;">(d) Task-explaining</div>
+<div style="text-align: center;">Table 1. Self-explainable agent models in XRL approaches. The venue with ∗denotes that the pap published at the workshop of that venue.</div>
+Type
+Description
+Explanation
+Reference Year
+Venue
+Evaluation
+Value-based
+Learn to represent Q-value
+with explainable models.
+Decision Tree
+[121]
+2018 ECML-PKDD
+O.DP, S.D
+Formula Expression
+[135]
+2012
+DS
+O.DP, S.D
+Policy-based Learn to represent agent policy
+with explainable models.
+Programmatic policy
+[216]
+2018
+ICML
+O.DP, S.D
+[215]
+2019
+NeurIPS
+O.DP, S.D
+[86]
+2020
+NeurIPS
+O.DP, S.D
+[210]
+2021
+NeurIPS
+O.DP, S.UP, S.D
+Symbolic policy
+[75]
+2018
+EAAI
+O.DP, S.D
+[76]
+2019
+GECCO
+O.DP, S.D
+[107]
+2021
+ICML
+O.DP, S.D
+Fuzzy controller
+[74]
+2017
+EAAI
+O.DP, S.D
+[3]
+2019 ECML-PKDD∗
+O.DP, S.D
+Logic rule
+[91]
+2019
+ICML
+O.DP, S.D
+[159]
+2019
+arXiv
+O.DP, S.D
+[160]
+2020
+arXiv
+O.DP, S.D
+Decision Tree
+[176]
+2011
+ICML
+O.DP, S.D
+[13]
+2018
+NeurIPS
+O.DP, O.R, S.D
+[209]
+2019
+AAAI
+O.DP, O.F, S.D
+[36]
+2020
+arXiv
+O.DP, S.D
+[178]
+2020
+arXiv
+O.DP, S.D
+[208]
+2021
+AAAI
+O.DP, S.D
+[140]
+2022
+arXiv
+O.DP, S.D
+(2) node splitting phase by Stochastic Gradient Descent (SGD). When SGD fails to yield sufficient improvement on specific leaf nodes, the framework splits those leaf nodes to disentangle the mixed features. Experimental results demonstrate that LMUT achieves comparable performance to neural network-based baselines across various environments. Maes et al. [135] introduced a search algorithm exploring the space of simple closed-form formulas to construct Q-value. The variables within the formula represent the abstractions of state and action components, while the operations performed on these variables are unary and binary mathematical operations. The resulting policy is a greedy deterministic policy that selects the action with the maximum Q-value. The different operations employed in the formula highlight the varying effects of variables on the Q-value, thereby ensuring explainability. However, this method struggles with the combinatorial explosion during searching. The total number of variables, constants, and operations is limited to a small number to solve this problem. ii): Policy-based. Policy representation is considered a more direct approach compared to the Q-value, as it directly represents the decision ability of the agent. In this section, we provide a comprehensive analysis of the potential choices of policy models that have been proposed in the existing literature. In particular, Figure 3 showcases some representative approaches of this nature. Programmatic Reinforcement Learning (PRL) involves utilizing a program as the representation of the policy, enabling intrinsic explainability through logic rules within the program [86, 210, 215, 216]. This approach operates through two components, as shown in Figure 3a: programmatic policy generator and programmatic policy evaluator. The former updates the current programmatic policy vector within a fixed programmatic space, generating a programmatic policy through vector decoding. The latter involves simulating the generated programmatic policy to optimize the current policy in a one-step fashion. The main challenge in PRL lies in selecting an interpretable programmatic
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1697/16977fd4-b129-4de2-a295-41e039d0764b.png" style="width: 50%;"></div>
+<div style="text-align: center;">(a) Programmatic policy approaches</div>
+Fig. 3. Some examples of self-explainable policy-based methods. (a) illustrates current Programmatic Reinforcement Learning (PRL) approaches [86, 210, 215, 216] involving two alternating phases. Programmatic policy generator updates current latent policy vector 𝜙(𝜋𝑝′) with one-step optimization 𝜖from the policy optimizer, which is then decoded into a programmatic policy 𝜋𝑝for the next step. The programmatic policy evaluator utilizes the programmatic policy to sample batches of trajectories 𝜏𝑖for the policy optimizer to output one-step optimization 𝜖for the next update. (b) describes the current two types of Decision Tree (DT) policy approaches. DT policy transform methods [13, 140] first train a DNN-based optimal policy 𝜋DNN by DRL methods and then transfer the DNN policy into DT policy. And DT policy shaping methods [121, 178] directly shape a DT policy by interaction with the environment. They maintain the Q-value 𝑄(𝐿, ·) and weight 𝑤(𝐿) of the corresponding DT leaf node 𝐿while splitting the leaf node split for better performance.
+policy space. Verma et al. [216] constructs programmatic policy using a domain-specific high-level programming language based on historical data utilization, allowing for a quick understanding of past interactions influence. They propose Neurally Directed Program Search (NDPS) to construct such a policy. NDPS employs the DRL method to find a neural policy that approximates the target policy, followed by iterative policy updates through template enumeration using Bayesian Optimization [197] or satisfiability modulo theory to optimize the parameters. However, Verma et al. [215] argue that this method is highly suboptimal and propose a new framework based on the mirror descent-based meta-algorithm for policy search in the space combining neural and programmatic representations. For multi-agent communication, Inala et al. [86] synthesize programmatic policies based on the generated communication graph of the agents. Additionally, Trivedi et al. [210] learn a latent program space to improve the efficiency of programmatic policy search. Furthermore, the learned latent program embedding can be transferred and reused for other tasks. Formulaic expressions are also able to represent policies instead of value functions. Such policies are referred to as symbolic policies, comprising simple and concise symbolic operations that provide intrinsic explainability through succinct mathematical expressions [75, 76, 130]. However, searching the entire symbolic space to find the best fit is generally considered a computationally complex problem known as NP-hard [130]. To address this challenge, several studies [75, 76] utilize genetic programming for model-based batch RL to maintain a population of symbolic expression individuals as well as evolutionary operations. In contrast to a direct search for a symbolic policy, Landajuela et al. [107] propose a method where an inexplicable DNN-based anchor policy is utilized to generate an explainable symbolic policy. The policy can be constructed based on the combination of several fuzzy controllers [3, 56, 74]. Specifically, the agent policy, denoted as 𝜋(𝑎|𝑠), can be represented as a Gaussian Distribution
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023
+. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/72dc/72dcd444-b814-4330-868a-67d1710e8744.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) Decision tree (DT) policy approaches</div>
+N(𝑎|𝐾𝜑(𝑠), 𝛴), with 𝐾stacking actions for the cluster centers, 𝜑(𝑠) returning a weight vector based on the distance, and 𝛴being a state-independent full variance matrix. By evaluating the distance to cluster centers, the influence of different centers on actions can be analyzed. The policy gradient method is employed to facilitate training of such policies [3]. Additionally, another approach [74] applies parameter training on a world model to construct fuzzy RL policies. Both of them dynamically adjust the number of clusters and achieve explainable policies with high performance. First-order logic (FOL) serves as a foundational language to depict entities and relationships [12]. It underpins the policy representation in Neural logic RL (NLRL), which fuses policy gradient techniques with differentiable inductive logic programming [254]. The seminal work [91] on NLRL shows the enhancement of explainability through weighted logic rules, clarifying the rationale for action choices. Later advances assign weights to rule atoms, leveraging genetic programming technique for policy formula learning from historical interactions [159, 160]. This evolution positions NLRL as a tool for deriving potent policies with superior explainability and generalizability. Decision Tree (DT) for XRL has been categorized into policy-based and value-based strategies. While the linear model U-tree stands out as a DT variant in value-based XRL, DT-based policies are utilized to select actions based on distinctive features derived from DTs, thereby providing interpretable observations within RL tasks [13, 140, 176, 208, 209]. Frameworks for policy-based DTs are delineated in Figure 3b. With the efficacy of humans in acquiring policies on DDN via DRL, transforming DNN policies to DT policies is a promising strategy. For this, Verifiability via Iterative Policy Extraction (VIPER)[13] employs model distillation[81] to transmute pre-trained DNN policies to DTs using optimal policy trajectories. Techniques like Q-DAGGER [176] and MAVIPER [140] further refine and extend VIPER to more scenarios like multi-agent settings. Iterative Bounding MDP (IBMDP) [208] and policy summarization [209] also focus on extracting interpretable policies from DNNs. Another avenue pursues direct DT policy shaping. By maintaining weight information at the leaf nodes of DT to approximate Q-value and performing leaf node splits at specific stages, a high-performance DT policy can be obtained. Custode and Iacca [36] employ evolutionary algorithms to evolve the DT structure while applying Q-learning to the leaf nodes. Roth et al. [178] propose Conservative Q-Improvement (CQI), which uses lazy updating and expands the tree size only when the approximation of future discount rewards exceeds a specified threshold. 4.1.2 Explanation-generating. Explanation-generate methods employ an explicit auxiliary reasoning mechanism to facilitate the automatic generation of explanations. The acquisition of such an explicit reasoning mechanism for explanation relies on the emulation of human cognitive processes involved in learning novel concepts. In the following, we present a collection of influential works that illustrate these types of explainability, which are summarized in Table 2. Counterfactual explanations answer the question of "why perform X" by explaining "why not perform Y" (the counterfactual of X) [134, 155, 200, 241]. Olson et al. [155] crafts counterfactual states 𝑠′ that have minimal divergence from the current state𝑠, yet lead to distinct agent actions,while Stein [200] emphasize the Q-value discrepancies between counterfactual action pairs. On the causal front, Madumal et al. [134] leverages the causal model to grasp the world through distinct variables and potential interrelationships to further elucidate both action reasons and counterfactuals. However, the rigidity of the causal model hampers its adaptability, and the method can only be implemented in discrete action space. To bridge this gap, Yu et al. [241] melds attention-driven causal techniques, facilitating causal influence quantification in continuous action spaces and illuminating the longterm repercussions of such actions. Instruction-based Behavior Explanation (IBE) [49, 50] enhances explainability with formal agent instructions. In basic IBE [50], the agent acquires the capability to explain the behavior with
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023
+<div style="text-align: center;">Table 2. Explanation-generating agent models in XRL approaches. The venue with ∗denotes that the paper was published at the workshop of that venue.</div>
+. Explanation-generating agent models in XRL approaches. The venue with ∗denotes that the paper
+Description
+Explanation
+Reference Year
+Venue
+Evaluation
+Learn an explicit reasoning
+mechanism and generate the
+explanation automatically.
+Counteract
+[155]
+2021
+AI
+O.DP, O.F, S.UP, S.UC, S.D
+[134]
+2020
+AAAI
+O.DP, S.UP, S.UC, S.D
+[200]
+2021
+NeurIPS
+O.DP, O.F, S.D
+[241]
+2023
+IJCAI
+O.DP, S.D
+Instruction
+[50]
+2017
+HAI
+O.DP, S.D
+[49]
+2017
+ICONIP
+O.DP, S.D
+Answer to query
+[71]
+2017
+HRI
+O.DP, S.D
+[23]
+2022
+IJCAI
+O.DP, S.UP, S.UC, S.D
+[24]
+2023
+IJCAI
+O.DP, S.UP, S.UC, S.D
+Verify
+[96]
+2019 SIGCOMM∗
+O.DP, S.D
+[253]
+2019
+PLDI
+O.DP, O.F, S.D
+[4]
+2020
+NeurIPS
+O.DP, S.D
+[93]
+2022
+CAV
+O.DP, O.R, S.D
+instruction. The learning process includes estimating the target of the agent actions by simulation and acquiring a mapping from the target of the agent actions to the expressions with a clustering approach. However, it is difficult to divide the state space to assign an explanation signal in much more complex tasks. Consequently, in their advanced IBE approach [49], a neural network model is employed to construct the mapping, enabling its adaptability to intricate state space. With the pre-defined query template, the agent is able to explain its inner mechanism by answering [23, 24, 71]. Hayes and Shah [71] introduce a method wherein queries are mapped to decision-making statements via templates. They harness a graph search algorithm to pinpoint relevant states and summarize attributes in natural language. Although the generated policy explanations align with the expert expectations, their reliability in more complex tasks remains unverified. To address this, Boggess et al. [23] extend this approach to MARL by proposing Multiagent MDP (MMDP), an abstraction of MARL policy. They first transform the learned policy into an MMDP by a specified set of feature predicates to address "When, Why not, What" questions in MARL. However, the question templates ignore the task process, and Boggess et al. [24] make advancements addressing temporal queries regarding the task order. They achieve this by encoding the temporal query and comparing it with the transition model, resulting in contractive explanations. Formal verification techniques bolster safety in RL paradigms. Verily [96], for instance, accomplishes erification with the satisfiability modulo theories verification engine for DNN. If the verification result is negative, Verily can generate a counterexample through logical verification to explain the discrepancy. This counterexample can in turn guide the updates of the DNN parameter. Anderson et al. [4] adopt a similar approach, employing the idea of mirror descent shared by Verma et al. [215]. They perform updating and projecting steps between the neurosymbolic class and restricted symbolic policy class to enable efficient verification. Furthermore, Zhu et al. [253] propose a verification toolchain to ensure the safety of learning neural network policies. Likewise, Jin et al. [93] present a verification-in-the-loop training framework, which iteratively trains and refines the abstracted state space using counterexamples if verification fails.
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+Table 3. Reward-explaining methods in XRL approaches. The venue with ∗denotes that the paper was published at the workshop of that venue.
+Type
+Desciption
+Reference Year Venue Evaluation
+Reward decomposition
+Decomposing reward function and see
+the influence of components towards
+the decision-making process and the
+correspondence between each other.
+[46]
+2018
+AAAI
+O.DP, S.D
+[94]
+2019
+IJCAI∗
+O.DP, S.D
+[220]
+2020
+AAAI
+O.DP, S.D
+[111]
+2021 SIGKDD
+O.DP, S.D
+Reward shaping
+Directly shape an understandable
+reward function to guide agent training.
+[205]
+2019
+HRI
+O.DP, S.D
+[133]
+2019
+AAAI
+O.DP, S.D
+[231]
+2020
+AAAI
+O.DP, S.D
+[230]
+2021
+AAAI
+O.DP, S.D
+[142]
+2021 NeurIPS
+O.DP, S.D
+[92]
+2022
+AAAI
+O.DP, S.D
+[9]
+2022 NeurIPS
+O.DP, S.D
+4.1.3 Summarization. Agent model-explaining methods focus on extracting the internal decisionmaking mechanism of agents in addition to optimizing their decision-making capabilities. Meanwhile, agent model-explaining methods offer notable advantages and potential drawbacks. Firstly, these explanations are logically rigorous since self-explainable methods construct a transparent agent architecture, and explanation-generating methods rely on explicit rigorous reasoning mechanisms. Both of the two types of approaches elucidate the inner decision-making mechanisms of XRL agents [91, 215, 216] in detail, revealing how different task and observation aspects influence agent outputs [96, 134, 160]. Furthermore, such well-structured explanations can be easily verified by human experts through direct simulations [139, 209]. However, taking agent model itself as explanation is often abstract [75, 159], mathematized [3, 107], and specialized[86, 210], which may hinder understanding for non-experts. In terms of evaluation, self-explainable methods predominantly utilize S.D as an assessment criterion. These methods leverage the agent model itself to provide explanations and illustrate these explanations through case studies. While case studies showcasing intrinsic explainable policy instances, such as decision tree [121, 209] and programmatic policies [86, 210], are intuitively logical and reasonable, the absence of quantitative measurements limits their persuasiveness in demonstrating explainability. Instead, explanation-generating methods utilize various evaluation assessments such as S.UP, S.UC, O.F, and O.R, which are more formal and quantitative. Selfexplainable methods primarily rely on agent architecture to provide intrinsic explanations, which are highly formulaic and objectively described in detail. Therefore, objective assessments of O.F and O.R offer a more precise evaluation of the architecture-based explanation. Conversely, explanationgenerating methods producing explanations need more subjective assessments of S.UP and S.UC from human feedback since the core of explanation-generating methods is the extrinsic reasoning mechanisms conducting logical reasoning, which can be effectively evaluated via human participants with strong inferential abilities.
+# 4.2 Reward-explaining
+Reward-explaining methods reconstruct an explainable reward function through the quantification of various key factors that are instrumental in accomplishing the task, such as the degree of multiagent cooperation and the features of the final goal. The reward function plays a crucial role in RL tasks, serving as the primary factor for estimating actions in the short term and policies in the long
+term. The reward-explaining method involves explicitly designing an explainable reward function to provide explanations for the critical factors of the task. Building upon this notion, we categorize current reward-based XRL work into two types: reward shaping and reward decomposition. The approaches within each category are summarized in Table 3.
+4.2.1 Reward Decomposition. Reward decomposition methods aim to explain the inexplicable value of a reward function by breaking it down into several distinct parts that represent different aspects. The original reward function is a single scalar value influenced by multiple implicit factors. By decomposing the reward function, we can analyze the influence and relationships among these implicit factors. In this section, we introduce several reward decomposition methods. Horizontal reward decomposition [94] decompose the reward function in the MDP horizontally as �𝑅: S × A →R| C|, where C represents the number of reward components. Subsequently, the Q-value is also decomposed as 𝑄𝜋(𝑠,𝑎) = � 𝑐∈C 𝑄𝜋 𝑐(𝑠,𝑎). To explain the decomposition, the authors primarily focus on comparing pairwise actions. One straightforward approach is Reward Difference eXplanation (RDX) in the form of Δ(𝑠,𝑎1,𝑎2) = �𝑄(𝑠,𝑎1) −�𝑄(𝑠,𝑎2). RDX informs experts about which components may have an advantage over other factors, but it does not identify the most significant component. Moreover, RDX may offer limited explanations when the number of factors increases. To address this, the authors propose another form of explanation called Minimal Sufficient eXplanation (MSX). MSX is a two-tuple (MSX+, MSX−), with MSX+ selecting the minimal set of components where the total Δ(𝑠,𝑎1,𝑎2) surpasses a dynamic threshold, while MSX−checks the summation of −Δ(𝑠,𝑎1,𝑎2) with the other threshold. For multi-agent tasks, the widely adopted paradigm is Centralized Training with Decentralized Execution (CTDE), which allows agents to train based on their local view while a central critic estimates the joint value function. The primary challenge of CTDE lies in assigning credit to each agent. One effective tool for assigning credit to each local agent is the Shapley value [177], which represents the average contribution of an entity (or in the context of multi-agent RL, a single agent) across different scenarios. To compute the Shapley value, we can measure the change in the output when the target feature or agent is considered. Considering that the computational costs growing exponentially with the number of agents make it hard to approximate in complex environments, Foerster et al. [46] employs a counterfactual advantage function for local agent training. Nevertheless, this method neglects the correlation and interaction between local agents, leading to failure on intricate tasks. To address this limitation, Wang et al. [220] combine the Shapley value with the Q-value and perform reward decomposition at a higher level in multi-agent tasks to plan global rewards rationally: individual agents with greater contributions receive more rewards. Therefore, this method assigns credit to each agent, enabling an explanation of how the global reward is divided during training and how much each agent contributes. However, one drawback of this network-based method is its dependency on the assumption that local agents take actions sequentially without considering the synchronous running of agents. In contrast, Li et al. [111] employ counterfactual-based methods to quantify the contribution of each agent, which proves to be more stable and effective. 4.2.2 Reward Shaping. Directly obtaining an explainable reward function is another viable approach. Several studies [92, 133, 142, 205, 230, 231] have taken the route of directly seeking understandable reward function that explicitly captures the task structure, bypassing the need to explicitly explain the reward function component. Building upon the interactions between the agent and humans, Mirchandani et al. [142] present a reward-shaping approach that modifies the original sparse rewards with human instruction goals into a dense explainable reward. Similarly, The study conducted by Ashwood et al. [9] employs a
+4.2.2 Reward Shaping. Directly obtaining an explainable reward function is another viable approach. Several studies [92, 133, 142, 205, 230, 231] have taken the route of directly seeking understandable reward function that explicitly captures the task structure, bypassing the need to explicitly explain the reward function component. Building upon the interactions between the agent and humans, Mirchandani et al. [142] present a reward-shaping approach that modifies the original sparse rewards with human instruction goals into a dense explainable reward. Similarly, The study conducted by Ashwood et al. [9] employs a
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+meta-learning approach to acquire multiple goal maps, subsequently modifying the reward function by aggregating diverse goal map weights. Tabrez and Hayes [205] propose a framework that employs the Partially Observable MDP (POMDP) model to approximate collaborator understanding of joint tasks. The authors continually modify and correct the reward function in order to achieve this objective. If they discover a more plausible reward function, they evaluate whether the advantage of adopting it outweighs the cost of abandoning the previous function. Subsequently, a repairing representation is generated if the newly found reward function proves beneficial. To enhance the explainability of complex tasks, the adoption of multi-level rewards is a viable approach. Unlike task decomposition, where decomposed reward reflects the actual rewards from the environment, multi-level reward encompasses both extrinsic rewards from the environment and intrinsic rewards aimed at facilitating comprehension and explanation. Lyu et al. [133] introduce a two-level framework comprising extrinsic reward standing for real rewards within RL environments and intrinsic reward representing the achievement of inner task factors. Symbolic Planning approaches are utilized to maximize the intrinsic reward. Meanwhile, compared to Lyu et al. [133] utilizing the predefined intrinsic reward to generate plans, Jin et al. [92] extend their work by automatically learning the intrinsic reward, enabling faster convergence compared to the original approach. For the task of temporal language bounding in untrimmed videos, Wu et al. [231] propose a tree-structured progressive RL technique: while the leaf policy receives the extrinsic reward from the external environment, the root policy, which does not directly interact with the environment, evaluates rewards intrinsically based on high-level semantic branch selections. Meanwhile, to address challenges with defining intrinsic rewards resulting in inferior performance compared to extrinsic rewards, Wu et al. [230] introduce the concept of intrinsic mega-rewards to enhance the agent individual control abilities, including direct and latent control. A relational transition model is formulated to enable the acquisition of such control abilities, yielding superior performance compared to existing intrinsic reward approaches.
+4.2.3 Summarization. The reward-explaining method entails analyzing various factors in the task that profoundly influence agent behavior and incorporating them into the reward function to obtain RL explainability, which quantifies the influence of relevant task aspects to elucidate agent decisions within the updated reward function, thereby providing a clear and detailed depiction of the different task factor influence [94]. Moreover, Considering that the reward function in the MDP context is typically crafted manually with significant effort of RL researchers to improve agent performance, we posit that such explainable reward functions, which offer insights into how rewards affect the agent, can inform and guide the reverse design of reward function for RL researchers. However, it should be acknowledged that comprehending the rewards in the MDP may present challenges for people lacking a background in RL, which makes it challenging to verify such explanations via human users directly. All of the surveyed reward-explaining methods utilize S.D to assess RL explainability. These explanations in the original paper case study provide visualizations comparing the influences of different aspects of the task within the reward value, offering illustrative examples for case studies in the paper. In order to perform quantitative analysis of these reward-explaining methods in the future, we posit that objective assessment O.F is more required for future research. Different quantitative influences of factors are the backbone of reward explanation, which should be strictly measured for its fidelity objectively. A possible way to measure O.F is manually updating the reward against the reward explanation to see whether the agent performance falls rapidly [65].
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023
+<div style="text-align: center;">Table 4. State-explaining methods in XRL approaches.</div>
+Temporal perspective
+Desciption
+Reference Year
+Venue
+Evaluation
+Historical trajectory
+Quantify the influence of the occurred
+state in historical trajectory towards
+the decision making of agent.
+[250]
+2014
+AAAI
+O.DP, O.R, S.D
+[143]
+2018
+SSCI
+O.DP, S.D
+[187]
+2018
+AI
+O.DP, S.UP, S.UC, S.D
+[245]
+2021
+TCSS
+O.DP, S.D
+[65]
+2021
+NeurIPS
+O.DP, O.F, O.R, S.D
+[80]
+2021
+CIM
+O.DP, S.D
+[168]
+2022
+NeurIPS
+O.DP, S.UP, S.UC, S.D
+[97]
+2023
+ICLR
+O.DP, O.F, O.R, S.D
+Current observation
+Quantify the feature importance among
+the current state input towards the
+decision making of agent.
+[121]
+2018 ECML-PKDD
+O.DP, S.D
+[238]
+2018
+arXiv
+O.DP, S.D
+[57]
+2018
+NeurIPS
+O.DP, S.D
+[61]
+2018
+ICML
+O.DP, O.R, S.D
+[162]
+2018
+ICML
+O.DP, S.D
+[87]
+2018
+AIES
+O.DP, S.UP
+[110]
+2019
+arXiv
+O.DP, S.D
+[219]
+2019
+TVCG
+O.DP, S.D
+[5]
+2019
+AAAI
+O.DP, O.R, S.D
+[207]
+2020
+GECCO
+O.DP, O.R, S.D
+[233]
+2020
+NeurIPS
+O.DP, S.D
+[156]
+2020
+SIGKDD
+O.DP, S.D
+[206]
+2021
+NeurIPS
+O.DP, O.R, S.D
+[64]
+2021
+NeurIPS
+O.DP, S.UP, S.UC, S.D
+[218]
+2022
+ICML
+O.DP, O.F, S.D
+[19]
+2022
+NeurIPS
+O.DP, S.D
+[161]
+2022
+NeurIPS
+O.DP, S.UP, S.UC, S.D
+[14]
+2023
+ICML
+O.DP, S.D
+Future prediction
+Make prediction for the future state
+and check it in the future.
+[212]
+2018
+arXiv
+O.DP, O.R, S.D
+[157]
+2019
+ICRA
+O.DP, S.D
+[132]
+2019
+ICRA
+O.DP, S.D
+[239]
+2020
+NeurIPS
+O.DP, S.D
+[108]
+2020
+NeurIPS
+O.DP, S.D
+# 4.3 State-explaining
+State-explaining methods generate extrinsic explanations based on observation from the environment, which incorporate a state analyzer that allows for the simultaneous analysis of the different state features significance. According to the time stage of different states to construct the explanation, we divide current state-explaining methods into three types: historical trajectory-based methods focusing on past significant states, current observation-based methods emphasizing important features of current state, and future prediction-based methods inferring future states. We provide a brief review of the relevant literature pertaining to state-level explainability in Table 4. 4.3.1 Historical Trajectory. Starting from the trace of historical decisions, numerous studies aim to estimate the influence of historical observations on future decision-making by agents. Sparse Bayesian Reinforcement Learning (SBRL) [250] constructs latent space representing past experiences during training to facilitate knowledge transfer and continuous action search. SBRL offers an intuitive explanation for how historical data samples impact the learning process. Another approach, Visual SBRL (V-SBRL) [143], utilizes a sparse filter to maintain the significant past imagebased state while discarding the trivial ones, resulting in a sparse image set containing valuable past experience. Sequeira and Gervasio [187] identify interestingness state elements in historical observations from various aspects, such as the reward outliers and environment dynamics, and present
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c07d/c07d2137-f539-4079-9101-062847f942f3.png" style="width: 50%;"></div>
+<div style="text-align: center;">Importance Trough Specific Network Structure</div>
+(a) Specific network structure-based importance
+<div style="text-align: center;">(a) Specific network structure-based importance</div>
+Fig. 4. Some typical approaches to getting the importance of current state. (a) illustrates the method [5, 110, 161, 206, 207] that by adding specific network structures like convolutional neural network and attention network, the information of region and feature importance can be captured. This kind of importance can both be fed to DRL input for better performance and be provided as explanations for human users. (b) describes how to get importance trough perturbation [19, 61, 87, 162, 238]. First, generate different perturbations 𝑚𝑖 and impose them on the state input separately, then they are fed to the DRL policy to get policy 𝜋𝑚𝑖, which will next be compared with the complete state policy 𝜋𝑠according to difference function 𝐷(𝜋𝑠, ·). Thus, the importance of each feature or region will be obtained and delivered to human users. the detected observations in the video. Ragodos et al. [168] denote the important past experiences as prototypes, which are learned by contrastive learning during training. By integrating these prototypes into the policy network, human users are able to observe representative interactions within the task. Meanwhile, Ragodos et al. [168] generate a broader explanation by comparing current policy output with human-defined prototypes, demonstrating better trustworthiness and performance. The Shapley value also offers an effective approach for calculating and visualizing the contribution of each feature in prior trajectories. However, the naive computation of the Shapley value faces an exponential complexity. To mitigate this issue, Heuillet et al. [80] employ Monte Carlo sampling to approximate the Shapley value, while Zhang et al. [245] leverage DNN to compute the feature gradients and aggregate them as a Shapley value to develop a 3D feature-time-SHAP map enabling the visualization of the significance of each timestep. Previous surveyed methods only focus on the historical interactions within an episode, Guo et al. [65] extend their horizon by considering interactions across episodes. They incorporate a deep recurrent kernel of the Gaussian Process that takes inputs of timestep embeddings to capture the correlation between timesteps as well as the cumulative impact across episodes. Furthermore, these outputs can be employed for episode-level reward prediction via linear regression analysis. The regression coefficients obtained from the linear regression model can identify important timesteps, thereby enhancing the explainability of the results. 4.3.2 Current observation. Numerous studies aim to identify critical features influencing decisionmaking in the current state, particularly in image-based environments. These approaches offer extrinsic explanations by analyzing the impact of state features on agent behavior. Different methods that fall under this category are depicted in Figure 4. The linear model U-tree (LMUT) method [121] introduces an approach for evaluating the importance of features. The impact of an LMUT node is assessed by the certainty of the Q-value and the square weight of the within features, respectively. The paper applies it to some video games and gets pixels with relatively high influence. The explanation denotes such pixels as “super-pixels” that have a great influence on the current decision-making process. Several studies leverage self-attention, allowing the creation of an attention score matrix, which highlights relationships among input features for improved explainability [5, 61, 87, 110, 161, 206,
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/40be/40be540b-a626-4fad-816f-a651857d751f.png" style="width: 50%;"></div>
+<div style="text-align: center;">Importance Trough Perturbation</div>
+<div style="text-align: center;">(b) Perturbation-based importance</div>
+207, 233, 238]. In contexts like agent interaction in self-driving scenarios [109], self-attentionbased DNN [110] discerns relations amongst multiple entities. Extending this, Tang and Ha [206] use attention neurons for honing in on specific state components. Meanwhile, Annasamy and Sycara [5] integrate attention within DNNs to develop auto-encoders for input state reconstruction. Neuroevolution combined with self-attention [207] selects spatial patches over individual pixels, enabling the agent to focus on task-critical areas, thus amplifying efficacy and clarity. Yang et al. [238] introduce a region-sensitive module post-DNN to pinpoint essential input image regions, serving as an explainable plug-in module integrated into classical RL algorithms [144, 186]. Shifting from pixel-centric states, Xu et al. [233] design a hierarchical attention model for text-based games using a Knowledge Graph (KG), capturing state feature relationships. Building on this, Peng et al. [161] enhance explanations by integrating multiple subgraphs with template-filling techniques. Saliency maps, distinguishing from attention by highlighting specific parts of scenes, like objects or regions, have been adopted to increase explainability in RL agents. These maps showcase pixel influences on image classifications through gradient measurements of normalized scores. Several notable studies have contributed to XRL domain [14, 61, 64, 87, 156, 162, 218, 221]. Petsiuk et al. [162] gauged pixel significance by applying a random value mask and evaluating its decision impact, extended by Pan et al. [156] for geographic areas. Greydanus et al. [61] introduced perturbationbased saliency, perturbing certain features certainties to discern their impacts on policy. This was employed by Guo et al. [64] to juxtapose human and RL agent attention patterns, indicating RL training potential to humanize agents. Improving on this, Bertoin et al. [19] harnessed unsupervised learning for perturbation-based saliency maps and agent training regularization. Meanwhile, Wäldchen et al. [218] applied convolutional neural networks for partial feature interpretations, whereas Beechey et al. [14] leveraged shapley values to analyze the effects of feature removals. Lastly, the object saliency map [87], an advancement over pixel-based maps, integrates template matching, enabling easier human interpretations by connecting pixel saliency maps with object detection. In contrast to relying on local spatial information, Goel et al. [57] utilize flow information to capture and segment the moving object in the image. Therefore, the policy can focus on moving objects in a more interpretable manner. Furthermore, Wang et al. [219] propose a specialized framework for visualizing DQN [145] process. This visualization provides insights into the operations performed at each stage and the activation levels of each layer within the deep neural network.
+about the future using the trained agent. A common approach to predicting the future involves repeated forward simulations from the current state [212]. However, these simulations may be unprecise due to stochastic environmental factors and approximate biases in training [69]. To address this, Yau et al. [239] maintains the discounted expected future state visitations with temporal difference loss to further construct the belief map. The training process of such a belief map is consistent with current value-based inexplainable RL frameworks. This advantage renders it an explainable plug-in for value-based RL methods. Lee et al. [108] combine future prediction with multi-goal RL, facilitating trustworthy predictions of goal for the current state. Semantic Predictive Control (SPC) [157] dynamically learns the environment and aggregates multi-scale feature maps to predict future semantic events. Additionally, Lütjens et al. [132] employ an ensemble of LSTM networks trained using Monte Carlo Dropout and bootstrapping to estimate the probability of future events and predict uncertainty in new observations.
+J. ACM, Vol. 1, No. 1, Article 1. Publication date: January 2023.
+<div style="text-align: center;">Table 5. Task-explaining methods in XRL approaches.</div>
+Type
+Desciption
+Reference Year Venue Evaluation
+Whole Top-to-Down structure Subtasks are orginized into multi-level task, with
+lower-level tasks being subsets of higher-level tasks.
+[190]
+2018
+ICLR
+O.DP, S.D
+[149]
+2020 NeurIPS
+O.DP, S.D
+Simple task division
+The subtasks are divided on an equal footing, with
+manually setting a high-level task aiming to
+schedule these subtasks.
+[90]
+2019 NeurIPS
+O.DP, S.D
+[20]
+2019
+IROS
+O.DP, S.D
+[229]
+2020 AAMAS
+O.DP, S.D
+[198]
+2021
+ICML
+O.DP, S.D
+[133]
+2021
+TCSS
+O.DP, S.D
+4.3.4 summarization. State-explaining methods provide extrinsic explanations on states received from the environment, which comprehensively illustrate the quantitative impact of distinct state features [78, 162], offering detailed post-hoc explanations for agent decisions. Moreover, these explanations are presented with intuitive visualizations, making them accessible even to nonexperts in RL. However, it is important to note that current state-explaining methods primarily concentrate on feature importance and hardly capture the agent’s long-term motivation and planning. Consequently, while the recipient of the explanation gains an understanding of the relevant features of the agent current behavior, the inner mechanism and ultimate goal of the agent remain undisclosed, which creates obstacles to verify the explanation directly. Existing state-explaining methods undergo evaluation through various assessments, encompassing both subjective and objective measures. O.R stands out as the predominantly employed quantitative assessment [5, 206]. To further evaluate the quality of explanations in various aspects, it is necessary to utilize more objective methods of O.F and O.R to assess the accuracy and robustness of the RL agent allocation of significance to different features at different times. However, subjective measurement is not applicable since gathering a significant amount of evaluation data through human feedback would be time-consuming and ineffective.
+# 4.4 Task-explaining
+Task-explaining method explains how to divide the current complex task into multiple subtasks via the hierarchical agent. In a hierarchical agent, a high-level controller selects options, while several low-level controllers choose primitive actions. The option chosen by the high-level controller acts as a sub-goal for the low-level controllers to accomplish. This division of labor in HRL, involving RL tasks and options determined by the high-level controller, enhances the architectural explainability compared to the aforementioned XRL works, providing insight into how the high-level agent schedules the low-level tasks. In this context, we delve into HRL and categorize its approaches into two parts: the whole top-down structure and simple task decomposition according to the scheduling mechanism of high-level agents. These categorized approaches are presented in Table 5. 4.4.1 Whole Top-to-Down Structure. In hierarchical tasks with this structure, the task sets are partitioned into multiple levels. The low-level task sets are subsets of the high-level task sets, with the latter possessing task elements that are absent in the lower task sets. This well-defined and coherent structure lends itself to explainability as it aligns with human life experiences and enables observations of how the high-level agent schedules the low-level tasks. A notable study (STG) proposes an approach to train a hierarchical policy in a multi-task environment. The task division sets, denoted as 𝐺1,𝐺2, ...,𝐺𝑘, follow a hierarchical structure: 𝐺1 ⊂𝐺2 ⊂... ⊂𝐺𝑘. At each level, a policy 𝜋𝑘comprises four components: a base task set policy 𝜋𝑘−1, an instruction policy 𝜋𝑖𝑛𝑠𝑡 𝑘 for providing instructions 𝑔to guide the execution of base tasks by 𝜋𝑘−1, an augment flat policy 𝜋𝐴𝑢𝑔 𝑘 that directly selects actions for 𝜋𝑘instead of relying on base
+4.4.1
+tasks, and a switch policy 𝜋𝑠𝑤 𝑘 that determines whether to choose actions from the base tasks or the augment flat. The state is represented as the pair (𝑒𝑡,𝑔𝑡), where 𝑒𝑡signifies time and 𝑔𝑡 represents the instruction. This state, based on a temporal sequence, can be viewed as a finite state Markov chain, enabling analysis of the

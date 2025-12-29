@@ -1,0 +1,198 @@
+# Voting Network for Contour Levee Farmland Segmentation and Classification
+Abolfazl Meyarian and Xiaohui Yuan Department of Computer Science and Engineering University of North Texas, Denton, TX, USA 76201 AbolfazlMeyarian@my.unt.edu, xiaohui.yuan@unt.edu
+Abstract
+High-resolution aerial imagery allows fine details in the segmentation of farmlands. However, small objects and features introduce distortions to the delineation of object boundaries, and larger contextual views are needed to mitigate class confusion. In this work, we present an end-to-end trainable network for segmenting farmlands with contour levees from high-resolution aerial imagery. A fusion block is devised that includes multiple voting blocks to achieve image segmentation and classification. We integrate the fusion block with a backbone and produce both semantic predictions and segmentation slices. The segmentation slices are used to perform majority voting on the predictions. The network is trained to assign the most likely class label of a segment to its pixels, learning the concept of farmlands rather than analyzing constitutive pixels separately. We evaluate our method using images from the National Agriculture Imagery Program. Our method achieved an average accuracy of 94.34%. Compared to the state-of-the-art methods, the proposed method obtains an improvement of 6.96% and 2.63% in the F1 score on average.
+Superpixel, Segmentation, Voting, Multi-Task.
+# I. INTRODUCTION
+High-resolution remote sensing imagery enables improved quality of many applications such as land cover classification [1] and irrigation practice mapping [2]. The fine details of high-resolution images introduce new challenges [3], [4]. Small objects and features that are invisible in low-resolution images become prominent in high-resolution images, which inversely impacts the correct delineation of object boundaries and classification. Moreover, spatial color and texture variations across regions within cropland, in these images become more noticeable and cause strong edges and features for a model to capture and process. Such information is not useful in all cases and may introduce confusion to the model learning process. Detection of the contour levees that depends on the differentiation of cropland borders from the levees is affected by such high resolution, as the homogeneous areas between the levees may look like individual crops. Therefore, the classifier needs to learn the cropland rather than focusing on localities. The use of contextual data has a strong correlation with the receptive field of a network. Using several convolutional layers of large kernel sizes, hence a deeper network increases the receptive field [5], [6], [7], [8], [9]. However, more layers to a network make training and optimization difficult, due to the gradient vanishing problem. Pooling operations also implicitly increase the receptive field but decrease the resolution, which causes difficulties in the recovery of the information. Alternatively, features in multiple scales have been used. Feature Pyramid network (FPN) [10] uses extracted features at different scales using parallel streams of convolutional layers. DeepLabV3+ [8] uses atrous convolution in large different rates to increase the size of the receptive field and capture long-distance sparse relations between pixels. Using superpixel-based pre/post-processing is another common technique to improve prediction consistency. SAGNN [11 uses SLIC segmentation to generate superpixels to build a graph, where features of the nodes are provided by a neural network. Predictions for each node are made through the convolutional head of the network. Gradient CNN [2] uses superpixels for majority voting. Applying superpixel segmentation on low-resolution images leads to improved computation cost at the expense of losing the quality of object boundaries (see Fig. 1(d)). This is partly caused by the unawareness of the semantic label of pixels. A trainable segmentation network overcomes the above problems and deep network-based segmentation methods have been developed [12], [13], [14], [15]. In addition to the color and position of the pixels, these methods use semantic labels to generate precise superpixel segmentation. Jampani et al. [12] created unified image segmentation and feature extraction method that uses a differentiable SLIC [16] to group pixels. Due to the iterative nature of SLIC, SSN has a high computational cost that requires the model to limit the similarity assessments of pixels to a small neighborhood. arXiv:2309.16561v1
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a557/a5574d8b-29d2-401e-9645-9da66b604a3e.png" style="width: 50%;"></div>
+<div style="text-align: center;">g. 1. Farm land with contour levee and segmentation results. Farmlands with contour levee are depicted in green. (a) the aerial image, (b) t sult by our proposed method, (c) the result by SegNet [7], and (d) the result by Gradient CNN [2]. The accuracy is reported in parentheses.</div>
+Therefore, SSN does not consider the long-distant relations between pixels in large objects. By using the reconstruction loss based on pixel attributes, these methods are more robust to the noises in the high-resolution image representations, which eliminates the need for downsampling. Xia et al. [14] developed a W-Net that uses two U-Nets for unsupervised image segmentation. The W-Net creates the image segments and reconstructs the image given the position and color features of the segments. It leverages the CRF method for detecting boundaries. This paper proposes an end-to-end trainable segmentation method that ensures the homogeneity of each segment and allows seamless integration with the downstream tasks. The method generates farmland segments and predicts their semantic labels. The training considers the prediction of pixels in the neighborhood. The trainable voting mechanism encourages the network to look at pixels in the context of the neighborhood. The inclusion of superpixel-in-loop helps refine the quality of the semantic areas to the closest agreement with the boundaries of the input image. Fig. 1(b) illustrates an example of the prediction result and our proposed method achieved a much-improved accuracy. The rest of this paper is organized as follows: Section II presents the details of our proposed method. Section III discusses the evaluation results, including performance analysis and a comparison study. Section IV concludes this paper with a summary.
+# II. METHOD
+Our method extends DeepLabV3+ [8], shown as the backbone in Fig.2, by including a fusion block that has multiple parallel voting blocks. The network takes an RGB image as the input and generates semantic prediction output, denoted with C, and multiple slices, each of which contains a segment. These segments are denoted with S. The number of segment slices is K, which decides the maximum number of possible mutually exclusive fields in the image. The value of K is fixed throughout the entire training and test phases. In each slice of S, pixel values are in the range of [0, 1], determining the probability of membership for each pixel to the segments. Therefore, for a pixel of the input image, there are K probabilities provided in total. To obtain such probabilities, a softmax function is applied to the K value at each coordinate of S across all the slices. These segments of S are used in the fusion block for majority voting. The semantic prediction of each segment is refined using the voting block. The parameter K determines the maximum number of segments in the image. However, the network can identify fewer segments depending on the image at hand.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1503/15033d78-4bcb-4fb7-8196-c8ec9a57ee24.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 2. The architecture of VoteNet. The VoteNet uses a backbone to generate the segmentation slices S, and semantic prediction C, which contain K and 2 slices, respectively. Then both S and C maps are passed to Fusion Block for voting-based refinements, which generates an output with</div>
+If the maximum number of segments K is large, the model tends to over-segment the image. When we have a small K, we face under-segmentation that is erroneous. The ideal value for K is the number of fields in an image, which
+is unknown. Alternatively, we use the maximum number of fields in the training images as the value for K. In our experiments, ten is used, which gives satisfactory results. We devise a deep majority voting module using the segment slices S and semantic prediction C on the predictions using a fusion block. The structure of FB is illustrated in Fig. 3. The FB creates a voting process for each segment slice using a Voting Block (VB). Given an input segment Si and the segmentation prediction C, the voting block generates a refined segmentation Mi. The FB collects the refined features and performs an element-wise summation to obtain the refined segmentation map F for the image.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c15b/c15bd85c-2dd9-4f04-82d2-8783b476dc9a.png" style="width: 50%;"></div>
+Each voting block inside the FB computes the number of labels and assigns the most frequent one to the entire segment, i.e., majority voting. Fig. 4 depicts its structure. To achieve majority voting, it first extracts the area of interest for Si, through element-wise multiplication of Si and C, denoted as Oi. A summation of pixels across the width and height dimensions is performed on the product Oi to get the count of pixels in segment Si belonging to the background and contour classes, denoted by Nib and Nic, respectively. The class probability is computed by applying softmax to Nib and Nic, which are broadcasted to Si through an element-wise multiplication of Si and each class probability. The element-wise products are concatenated and form the semantic segmentation mask for Si. The voting block is applied to all segments in the fusion block. The segmentation mask for the image is obtained with an element-wise addition of all masks.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/94fa/94fac7b7-b5c5-45ce-8719-fb6d0cb7dbd2.png" style="width: 50%;"></div>
+Fig. 4. Structure of the voting Block.
+<div style="text-align: center;">ction consists of two parts: label-centric loss and region-centric loss. In the label-centric loss, we use entropy to compute the classification loss between the network output F and ground-truth L as follows:</div>
+# Our loss function consists of two parts: label-centric loss and region-centric loss. In the label-centric loss, we use ighted cross-entropy to compute the classification loss between the network output F and ground-truth L as follows:
+weighted cross-entropy to compute the classification loss between the network output F and ground-truth L as follows: −ηL log(ρ(F)) −(1 −L) log(1 −ρ(F)) (1) where η is the weight given to the penalization of the network for misclassifying the contour class and ρ(·) is the sigmoid function. To optimize the initial segmentation map C we compute an unweighted softmax cross-entropy of the segmentation map and the ground truth: −L log(ρ′(C)) −(1 −L) log(1 −ρ′(C)) (2)
+−ηL log(ρ(F)) −(1 −L) log(1 −ρ(F))
+− − − − where η is the weight given to the penalization of the network for misclassifying the contour class and ρ(·) is the sigmoid function. To optimize the initial segmentation map C we compute an unweighted softmax cross-entropy of the segmentation map and the ground truth: −L log(ρ′(C)) −(1 −L) log(1 −ρ′(C)) (2)
+(1)
+(2)
+where ρ′ is the softmax function. Given a feature map A, with W × H × D, where D is the number of feature channels, we calculate the features of the segment centroid Ak as follows: �
+� he features of each pixel at (i, j) are reconstructed using a weig
+The contribution of each centroid is proportional to the membership of the pixel to that superpixel. The granularity error between the reconstructed and original features of pixels depends on the type of feature map considered for reconstruction. To reconstruct semantic labels L, we use softmax cross-entropy, similar to Eq. (2). The label-centric loss term Lc is computed as follows:
+The region-centric loss term includes errors of partition, position, and color. The Partition Coefficient [17] determines the level of certainty of the membership of data records to their corresponding clusters. Given the membership probabilities Q for the ith data sample provided by a clustering method, it is computed as follows:
+where Z is the number of clusters. The partition coefficient has a range of ( 1 Z , 1). At the minimum score 1 Z , we have the most uncertain clustering setting in which the data sample is equally probable to be part of any cluster. Therefore, maximizing this term is the goal to obtain the best clustering. In a segmentation result, each pixel belongs to only one image segment. However, if it is assigned to multiple segments, with almost equal affinity values, the optimization algorithm will issue gradients of the reconstruction losses for the contribution of the pixel to each segment it belongs to. This may lead to sub-optimal segmentation decisions. Partition Coefficient is used to force the network to assign each pixel to only one superpixel with high confidence and ensure a smooth optimization procedure and formation of image segments. The lost term is computed as follows:
+where N is the product of H, W, and K. Similar to the reconstruction of the label, we use reconstruction loss on the position, P, and color, Ψ, features of the pixels to obtain high-quality image segments. To calculate the granularity error, we have the distance metric D as follows:
+where M is the product of H and W, and ˆPij and ˆΨij are the reconstructed position and features of pixel at location (i, j). The region-centric loss term Lr is: H,W H,W,K
+where M is the product of H and W, and ˆPij and ˆΨij are the reconstructed position and features of pixel  (i, j). The region-centric loss term Lr is:
+The loss function of our network is the weighted summation of the two terms as follows: L = λcLc + λrLr,
+L = λcLc + λrLr,
+L = λcLc + λrLr,
+L = λcLc + λrLr,
+where λc and λr are weights.
+(3)
+(4)
+(5)
+(6)
+(7)
+(8)
+(9)
+(10)
+# A. Dataset and Settings
+Our dataset consists of images from the National Agriculture Imagery Program with a 1-meter resolution in three counties of Arkansas in 2015. The images cover an area of 400 million square meters. In our experiments, we augmented the dataset with rotations at [5, 10, . . . , 180] degrees to obtain more training data.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2fe4/2fe4edb8-fbc7-47f0-95aa-889b5334a9ee.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b7d2/b7d20e67-e04d-4b7b-a4b7-4190deafb4a8.png" style="width: 50%;"></div>
+<div style="text-align: center;"> 5. The sampling technique for generating training image patches.</div>
+To generate the training data, we compute the center of each farmland and take a neighborhood within a radius r. A point on the perimeter of the circle is selected in every α degree, which serves as the center of a sampled patch. The patches with at least 35% of pixels marked as contour levees are kept. Fig. 5 shows three patches outlined with squares. In our experiments, we used 0.1R, 0.2R, and 0.3R for r, where R is the minimum of height or width of the farmland. We use a sliding window to generate patches of background pixels. As a result, over 178,000 patches are generated, from which 103,000 randomly selected patches are used for training.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2e92/2e920e79-91d0-4bb2-9512-72cc8ae7db8d.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 6. An exemplar case and the results by Gradient CNN, FPN-512, and VoteNet(FPN). Regions in reddish color are farmlands with contou evee irrigation practices. The accuracy of each model is also reported in parentheses.</div>
+We use DeepLabV3+ as the backbone network. The optimization technique is the Adam with weights for computing moments at 0.9 and 0.999. The learning rate is initialized with 10−4 and changed to 10−5 after one epoch and remain the same for the rest of the training. Our model was trained with three epochs. In prediction, the connected component
+with at least 2,000 pixels are extracted for majority voting to avoid voting on small noisy segments. Our evaluation metrics include accuracy, F1-score, and Balanced Error Rate (BER, the average error of all classes).
+with at least 2,000 pixels are extracted for majority voting to avoid voting on small noisy segments. Our evaluation metrics include accuracy, F1-score, and Balanced Error Rate (BER, the average error of all classes).
+# B. Evaluation of Window Stride
+The stride used to move the sliding window can generate overlapping or non-overlapping windows. Table I provides the average performance of the network concerning different strides S. The best results are highlighted with boldface font and the second best is underlined. The second column presents the number of patches with a size of 512 × 512. Given the size of the input image, having a stride of 512 is considered a non-overlapping scan.
+# TABLE I
+<div style="text-align: center;">TABLE I AVERAGE PERFORMANCE USING DIFFERENT STRIDE SIZES (S). THE STANDARD DEVIATION IS REPORTED IN PARENTHESES.</div>
+<div style="text-align: center;">RAGE PERFORMANCE USING DIFFERENT STRIDE SIZES (S). THE STANDARD DEVIATION IS REPORTED IN PARENTHESES.</div>
+Stride
+#
+Accuracy
+BER
+F1
+64
+5041
+94.71 (0.03)
+0.082 (0.002)
+89.19 (0.12)
+128
+1296
+94.70 (0.04)
+0.082 (0.002)
+89.15 (0.12)
+256
+324
+94.52 (0.12)
+0.082 (0.0)
+89.05 (0.10)
+512
+81
+93.88 (0.11)
+0.095 (0.003)
+87.37 (0.31)
+Among all the variations, the model achieved the best performance when the stride size was 64 pixels. The large overlap between sliding windows allows us to get more predictions to form a stronger decision. On the other hand, a small stride dramatically increases the processing time. And the difference in accuracy is less than 0.3% between strides 64, 128, and 256. Compared to the stride at 128, the time spent on testing increased by about four times at the stride size of 64. To balance the computational cost and performance, we use a stride of 256 in the rest of our experiments.
+# C. Analysis of Loss Terms
+To evaluate the contribution of label- and region-centric loss terms, we normalize the range of all loss terms to [0−1]. In the baseline case, one is used for λc and λr, i.e., an equilibrium between the label and region-centric components. For each term, we increased or decreased its weight to 1.6 and 0.4, while keeping the rest unchanged. Reducing λc or increasing λr is equivalent to paying more attention to region-centric losses. This case makes the model more similar to traditional techniques of segmentation which heavily rely on the color and position of the pixels. A decrement of λr or increment of λc creates more of a label-guided image segmentation, ignoring the color and position components. We have also added the dynamic range of the total losses, referred to as Loss Val. Again, the best value of each column is shown with boldface font, and the second best is underlined.
+<div style="text-align: center;">TABLE II PERFORMANCE COMPARISON OF USING DIFFERENT LOSS WEIGHTS.</div>
+<div style="text-align: center;">TABLE II PERFORMANCE COMPARISON OF USING DIFFERENT LOSS WEIGHTS.</div>
+Param.
+Val.
+Loss Val.
+Accuracy
+BER
+F1
+Baseline
+4
+93.83 (0.06)
+0.088 (0.004)
+87.33 (0.42)
+λc
+0.4
+2.8
+90.28 (0.26)
+0.110 (0.002)
+82.59 (0.41)
+1.6
+5.2
+93.75 (0.50)
+0.087 (0.003)
+87.29 (1.05)
+λr
+0.4
+2.8
+94.34 (0.23)
+0.083 (0.001)
+88.38 (0.51)
+1.6
+5.2
+92.23 (0.48)
+0.099 (0.006)
+85.21 (0.92)
+Table II reports the average performance of the trained models using different weight combinations. A decrease of λc or an increase of λr makes the model more prone to noises in color, therefore, a loss of performance in comparison to the baseline. In the case of decreasing the λr, a performance boost is observed. This shows that the use of semantic labels alongside the color and position of pixels leads to higher precision in segmentation. Worth noting that in this configuration the model experiences a lower dynamic range for the total loss function compared to the baseline. Theoretically, it was expected that due to the higher contribution of label-centric loss an improvement occurs, however, a larger value for the total loss did not allow the network to obtain such improvement. Such instability of the network in this case compared to the baseline is also confirmed by the larger values of the standard deviation.
+<div style="text-align: center;">PERFORMANCE COMPARISON OF VOTENET WITH STATE-OF-THE-ART ON 18 TILES OF ARKANSAS, WOODRUFF, AND LONOKE COUNTIES. TH METHODS IDENTIFIED WITH ⋆ARE TRAINED WITH IMAGES OF SIZE 300 × 300.</div>
+ ×
+Method
+Accuracy
+BER
+F1
+U-Net [9]
+83.59 (0.30)
+0.185 (0.004)
+70.29 (0.49)
+SegNet [7]
+84.26 (1.17)
+0.196 (0.002)
+69.30 (0.003)
+Gradient CNN⋆[2]
+89.88 (0.18)
+0.136 (0.005)
+80.62 (0.20)
+FPN [18]
+91.24 (1.74)
+0.145 (0.033)
+81.15 (4.40)
+DeepLabV3+ [8]
+93.56 (0.46)
+0.110 (0.010)
+86.11 (0.53)
+VoteNet (FPN)
+93.30 (0.13)
+0.094 (0.001)
+86.80 (0.22)
+VoteNet (DeepLabV3+)
+94.34 (0.23)
+0.083 (0.001)
+88.38 (0.51)
+# D. Performance Comparison
+Table III reports the performance comparison of the VoteNet with two different backbones against the state-of-the-art methods. Each method was trained three times and the average performance is reported. Each method is evaluated in terms of accuracy, BER, and F1 score. Different from accuracy and F1, a smaller BER indicates better performance. Among the compared methods, VoteNet obtained the best performance. Compared to the second-best (highlighted with an underscore), VoteNet improves the accuracy, BER, and F1 by 0.83%, 24.54%, and 2.63%, respectively. When FPN is used as the backbone network of our VoteNet, we observe a 2.2% improvement of accuracy. Similarly, DeepLabV3+based VoteNet achieves an improvement of 0.83% in contrast to DeepLabV3+. It is evident that our VoteNet framework improves the segmentation performance. The number in parenthesis reports the standard deviation (STD). Both versions of VoteNet have a small STD. This implies great consistency in the segmentation results. Gradient CNN also demonstrates consistency, which is a result of majority voting-based postprocessing. Fig. 6 illustrates the results of some representative methods. Although the FPN demonstrates a higher level of consistency and accuracy in the predictions compared to Gradient CNN, however, it still lacks quality in the prediction of cropland boundaries. Such cases are shown in Fig. 6(c) in the middle-left and middle-bottom crops. On the other hand, VoteNet(FPN) using the same backbone, presents a high-quality boundary prediction with an accuracy of 99.3% that shows its improved understanding of the concept of croplands as individual objects.
+# E. Training Time Efficiency
+For all methods except the VoteNet, we use the predefined softmax cross-entropy loss. All methods are trained and evaluated on our machines which use the Ubuntu 20.04 operating system, an Intel i7-10700k CPU, and 32GB of memory, equipped with an Nvidia RTX-3090 with 24GB memory. Our method is implemented using Python 3.8 and Tensorflow 2.4. Table IV reports the Training Time Per Epoch (TTPE) and the total number of trainable parameters of our method and the state-of-the-art methods. The methods are ordered according to the TTPE. The training time of VoteNet is mainly affected by the efficiency of the backbone used, while the number of parameters depends only on the number of slices. For the case of using FPN as the backbone, the overhead training time of VoteNet is about 1 hour, compared to the training time of the FPN. The time complexity is comparable. The number of additional parameters is 0.266 million.
+<div style="text-align: center;">TABLE IV PERFORMANCE COMPARISON OF VOTENET WITH STATE-OF-THE-ART MODELS IN TERMS OF TRAINING TIME PER EPOCH (TTPE) AND NUMBER OF PARAMETERS OF THE NETWORK.</div>
+Method
+TTPE (s)
+# of Param. (M)
+Gradient CNN [2]
+3112
+10.710
+U-Net [9]
+5991
+31.031
+VoteNet (DeepLabV3+)
+8592
+41.053
+SegNet [7]
+11407
+29.434
+DeepLabV3+ [8]
+14089
+41.050
+FPN [18]
+35376
+29.700
+VoteNet (FPN)
+39950
+29.705
+The VoteNet using DeepLabV3+ as the backbone used much less time than in training compared to DeepLabV3+. Compared to the FPN, DeepLabV3+ has a lower level of delay in the preparation of the final output, which uses a sequence of parallel streams of convolution. When VoteNet (DeepLabV3+) is trained with the custom training loops
+provided in Tensorflow, a 39% improvement in TTPE is obtained while adding only 0.003 million parameters. VoteNet (DeepLabV3+) is among the top three most efficient methods.
+# provided in Tensorflow, a 39% improvement in TTPE is obtained while adding only 0.003 million parameters. VoteNet (DeepLabV3+) is among the top three most efficient methods.
+IV. CONCLUSION
+Detecting lands that use contour levees for irrigating rice crops in high-resolution remote sensing imagery is challenging. Farmlands represented in such a high level of detail create noise effects in the predictions, making it difficult to assess relations between pixels in long-range and accurately detect lands and their boundaries. This paper presents a voting network for farmland segmentation and classification. Our method generates highresolution image segments from the color, position, and label of pixels used to perform majority voting. VoteNet obtains a performance gain of 9.63% in the F1 score compared to the Gradient CNN. Moreover, using the edge-preserving voting mechanism improved the quality of the predictions on the field boundaries significantly. Compared to FPN and DeepLabV3+, VoteNet achieves a performance improvement of 6.96% and 2.63% in the F1 score, respectively, which demonstrates its potential of improving the performance of the existing state-of-the-art deep networks. According to our experiments, the addition of the VoteNet to a backbone does increase the number of parameters significantly, while it improves the segmentation accuracy. VoteNet also was ranked among the top-3 methods in terms of the TTPE showing its efficiency in terms of the training time complexity. Our experiments showed that using a smaller stride for prediction improves the overall accuracy of the VoteNet. However, the margin is not significant compared to the computational overhead. Analysis of the contribution of the loss terms also revealed that the label-centric term has a greater impact on the overall performance of VoteNet, compared to the region-centric term.
+# REFERENCES
+[1] Runrui Liu, Fei Tao, Xintao Liu, Jiaming Na, Hongjun Leng, Junjie Wu, and Tong Zhou. Raanet: A residual aspp with attention framework for semantic segmentation of high-resolution remote sensing images. Remote Sensing, 14(13):3109, 2022. [2] Abolfazl Meyarian, Xiaohui Yuan, Lu Liang, Wencheng Wang, and Lichuan Gu. Gradient convolutional neural network for classification of agricultural fields with contour levee. International Journal of Remote Sensing, 43(1):75–94, 2022. [3] Xiaohui Yuan, Jianfang Shi, and Lichuan Gu. A review of deep learning methods for semantic segmentation of remote sensing imagery. Expert Systems with Applications, 169:114417, 2021. [4] Lu Liang, Abolfazl Meyarian, Xiaohui Yuan, Benjamin RK Runkle, George Mihaila, Yuchu Qin, Jacob Daniels, Michele L Reba, and James R Rigby. The first fine-resolution mapping of contour-levee irrigation using deep bi-stream convolutional neural networks. International Journal of Applied Earth Observation and Geoinformation, 105:102631, 2021. [5] Ramprasaath R Selvaraju, Michael Cogswell, Abhishek Das, Ramakrishna Vedantam, Devi Parikh, and Dhruv Batra. Grad-cam: Visual explanations from deep networks via gradient-based localization. In Proceedings of the IEEE international conference on computer vision, pages 618–626, 2017. [6] Songtao Liu, Di Huang, et al. Receptive field block net for accurate and fast object detection. In Proceedings of the European conference on computer vision (ECCV), pages 385–400, 2018. [7] Vijay Badrinarayanan, Alex Kendall, and Roberto Cipolla. Segnet: A deep convolutional encoder-decoder architecture for image segmentation. IEEE transactions on pattern analysis and machine intelligence, 39(12):2481–2495, 2017. [8] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian Schroff, and Hartwig Adam. Encoder-decoder with atrous separable convolution for semantic image segmentation. In Proceedings of the European conference on computer vision (ECCV), pages 801–818, 2018. [9] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation. In International Conference on Medical image computing and computer-assisted intervention, pages 234–241. Springer, 2015. [10] Tsung-Yi Lin, Piotr Doll´ar, Ross Girshick, Kaiming He, Bharath Hariharan, and Serge Belongie. Feature pyramid networks for object detection. In Proceedings of the IEEE conference on computer vision and pattern recognition, pages 2117–2125, 2017. [11] Qi Diao, Yaping Dai, Ce Zhang, Yan Wu, Xiaoxue Feng, and Feng Pan. Superpixel-based attention graph neural network for semantic segmentation in aerial images. Remote Sensing, 14(2):305, 2022. [12] Varun Jampani, Deqing Sun, Ming-Yu Liu, Ming-Hsuan Yang, and Jan Kautz. Superpixel sampling networks. In Proceedings of the European Conference on Computer Vision (ECCV), pages 352–368, 2018. [13] Fengting Yang, Qian Sun, Hailin Jin, and Zihan Zhou. Superpixel segmentation with fully convolutional networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 13964–13973, 2020. [14] Xide Xia and Brian Kulis. W-net: A deep model for fully unsupervised image segmentation. arXiv preprint arXiv:1711.08506, 2017. [15] Xu Ji, Joao F Henriques, and Andrea Vedaldi. Invariant information clustering for unsupervised image classification and segmentation. In Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 9865–9874, 2019. [16] Radhakrishna Achanta, Appu Shaji, Kevin Smith, Aurelien Lucchi, Pascal Fua, and Sabine S¨usstrunk. Slic superpixels compared to state-ofthe-art superpixel methods. IEEE transactions on pattern analysis and machine intelligence, 34(11):2274–2282, 2012. [17] James C Bezdek. Cluster validity. In Pattern recognition with fuzzy objective function algorithms, pages 95–154. Springer, 1981. [18] Selim Seferbekov, Vladimir Iglovikov, Alexander Buslaev, and Alexey Shvets. Feature pyramid network for multi-class land segmentation. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops, pages 272–275, 2018.

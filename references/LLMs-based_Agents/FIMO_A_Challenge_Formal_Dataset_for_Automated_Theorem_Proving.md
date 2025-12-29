@@ -1,0 +1,345 @@
+# FIMO: A Challenge Formal Dataset for Automated Theorem Proving
+# Chengwu Liu1, Jianhao Shen2, Huajian Xin3, Zhengying Liu4, Ye Yuan1, Haiming Wang3 Wei Ju1, Chuanyang Zheng5, Yichun Yin4, Lin Li2, Ming Zhang1*, Qun Liu4*,
+1Peking University, 2Huawei HiSilicon, 3Sun Yat-sen University, 4Huawei Noah’s Ark Lab, 5The Chinese University of Hong Kong liuchengwu, yuanye pku, juwei, mzhang cs@pku.edu.cn,shenjianhao2, liuzhengying2, yinyic
+1Peking University, 2Huawei HiSilicon, 3Sun Yat-sen University, 4Huawei Noah’s Ark Lab, 5The Chinese University of Hong Kong liuchengwu, yuanye pku, juwei, mzhang cs}@pku.edu.cn, {shenjianhao2, liuzhengying2, yinyichun, lilin2
+1Peking University, 2Huawei HiSilicon, 3Sun Yat-sen University, 4Huawei Noah’s Ark Lab, 5The Chinese University of Hong Kong {liuchengwu, yuanye pku, juwei, mzhang cs}@pku.edu.cn, {shenjianhao2, liuzhengying2, yinyichun, lilin29, qun.liu}@huawei.com, {xinhuajian2000, cyzhengme}@gmail.com, wanghm39@mail2.sysu.edu.cn,
+{liuchengwu, yuanye pku, juwei, mzhang cs}@pku.edu.cn, {shenjianhao2, liuzhengying2, yinyichun, lilin29 qun.liu}@huawei.com, {xinhuajian2000, cyzhengme}@gmail.com, wanghm39@mail2.sysu.edu.cn,
+Abstract
+5 Dec 2023
+We present FIMO, an innovative dataset comprising formal mathematical problem statements sourced from the International Mathematical Olympiad (IMO) Shortlisted Problems. Designed to facilitate advanced automated theorem proving at the IMO level, FIMO is currently tailored for the Lean formal language. It comprises 149 formal problem statements, accompanied by both informal problem descriptions and their corresponding LATEX-based informal proofs. Through initial experiments involving GPT-4, our findings underscore the existing limitations in current methodologies, indicating a substantial journey ahead before achieving satisfactory IMOlevel automated theorem proving outcomes. The dataset has been made available on GitHub1 under the terms of the Apache License.
+[cs.AI]  5
+[cs.AI
+# Introduction
+arXiv:2309.04295v2
+Automated theorem proving is a challenging yet critical field, undergoing rapid evolution and garnering considerable research attention in recent times. While significant progress has been taken since the advent of large language models (LLMs), the challenge of tackling high-school mathematical problems of International Mathematical Olympiad (IMO) level complexity, which demands profound mathematical reasoning and problem-solving capabilities, remains a pivotal open question. Current investigations reveal that LLM-based provers exhibit limited capabilities, managing to address few IMO problems and leaving the majority unexplored. This phenomenon warrants the exploration of several potential factors:
+# • High cost of formalization. The realm of forma
+# • High cost of formalization. The
+ematical data is marked by scarcity since crafting formal mathematical data demands extensive effort from expert humans and consequently comes at a substantial cost. For instance, even one of the most extensive formal mathematics repositories, mathlib, a collaborative endeavor aimed at constructing a unified mathematical library in Lean, is only 45MB in size. In contrast, the GPT3 training process employs the expansive CommonCrawl dataset(Brown et al. 2020), which, even after filtration, spans a colossal 570GB, surpassing the size of mathlib by over 10,000 times.
+*Corresponding authors. 1https://github.com/liuchengwucn/FIMO
+• Low difficulty level of existing datasets. Existing formal datasets often lean towards lower levels of complexity, potentially hindering models from obtaining the requisite skills. For example, while miniF2F offers 488 Olympiad mathematical problems, only 40 of which are from the IMO context. IMO-level challenges inherently pose heightened difficulty, and it is worth noting that few of them have been successfully solved by automatic provers yet (Polu and Sutskever 2020; Zheng, Han, and Polu 2022; Polu et al. 2023; Wang et al. 2023). • Incompleteness of data. Most formal mathematical datasets offer formal statements solely, neglecting corresponding statements or proofs in natural languages. This absence not only compromises the statements’ interpretability but also hinders neural provers to leverage natural language proofs, a valuable resource often available for high-school Olympiad mathematical problems. IMO stands as a reputable measure of human mathematical proficiency, often serving as an effective predictor of individual capabilities. Inspired by this, we postulate that the mastery of IMO-level intricate mathematical problems could also serve as an indicator of large language models’ (LLMs) problem-solving abilities. In response to the aforementioned challenges, we present FIMO, a formalized IMO-level mathematical problem dataset with informal statements and proofs. To lower the cost of formalization, our approach entails the automated formalization (translation from natural language mathematics to formal languages like Lean) of the IMO Shortlisted Problems. These problems are thoughtfully curated by the IMO’s problem selection committee, mirroring the complexity of IMO challenges. Leveraging the reflective capabilities inherent in LLMs, we substantially enhance the subset of problems amenable to auto-formalization. The proposed dataset, FIMO, consists of 149 formal statements in Lean as well as the corresponding informal statements and proofs in natural language. Each formal statement undergoes thorough manual examination to ensure a faithful alignment with the original informal version. We conduct baseline experiments with GPT-4 and report the results with case studies to further explore the problems solving ability of current LLMs. The collective findings highlight GPT-4’s limited capacity to yield satisfactory results, underlining the enduring challenge of automating theorem proving at an IMO level.
+The contributions of this work are presented as follows: • We present FIMO which contains 149 IMO-level challenging formal statements in Lean as well as the corresponding informal statements and proofs in natural language. • We propose an auto-formalization process with a dynamic interplay of human and environmental feedback. The significance of allowing a large language model to refine its outcomes through provided feedback emerges as a pivotal factor influencing the performance of autoformalization. • We evaluate GPT-4 on our dataset and conduct case studies to analyze the capacity of existing approaches for IMO-level problem-solving. We find that current LLMs struggle to prove IMO-level mathematical statements.
+# Background and Related Work Formal Mathematics
+# Background and Related Work
+# Formal Mathematics
+Formal Mathematics
+As mentioned in (Koutsoukou-Argyraki 2021), formal mathematics enables computers to verify the correctness of a proof. Formal mathematics can also help mathematicians gain brand new insights even in already familiar topics as well as serve educational purposes. Formal mathematics relies heavily on interactive theorem provers (also referred to as proof assistants). Popular choices include Lean, Isabelle, Coq, and HOL Light. Mathematicians can enter statements and proofs written in a formal domain-specific language (DSL), and the interactive theorem prover could check the correctness of the proofs automatically.
+# Auto-Formalization
+The task of formalization is to turn informal descriptions written in natural languages (human readable LATEX code) into formally correct and automatically checkable format (Szegedy 2020). However, there is a vast logical gap between formal language and natural language, since every simple argument should be made explicit in formal language. Therefore, formalization is a tedious task, and performing formalization manually on a large scale is very expensive and time-consuming. Auto-formalization with LLMs proposed in (Wu et al. 2022), is an attempt to perform formalization utilizing the few-shot learning ability of the large language models by prompting them with several examples of informal and formal statement pairs. In their paper, they dealt with the auto-formalization of theorem statements and claimed that LLMs are able to correctly translate a significant portion (25.3%) of mathematical competition problems perfectly to formal specifications in Isabelle/HOL.
+# Datasets
+Lean Mathlib Mathlib is a community-maintained Lean mathematical library aiming to build a unified library of mathematics formalized in the Lean proof assistant (mathlib Community 2020). It is the largest collection of mathematics that has been formalized in Lean and contains programming infrastructure, mathematics, and tactics. The IMO Grand Challenge (Selsam et al. 2020) is a proposal that aims to
+build an AI that can win a gold medal in the IMO competition in a formal-to-formal (F2F) way. Note that as a part of the challenge, there is also a collection of solutions to IMO problems stored in mathlib, containing both the formal provable statements and the formal proofs. At the time of writing, mathlib contains 32 formal IMO problems with their solutions.
+MATH MATH (Hendrycks et al. 2021) is a dataset of 12 500 challenging competition mathematics problems, with each problem having a step-by-step solution. These problems are drawn from mathematics competitions including AMC 10, AMC 12, AIME, etc, and they are classified into 5 levels. Both the problem and the step-by-step solution are written in natural language and formatted using LATEX, without a formal version.
+MiniF2F MiniF2F (Zheng, Han, and Polu 2022) is a benchmark of 488 manually formalized statements of Olympiad-type mathematical competition problems. Each of the statements is formalized by human experts in three different formal languages: Lean, Isabelle, and Coq. MiniF2F draws from Olympiad mathematical problems (AIME, AMC, and IMO) as well as high-school and undergraduate math classes. Despite having 488 problems in the whole dataset, most of them are relatively trivial to solve, and only 40 of them are drawn from authentic IMO problems. GPT-f, a fine-tuned version of GPT, is able to solve some problems, but none of the statements extracted from IMO problems is successfully proved, as reported in (Zheng, Han, and Polu 2022). This emphasizes the challenge of IMO-level mathematical reasoning. Note that the original version of the miniF2F dataset presented by OpenAI only contains formal statements. A derived version (Jiang et al. 2022b) is also available publicly with the addition of an informal statement and an informal proof for each problem.
+# Neural Theorem Provers
+Provers with Formal Language GPT-f (Polu and
+Provers with Formal Language GPT-f (Polu and Sutskever 2020) is an automated prover for the Metamath formalization language. GPT-f generates original mathematical terms via generation from language models, which is based on GPT-3 and fine-tuned for theorem proving. Polu et al. (Polu et al. 2023) follow GPT-f and use expert iteration to generate more training data and successfully improve the pass rate of language models. DT-solver (Wang et al. 2023) proposes a dynamic tree sampling strategy to guide the search procedure with state confidence and proof-level values.
+Provers with Informal Language Draft, Sketch, and Prove (DSP) is a method aimed at using informal proofs as guides for automated theorem proving (Jiang et al. 2022b). DSP maps informal proofs to formal proof sketches and lets the automated provers focus on easier sub-problems. Instead of having to figure out the whole formal proof from zero to one, DSP takes advantage of the proofs written in natural languages that are already existed. Besides, DSP allows informal proofs either written by humans or generated by a
+language model, which further extended the application of DSP on problems without existing informal proofs.
+# FIMO Dataset
+# Dataset Construction
+The process of constructing the dataset can be categorized into three main stages: Optical Character Recognition (OCR), Auto-Formalization with Feedback, and Manual Verification.Each stage is outlined in detail below. An illustrative representation of the entire pipeline is provided in Figure 1.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cdfa/cdfa424b-d66d-49dd-a9b6-8bd7dbb6f9c3.png" style="width: 50%;"></div>
+Figure 1: Flowchart for the pipeline of our autoformalization with feedback.
+<div style="text-align: center;">Figure 1: Flowchart for the pipeline of our autoformalization with feedback.</div>
+OCR The IMO Shortlisted Problems are exclusively available in PDF format. To make them amenable to further processing, we employ optical character recognition (OCR) to convert them into LATEX code. Specifically, the Mathpix snipping tool, an image-to-LATEX converter, is utilized. This tool seamlessly translates pages of equations into formatted LATEX code while meticulously retaining all mathematical equation details. In order to avoid minor errors that could potentially compromise mathematical semantics, we subject the generated LATEX code to manual verification. Following the completion of the aforementioned OCR procedure, we assemble the problems alongside their corresponding solutions. In instances where multiple distinct solutions are provided, our approach is to retain the initial solution while discarding the others. Furthermore, for problems that encompass multiple sub-questions, we opt for simplicity by treating each sub-question as an independent problem. This comprehensive transformation process ensures the conversion of PDF-based IMO Shortlisted Problems into a coherent and structured format, poised for subsequent stages of dataset construction. The IMO Shortlisted Problems are divided by the IMO problem selection committee into 4 categories: Algebra,
+Combinatorics, Geometry, and Number Theory. However, our focus for conversion purposes is directed solely toward problems falling under the Algebra and Number Theory domains, along with their corresponding solutions. This selective approach stems from insights outlined in (Zheng, Han, and Polu 2022), which highlights the formidable challenge of formalization in the Combinatorics and Geometry categories due to the nascent state of formalization efforts in these areas, particularly within formal systems such as Lean. Importantly, it’s worth noting that not all Algebra and Number Theory problems inherently necessitate proof-oriented solutions. For instance, a problem may ask students to give some examples or to answer whether a statement is true or not. We follow the method described in (Wu et al. 2022) to address this variability. We apply a transformation to reframe them as proof-oriented problems. Specifically, the solution for each problem is converted into an associated proof. This procedure involves appending the answer to the end of the problem, effectively converting it into a proposition open to formalized proof. An illustrative instance of this conversion process is depicted in Table 1.
+Original
+Problem
+Find all pairs (k, n) of positive integers for
+which 7k −3n divides k4 + n2.
+Provable
+Statement
+Find all pairs (k, n) of positive integers for
+which 7k −3n divides k4 + n2. The final
+answer is (2, 4).
+Table 1: Example of converting a non-proof problem into a provable statement.
+Table 1: Example of converting a non-proof problem into a provable statement.
+Auto-Formalization with Feedback Next, our process employs the auto-formalization methodology introduced in (Wu et al. 2022), leveraging the few-shot learning capabilities inherent in large language models. The few-shot prompts detailed in (Wu et al. 2022) are written in Isabelle notation, which isn’t directly compatible with our dataset constructed for the Lean formal language. We manually rewrite the few-shot prompts and replace each Isabelle statement with the corresponding Lean statement. An example of such a rewrite is shown in Table 2. This stage of the dataset construction solidifies the transition from natural languagebased problem statements to formalizable propositions, instrumental in furthering our aim of enhancing automated theorem proving capabilities. Bridging the vast logical gap between natural languages and formal languages is no easy task. Analogous to human comprehension, large language models (LLMs) may initially produce outputs that encompass syntactic or semantic inaccuracies. To ameliorate this issue, we draw inspiration from the concept expounded in (Shinn et al. 2023), wherein verbal reinforcement is employed to facilitate the LLMs’ learning from previous inadequacies. The interactive theorem prover Lean could act as the environment and point out syntax errors directly with its error messages. This orchestration enables the direct identification of syntax errors through Lean’s error messages, considerably simplifying the process of validating syntactical correctness. Consequently,
+Natural
+Language
+Version
+If 3a+b+ c = −3, a+3b+c = 9, a+b+
+3c = 19, then find abc. The final answer is
+-56
+Isabelle
+Version
+theorem
+fixes a b c :: real
+assumes "3*a + b + c = -3"
+and "a + 3*b + c = 9"
+and "a + b + 3*c = 19"
+shows "a * b * c = -56"
+Lean
+Version
+theorem
+(a b c : R)
+(h0 : 3*a + b + c = -3)
+(h1 : a + 3*b + c = 9)
+(h2 : a + b + 3*c = 19) :
+a * b * c = -56 :=
+Table 2: Rewrite few-shot prompts for auto-formalization with Lean language manually.
+the focus of human experts can be channeled toward identifying semantic errors, further enhancing the iterative refinement process. We prompt the LLM to refine its results several times, until it is verified by both the proof assistant Lean and human experts or the maximum number of iterations (to be specific, 5) is reached. By this means, we enable the LLMs to refine its result iteratively. An example of such refinement is shown in Table 3.
+Informal
+Statement
+Let X be a set of 10000 integers, none of
+them is divisible by 47 . Prove that there
+exists a 2007-element subset Y of X such
+that a −b + c −d + e is not divisible by 47
+for any a, b, c, d, e ∈Y .
+First
+Try
+theorem exists subset not divisible by 47 :
+∃(Y : finset N) (X : finset N),
+(finset.card X = 10000) ∧
+(∀x ∈X, x % 47 ̸= 0) ∧
+(finset.card Y = 2007) ∧
+(Y ⊆X) ∧
+(∀a b c d e ∈Y,
+(a - b + c - d + e) % 47 ̸= 0) :=
+Reflective
+Feedback
+X is the premise instead of the goal. Try
+again.
+Refined
+Result
+theorem exists subset not divisible by 47 :
+∀(X : finset N),
+(finset.card X = 10000) ∧
+(∀x ∈X, x % 47 ̸= 0) →
+∃(Y : finset N),
+(finset.card Y = 2007) ∧
+(Y ⊆X) ∧
+(∀a b c d e ∈Y,
+(a - b + c - d + e) % 47 ̸= 0) :=
+Table 3: Refine the result with human feedback focusing on semantic errors. The LLMs are able to understand the highlevel semantic error described in natural language and to figure out a way to correct it.
+Logically, the aforementioned method of autoformalization with feedback process is LLM-agnostic and any LLM with the ability of few-shot learning should be able to perform the task. Specifically, we use GPT-4 (to be specific, gpt-4-0314) to perform the auto-formalization (OpenAI 2023).
+Manual Verification The training objective of GPT series models focused on maximizing the probability of the next word, which are prone to minor errors. While natural languages are robust to such mistakes, those errors may be extremely harmful to mathematics statements (Shen et al. 2021). Mathematics statements are vulnerable to minor errors, which often change the semantic result in the whole statement being wrong and unprovable. Hence, we introduce multiple manual checks to ensure the formal statements are semantically aligned with the informal ones. Specifically, we manually check the LATEX code generated by the OCR system (namely the Mathpix snipping tool) and each formal statement generated by the LLM that has passed the verification of the proof assistant Lean, as shown in Figure 1.
+# Statistics
+FIMO is a dataset of human-verified auto-formalized statements of IMO-level mathematical problems aligned in Lean language, as well as the natural language version of the problems and solutions. It provides an IMO-level challenge benchmark for mathematical reasoning in both formal language and natural language. We follow the same naming convention as the miniF2F dataset. Each Problem that has been successfully formalized is given a problem name “imosl_#year_#category_p#number”. For instance, “imosl_2007_number_theory_p6” refers to the IMO Shortlisted Problems 2007 Number Theory Problem 6 and “imosl_2008_algebra_p3_1” refers to the first sub-question of the IMO Shortlisted Problems 2008 Algebra Problem 3. The IMO Shortlisted Problems are selected by the IMO problems selection committee from problems proposed by each country, namely the long list. The IMO Shortlisted Problems are not released until the following year IMO. As of the time of our work, the IMO Shortlisted Problems with Solutions from 2006 to 2021 are available on the IMO official website2. Each year, around 30 problems are selected by the problem selection committee of IMO, and nearly half of them belong to Algebra and Number Theory categories. The total quantity of all shortlisted Algebra and Number Theory problems from 2006 to 2021 is 245, including 121 Algebra problems and 124 Number Theory problems (problems that have multiple sub-questions are treated as multiple independent problems). With auto-formalization with feedback described above, we successfully formalize over 60% (149/245) of the problems. The statistics of the proposed FIMO dataset and the comparison with other datasets are shown in Table 4 and Table 5.
+2The IMO Shortlisted Problems with Solutions are available a https://www.imo-official.org/problems.aspx
+Category
+Total
+Quantity
+Success
+Count
+Success
+Rate
+Algebra
+124
+89
+71.8%
+Number Theory
+121
+60
+49.6%
+Total
+245
+149
+60.8%
+Table 4: The success rate of GPT-4 auto-formalization with reflective feedback. Success count refers to the number of problems that are successfully formalized. Since problems that have multiple sub-questions are treated as multiple independent problems, the total quantities of problems are slightly larger.
+Dataset
+Problem
+Count
+IMO-
+Level
+FS
+FP
+IS
+IP
+mathlib
+N/A
+32
+✓
+✓
+–
+–
+miniF2F
+488
+40
+✓
+–
+–*
+–*
+MATH
+12 500
+0
+–
+–
+✓
+✓
+FIMO
+149
+149
+✓
+–
+✓
+✓
+Table 5: Comparison with other datasets. FS, FP, IS and IP refer to formal statement, formal proof, informal statement, and informal proof, respectively. IMO-Level refers to problems that are either authentic IMO problems or IMO Shortlisted Problems which are both selected by the problem selection committee of the IMO. The asterisks mean that there is a derived version that contains informal statements and informal proofs, while the original version does not.
+# Dataset Analysis
+Translating mathematical statements into formal language manually is a tedious and time-consuming process. With the few-shot learning ability of LLMs, we can prompt LLMs with some examples and auto-formalize the statements. However, only a little proportion (25.3%) of the statements could be formalized successfully as reported in (Wu et al. 2022). To address this problem, we prompt the LLMs with the feedback that comes from either the error messages generated by the proof assistant Lean or written by a human expert, as shown in Figure 1. We also report the success rate of the auto-formalization without reflective feedback. The result shows that there will be a significant drop in the success rate without feedback, demonstrating the effectiveness of our method. The result also shows that Algebra problems are generally easier to formalize than Number Theory problems. The success rate of the auto-formalization process of Algebra problems also gains a greater boost with reflective feedback. With our method, GPT-4 is able to formalize a considerably larger proportion of problems (from 32.6% to 60.8%) while keeping the need for human intervention comparable. In order to understand the reason why LLMs fail to formalize mathematical statements, we randomly sample 50 auto-formalized statements that fail to pass the Lean Check.
+Category
+Total
+Quantity
+Success
+Count
+Success
+Rate
+Algebra
+124
+52 (−37)
+41.9% (−29.9%)
+Number Theory
+121
+28 (−32)
+23.1% (−26.5%)
+Total
+245
+80 (−69)
+32.6% (−28.2%)
+Table 6: The success rate of GPT-4 auto-formalization without reflective feedback.
+The Lean Proof assistant will point out the syntax error in Lean language, and generate corresponding error messages. The syntax error can be divided into 7 categories, as shown in Table 7.
+Error Type
+Algebra
+Number
+Theory
+Total
+failed to synthesize type
+class instance
+6
+1
+7
+type mismatch
+6
+10
+16
+unknown identifier
+9
+8
+17
+invalid field notation
+1
+0
+1
+function expected
+1
+1
+2
+unexpected token
+2
+0
+2
+don’t know how to syn-
+thesize placeholder
+0
+4
+4
+invalid expression
+0
+1
+1
+Total
+25
+25
+50
+Table 7: Statistics of the syntax error type extracted from the error messages generated by proof assistant Lean.
+Table 7: Statistics of the syntax error type extracted from the error messages generated by proof assistant Lean.
+As shown in Table 7, the most common syntax errors are “type mismatch” and “unknown identifier”. These errors may be due to the hallucination inside the large language model. However, like compilers for other programming languages, the error messages are not always very useful. For instance, an unknown identifier may be indirectly caused by not importing a certain library, or by not declaring a variable properly. We found that GPT-4 is able to figure out how to fix syntax errors under the guidance of high-level error messages in most cases. We also found that instead of simply mapping natural mathematics into formal mathematics, GPT-4 is able to extract nontrivial latent semantic information. As shown in Table 8, the informal mathematics statement “Let a, b, c be the sides of a triangle.” indicates that a, b, c are all positive real numbers. GPT-4 is aware of it and also notices the fact that the sum of any two sides is greater than the third side. Such auto-formalization requires the model to have both mathe-
+matical reasoning ability and general knowledge of mathematics.
+matical reasoning ability and general knowledge of mathematics.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/2820/28209e93-842d-4433-837f-c2289ee12e3d.png" style="width: 50%;"></div>
+Informal
+Statement
+Let a, b, c be the sides of a triangle. Prove
+that
+√
+b + c −a
+√
+b + √c −√a
++
+√
+c + a −b
+√c + √a −
+√
+b
++
+√
+a + b −c
+√a +
+√
+b −√c
+≤3
+Formal
+Statement
+theorem imosl_2006_algebra_p5
+(a b c : R)
+(h0 : a > 0 ∧b > 0 ∧c > 0)
+(h1 : a + b > c ∧a + c > b
+∧b + c > a) :
+(real.sqrt (b + c - a) /
+(real.sqrt b + real.sqrt c
+- real.sqrt a)) +
+(real.sqrt (c + a - b) /
+(real.sqrt c + real.sqrt a
+- real.sqrt b)) +
+(real.sqrt (a + b - c) /
+(real.sqrt a + real.sqrt b
+- real.sqrt c))
+3 :=
+begin
+sorry
+end
+Table 8: Instead of simply mapping natural mathematics into formal mathematics, LLMs can extract latent semantic information. The original problem is the IMO Shortlisted Problems 2006 Algebra Problem 5.
+# Experiments and Discussion
+In this section, in order to understand the performance of existing LLMs, we conducted baseline experiments using the cutting-edge GPT-4 (to be specific, gpt-4-0314) as our baseline model. Current methods of automated theorem proving with LLMs can be divided into two classes in accordance with the usage of data. The first class of methods only uses formal data in the process of the stage of model finetuning and inference. Well-known methods include PACT (Han et al. 2022) and Thor (Jiang et al. 2022a). PACT extracts self-supervised data from formal proof terms for training. Thor leverages the power of automated theorem provers instead of language models for premise selection. On the other hand, the second class of methods leverages both formal data and informal data and has potential to achieve better performance. These methods include GPT-f and DSP. GPT-f uses the WebMath dataset, a mixture of formal data and informal data, in their pre-training process. The source of data involved in the WebMath dataset includes GitHub, arXiv Math, and Math StackExchange. In the DSP, the formal proofs are generated under the guidance of the existing informal proofs. Since the FIMO dataset proposed contains both formal data and informal data, it supports both classes
+of methods. Inspired by the DSP framework, we also leverage the power of the existing informal proofs. The original version of the DSP framework exclusively targets the formal language Isabelle with Sledgehammer, a proof automation tool in Isabelle. Because it relies on Isabelle instead of Lean, we cannot directly apply it to our dataset. Our methods are described below. We conducted error analyses of formal proofs generated by GPT-4 and analyzed possible reasons for the failure of the IMO-level automated theorem proving. We also analyzed the limitation of the FIMO dataset.
+# GPT-4 Guided by Informal Proofs
+To guide the LLMs with informal proofs, our approach can be divided into two phases: acquiring the informal proof and formal proof generation. The first phase is to find informal proofs for a given problem. In common scenarios, solutions to the Olympiad mathematical problems are available, as in our dataset. But sometimes they can be missing or not suitable for formal expression. Therefore, we conduct experiments in two different setups: with or without human informal proof. In the former setup, the informal proofs are written by a human. In the FIMO dataset, the informal proofs are extracted from the solutions provided by the problem selection committee of IMO. We treat the solution provided as a “groundtruth” informal proof. Hopefully, the manually-written informal proof would act as a guide for the process of formal proof generation. In the latter setup, the informal proofs are generated directly by a language model. We also use GPT4 for the generation of informal proofs. We regenerate the informal proof every time we generate the formal proof. The second phase of our approach is to write formally verifiable proofs. We prompt the language model with formal and informal statements, as well as informal proof acquired in the former phase. In such a way, the language model could obtain the proof ideas from the informal proofs and use them to guide the process of formal proof generation. Our approach enjoys both the logical rigor provided by formal systems and the flexibility of informal proofs. The experiment’s result shows that our approach can achieve competitive results on the miniF2F benchmark, without sophisticated search algorithms or further fine-tuning of LLMs.
+# Result
+We report the pass rate of GPT-4 guided by informal proofs on our dataset and both the test set and the validation set of the benchmark miniF2F. The results are reported in Table 9. Pass rates are reported as Pass@N where N is the number of attempts for generating the whole proof. GPT-4 achieved a Pass@8 of over 20% on miniF2F. Nonetheless, GPT-4 failed to prove any of the statements in the FIMO dataset as expected, showing the difficulty of the IMO-level problem theorem proving. We also find that the GPT-4 without using human informal proofs achieves better Pass@8. This phenomenon can be attributed to the increased diversity and ability to explore various directions exhibited in informal proofs generated by language models. The results show that while GPT-4 is able to solve some problems in the miniF2F dataset, it cannot solve any prob-
+Method
+miniF2F-valid
+miniF2F-test
+FIMO
+Pass@1
+Pass@8
+Length
+Pass@1
+Pass@8
+Length
+Pass@1
+Pass@8
+GPT-4 w/ Human Proof
+11.5%
+16.0%
+11.1
+8.6%
+14.3%
+11.8
+0.0%
+0.0%
+GPT-4 w/o Human Proof
+9.4%
+21.3%
+11.2
+9.0%
+20.9%
+11.4
+0.0%
+0.0%
+Table 9: Baseline performance of GPT-4 with/without human informal proofs. Pass rates are reported as Pass@ the number of attempts for generating proofs. The length refers to the average number of lines of the generated 
+performance of GPT-4 with/without human informal proofs. Pass rates are reported as Pass@N, where N is mpts for generating proofs. The length refers to the average number of lines of the generated proof.
+lem in the FIMO dataset. We believe that this is because statements in our dataset are more difficult to prove and require advanced mathematical reasoning skills. In the following section, we analyze the reason why GPT-4 fails in detail.
+# Error Analysis
+We found that most of the informal proofs synthesized by the language model are mathematically incorrect. Therefore, the LLMs may be misled when generating formal proofs.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7243/72431c63-5a17-4edd-a418-e21fca78312f.png" style="width: 50%;"></div>
+Figure 2: Informal solution provided and formal proof generated. The original problem is the first sub-question of the IMO Shortlisted Problems 2008 Algebra Problem 2.
+Figure 2: Informal solution provided and formal proof generated. The original problem is the first sub-question of the IMO Shortlisted Problems 2008 Algebra Problem 2. For GPT-4 with the guidance of human proofs, we observed that the language model is able to follow the solution provided, but fails to apply tactics properly. Figure 2 shows
+For GPT-4 with the guidance of human proofs, we observed that the language model is able to follow the solution provided, but fails to apply tactics properly. Figure 2 shows
+an example emphasizing this kind of failure. The model managed to divide the whole problem into several sub-goals according to the solution provided and explain the motivation of each step in the comments. For instance, the formal proof generated defines a, b, c as in the informal solution, and tries to show a2 + b2 + c2 ≥1. Unfortunately, the formal proof fails to apply the tactic rw properly, as indicated by the red underline in the example. We also observed that although there are some errors, GPT-4 is able to generate much longer formal proofs (with an average length of over 11) with the guidance of informal proofs. In contrast, the average proof length is less than 3 for GPT-f on the miniF2F dataset as reported in (Zheng, Han, and Polu 2022).
+# Limitation
+Like manually formalized miniF2F, Combinatorics and Geometry problems are not covered by the proposed FIMO dataset since they are less expressible in formal systems like Lean. The shift of the distribution of problem type may affect the evaluation of the reasoning ability of the models when the FIMO dataset serves as a metric. The dataset covers the IMO Shortlisted Problems with Solutions only from 2006 to 2021, which are publicly available on the official IMO website. At the time of writing, problems before 2006 that can be acquired through other channels are not included. All of the formal statements are formalized automatically and checked by humans. Despite our best efforts, there may still be a very small number of errors.
+# Conclusion
+We presented FIMO, a dataset of formal IMO-level mathematics problem statements, alongside informal statements and informal proofs in LATEX. This effort aims to enhance neural mathematical reasoning by bridging natural and formal languages. Through auto-formalization with feedback, we highlighted the significance of reflective feedback in improving the auto-formalization process. Employing GPT-4 guided by informal proofs as our baseline model, we find that GPT-4 falls short of formally proving any statements in the dataset. This outcome emphasizes the enduring challenge of achieving IMO-level automated theorem proving. Our contribution, FIMO, along with our methodology and findings, enriches the landscape of neural mathematical reasoning. While current capabilities have limitations, they underscore the need for continued innovation and research to advance the realm of AI-powered mathematical formalization, thereby narrowing the gap between human expertise and machine capabilities.
+# References
+Brown, T.; Mann, B.; Ryder, N.; Subbiah, M.; Kaplan, J. D.; Dhariwal, P.; Neelakantan, A.; Shyam, P.; Sastry, G.; Askell, A.; Agarwal, S.; Herbert-Voss, A.; Krueger, G.; Henighan, T.; Child, R.; Ramesh, A.; Ziegler, D.; Wu, J.; Winter, C.; Hesse, C.; Chen, M.; Sigler, E.; Litwin, M.; Gray, S.; Chess, B.; Clark, J.; Berner, C.; McCandlish, S.; Radford, A.; Sutskever, I.; and Amodei, D. 2020. Language Models are Few-Shot Learners. In Larochelle, H.; Ranzato, M.; Hadsell, R.; Balcan, M.; and Lin, H., eds., Advances in Neural Information Processing Systems, volume 33, 1877–1901. Curran Associates, Inc. Han, J. M.; Rute, J.; Wu, Y.; Ayers, E. W.; and Polu, S. 2022. Proof Artifact Co-training for Theorem Proving with Language Models. arXiv:2102.06203. Hendrycks, D.; Burns, C.; Kadavath, S.; Arora, A.; Basart, S.; Tang, E.; Song, D.; and Steinhardt, J. 2021. Measuring Mathematical Problem Solving With the MATH Dataset. NeurIPS. Jiang, A.; Czechowski, K.; Jamnik, M.; Milos, P.; Tworkowski, S.; Li, W.; and Wu, Y. T. 2022a. Thor: Wielding Hammers to Integrate Language Models and Automated Theorem Provers. In NeurIPS. Jiang, A. Q.; Welleck, S.; Zhou, J. P.; Li, W.; Liu, J.; Jamnik, M.; Lacroix, T.; Wu, Y.; and Lample, G. 2022b. Draft, Sketch, and Prove: Guiding Formal Theorem Provers with Informal Proofs. In Submitted to The Eleventh International Conference on Learning Representations. Koutsoukou-Argyraki, A. 2021. Formalising Mathematics – in Praxis; A Mathematician’s First Experiences with Isabelle/HOL and the Why and How of Getting Started. Jahresbericht der Deutschen Mathematiker-Vereinigung, 123(1): 3–26. mathlib Community, T. 2020. The Lean Mathematical Library. In Proceedings of the 9th ACM SIGPLAN International Conference on Certified Programs and Proofs, CPP 2020, 367–381. New York, NY, USA: Association for Computing Machinery. ISBN 9781450370974. OpenAI. 2023. GPT-4 Technical Report. arXiv:2303.08774. Polu, S.; Han, J. M.; Zheng, K.; Baksys, M.; Babuschkin, I.; and Sutskever, I. 2023. Formal Mathematics Statement Curriculum Learning. In The Eleventh International Conference on Learning Representations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023. OpenReview.net. Polu, S.; and Sutskever, I. 2020. Generative Language Modeling for Automated Theorem Proving. arXiv:2009.03393. Selsam, D.; Buzzard, K.; Barton, R.; Liang, P.; Loss, S.; and Wiedijk, F. 2020. IMO Grand Challenge. Shen, J.; Yin, Y.; Li, L.; Shang, L.; Jiang, X.; Zhang, M.; and Liu, Q. 2021. Generate & Rank: A Multi-task Framework for Math Word Problems. In Findings of the Association for Computational Linguistics: EMNLP 2021, 2269–2279. Punta Cana, Dominican Republic: Association for Computational Linguistics.
+Shinn, N.; Cassano, F.; Labash, B.; Gopinath, A.; Narasimhan, K.; and Yao, S. 2023. Reflexion: Language Agents with Verbal Reinforcement Learning. arXiv:2303.11366. Szegedy, C. 2020. A Promising Path Towards Autoformalization and General Artificial Intelligence. In Benzm¨uller, C.; and Miller, B., eds., Intelligent Computer Mathematics, 3–20. Cham: Springer International Publishing. ISBN 9783-030-53518-6. Wang, H.; Yuan, Y.; Liu, Z.; Shen, J.; Yin, Y.; Xiong, J.; Xie, E.; Shi, H.; Li, Y.; Li, L.; Yin, J.; Li, Z.; and Liang, X. 2023. DT-Solver: Automated Theorem Proving with Dynamic-Tree Sampling Guided by Proof-level Value Function. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 12632–12646. Toronto, Canada: Association for Computational Linguistics. Wu, Y.; Jiang, A. Q.; Li, W.; Rabe, M. N.; Staats, C.; Jamnik, M.; and Szegedy, C. 2022. Autoformalization with Large Language Models. arXiv:2205.12615. Zheng, K.; Han, J. M.; and Polu, S. 2022. MiniF2F: a crosssystem benchmark for formal Olympiad-level mathematics. arXiv:2109.00110.

@@ -1,0 +1,97 @@
+# Syntax Aware LSTM Model for Chinese Semantic Role Labeling
+Feng Qian2, Lei Sha1, Baobao Chang1, Lu-chen Liu2, Ming Zhang2 Key Laboratory of Computational Linguistics, Ministry of Education, Peking University 2 Institute of Network Computing and Information Systems, Peking University {nickqian, shalei, chbb}@pku.edu.cn {liuluchen292, mzhang cs}@pku.edu.cn
+# Abstract
+As for semantic role labeling (SRL) task, when it comes to utilizing parsing information, both traditional methods and recent recurrent neural network (RNN) based methods use the feature engineering way. In this paper, we propose Syntax Aware Long Short Time Memory(SALSTM). The structure of SA-LSTM modifies according to dependency parsing information in order to model parsing information directly in an architecture engineering way instead of feature engineering way. We experimentally demonstrate that SA-LSTM gains more improvement from the model architecture. Furthermore, SALSTM outperforms the state-of-the-art on CPB 1.0 significantly according to Student t-test (p < 0.05).
+# 1 Introduction
+The task of SRL is to recognize arguments of a given predicate in a sentence and assign semantic role labels. Since SRL can give a lot of semantic information, and can help in sentence understanding, a lot of NLP works such as machine translation(Xiong et al., 2012; Aziz et al., 2011) use SRL information. Figure 1 shows an example of SRL task from Chinese Proposition Bank 1.0(CPB 1.0)(Xue and Palmer, 2003). Traditional methods on SRL use statistical classifiers such as CRF, MaxEntropy and SVM (Sun and Jurafsky, 2004; Xue, 2008; Ding and Chang, 2008, 2009; Sun, 2010) to do classification according to manually designed features. Recent works based on recurrent neural network (Collobert and Weston, 2008; Zhou and Xu, 2015; Wang et al., 2015) extract features automatically, and outperform traditional methods significantly. However, RNN methods treat language as sequence data, so most of them fail to take tree structured parsing information into account, which
+is considered important for SRL task (Xue, 2008; Punyakanok et al., 2008; Pradhan et al., 2005). Even though there are some RNN based works trying to utilize parsing information, they still do it in a feature-engineering way. We propose Syntax Aware LSTM (SA-LSTM) to directly model complex dependency parsing information in an architecture engineering way instead of feature engineering way. For example, in Figure 1, the arrowed line stands for dependency relationship, which is rich in syntactic information. Our SA-LSTM architecture is shown in Figure 2. Compares to ordinary LSTM, We add additional connections between dependency related words to capture and model such rich syntactic information in architecture engineering way. Also, to take dependency relationship type into account, we also introduce trainable weights for different types of dependency relationship. The weights can be trained to indicate importance of a dependency type.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6552/6552f736-ae77-4463-ad98-f1a83fb9bf90.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 1: A sentence from CPB with semantic role label and dependency parsing information</div>
+We experimentally demonstrate that SA-LSTM utilizes parsing information better than traditional feature engineering way. Furthermore, SA-LSTM reaches 79.64%F1 score on CPB 1.0, outperforms the state-of-the-art significantly based on Student’s t-test(p < 0.05).
+# 2 Syntax Aware LSTM
+Compares to traditional feature engineering method, RNN-LSTM alleviates the burden of manual feature design and selection. However,
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9dc8/9dc8089d-d171-4536-bd33-53e399c171e2.png" style="width: 50%;"></div>
+Figure 2: SA-LSTM architecture: A ⃝stands for one word. The dotted arrows stand for original neighbor connections of bi-LSTM. Solid arrows stand for dependency relationship connections. Note that though dependency parsing relationship is directed, we here treated them as undirected. We only consider whether there is a connection, and the connection type.
+most RNN-LSTM based methods failed to utilize dependency parsing relationship. Based on biRNN-LSTM, we propose SA-LSTM which keeps all the merit points of bi-RNN-LSTM, and at the same time can model dependency parsing information directly.
+# 2.1 Conventional bi-LSTM Model for SRL
+In a sentence, each word wt has a feature representation xt which is generated automatically as (Wang et al., 2015) did. zt is feature embedding for wt, calculated as followed:
+(1)
+where W1 ∈Rn1×n0. n0 is the length of word feature representation. In a sentence, each word wt has six internal vectors, �C, gi, gf, go, Ct, and ht, shown in Equation 2:
+(2)
+where �C is the candidate value of the current cell state. g are gates used to control the flow of information. Ct is the current cell state. ht is hidden state of wt. Wx and Ux are matrixs used in linear transformation:
+(3)
+As convention, f stands for tanh and σ stands for sigmoid. ⊙means the element-wise multiplication. In order to make use of bidirectional information, the forward −→ ht T and backward ←− ht T are concatenated together, as shown in Equation 4:
+(4)
+Finally, ot is the result vector with each dimension corresponding to the score of each semantic role tag, and are calculated as shown in Equation 5:
+(5)
+where W2 ∈Rn3×n2, n2 is 2 × ht, W3 ∈ Rn4×n3 and n4 is the number of tags in IOBES tagging schema.
+# 2.2 Syntax Aware LSTM Model for SRL
+Structure of our SA-LSTM is shown in Figure 3. The most significant change we make to the original RNN-LSTM is shown in the shaded area.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7a3b/7a3b2793-cf12-4b81-bb17-41c01828d7ce.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3: Cell Structure of Syntax Aware LSTM</div>
+St is the syntax information input into current cell, and is calculated as shown in Equation 6:
+(6)
+(7)
+  St is the weighted sum of all hidden state vectors hi which come from previous words wi . Note
+that, α ∈{0, 1} indicates whether there is a dependency relationship between wi and wt, only dependency related hi can be input into current cell. We add a gate gs to constrain information from St, as shown in Equation 8. To protect the original sentence information from being diluted(Wu et al., 2016) by St, we add St to hidden layer vector ht instead of adding to cell state Ct, as shown in Equation 9:
+(8)
+So ht in our SA-LSTM cell is calculated as:
+(9)
+SA-LSTM changes structure by adding different connections according to dependency parsing information. In this way, we consider the whole structure of dependency tree into SA-LSTM in an architecture engineering way. However, by using α in Equation 7, we do not take dependency type into account, so we further improve the way α is calculated from Equation 7 to Equation 10. Each typem of dependency relationship is assigned a trainable weight αm. In this way SA-LSTM can model differences between types of dependency relationship.
+α =      αm If there exists typem dependency relationship between wi and wt 0 Otherwise
+(10)
+# 2.3 Training Criteria
+We use maximum likelihood criterion to train our model. Stochastic gradient ascent algorithm is used to optimize the parameters. Global normalization is applied. Given a training pair T = (x, y) where T is the current training pair, x denotes current the training sentence, and y is the corresponding correct answer path. yt = k means that the t-th word has the k-th semantic role label. The score of ot is calculated as:
+(11)
+where Ni is the word number of the current sentence and θ stands for all parameters. So the log
+(12)
+� where y′ ranges from all valid paths of answers.
+# 3 Experiment
+# 3.1 Experiment setting
+In order to compare with previous Chinese SRL works, we choose to do experiment on CPB 1.0. We also follow the same data setting as previous Chinese SRL work(Xue, 2008; Sun et al., 2009) did. Pre-trained1 word embeddings are tested on SA-LSTM and shows improvement. We use Stanford Parser(Chen and Manning, 2014) to get dependency parsing information, which now supports Universal Dependency representation in Chinese. Note that the train set of the parser overlaps a part of our test set, so we retrained the parser to avoid overlap. Dimension of our hyper parameters are tuned according to development set and are shown in Table 1.2
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8a03/8a0323c3-b571-42e5-80ad-61c64892b120.png" style="width: 50%;"></div>
+<div style="text-align: center;">Table 1: Hyper parameter dimensions</div>
+# 3.2 Syntax Aware LSTM Performance
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/96e6/96e68cc0-ffde-4fa4-aa9b-67e23a830243.png" style="width: 50%;"></div>
+Method
+F1%
+Xue(2008)
+71.90
+Sun et al.(2009)
+74.12
+Yand and Zong(2014)
+75.31
+Wang et al.(2015)(Random Initialized)
+77.09
+Sha et al.(2016)
+77.69
+Comparison Feature Engineering Way
+77.75
+Our SA-LSTM(Random Initialized)
+79.56
+Our SA-LSTM(Pre-trained Embedding)
+79.64
+<div style="text-align: center;">Table 2: Results comparison on CPB 1.0</div>
+To prove that SA-LSTM gains more improvement from the new SA-LSTM architecture, than from the extra introduced parsing information, we
+To prove that SA-LSTM gains more improvement from the new SA-LSTM architecture, than from the extra introduced parsing information, we 1Trained by word2vec on Chinese Gigaword Corpus 2All experiment code and related files are available on request
+1Trained by word2vec on Chinese Gigaword Corpus 2All experiment code and related files are available on request
+1Trained by word2vec on Chinese Gigaword Corpus 2All experiment code and related files are available on request
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a03b/a03bc7ad-ebee-45c7-8200-5a7539c72e78.png" style="width: 50%;"></div>
+design a experiment in which dependency relationship is taken into account in traditional feature engineering way. Given a word wt, Ft is the average of all dependency related xi of previous words wi , as shown in Equation 13:
+(13)
+where T is the number of dependency related words and α is a 0-1 variable calculated as in Equation 7. Then Ft is concatenated to xt to form a new feature representation. In this way, we model dependency parsing information in a conventional feature engineering way. After that, we feed these new feature representation into ordinary bi-LSTM. As shown in Table 2, SA-LSTM reaches 79.56%F1 score with random initialization and 79.64%F1 score with pre-traind word embedding on CPB1.0 dataset. Both of them are the best F1 score ever published on CPB 1.0 dataset. Wang et al. (2015) used bi-LSTM without parsing information and got 77.09%F1 score. “comparison feature engineering method” based on his work reaches 77.75F1 score. This demonstrates the introduction of dependency parsing information has impact on SRL job. Compared with the “comparison feature engineering method” shown in table 2, it is clear that SA-LSTM gain more improvement(77.75% to 79.56%) from the architecture of SA-LSTM than from the introduction of extra dependency parsing information(77.09% to 77.75%). Indeed, it is difficult to introduce the whole tree structure into the model using the simple feature engineering way. By building the dependency relationship directly into the structure of SA-LSTM and changing the way information flows, SA-LSTM is able to consider whole tree structure of dependency parsing information.
+# 3.3 Visualization of Trained Weights
+According to Equation 10, influence from a single type of dependency relationship will be multiplied with type weight αm. When αm is 0, the influence from this type of dependency relationship will be ignored totally. When the weight is bigger, the type of dependency relationship will have more influence on the whole system. As shown in Figure 4, dependency relationship type dobj receives the highest weight after training, as shown by the red bar. According to grammar knowledge, dobj should be an informative relationship for SRL task, and our system give dobj the most influence automatically. This example further demonstrate that the result of SA-LSTM is highly in accordance with grammar knowledge, which further validates SA-LSTM.
+# 4 Related works
+Semantic role labeling (SRL) was first defined by (Gildea and Jurafsky, 2002). Early works(Gildea and Jurafsky, 2002; Sun and Jurafsky, 2004) on SRL got promising result without large annotated SRL corpus. Xue and Palmer built the Chinese Proposition Bank(Xue and Palmer, 2003) to standardize Chinese SRL research. Traditional works such as (Xue and Palmer, 2005; Xue, 2008; Ding and Chang, 2009; Sun et al., 2009; Chen et al., 2006; Yang et al., 2014) use feature engineering methods. Traditional methods can take parsing information into account in feature engineering way, such as syntactic path feature. However, they suffer from heavy manually feature design workload, and data sparsity problem. More recent SRL works often use neural network based methods. Collobert and Weston (2008) proposed a convolutional neural network method for SRL. Zhou and Xu (2015) proposed bidirectional RNN-LSTM method for English SRL, and Wang et al. (2015) proposed a bi-RNN-
+LSTM method for Chinese SRL on which our method is based. NN based methods extract features automatically and significantly outperforms traditional methods. However, most NN based methods can not utilize parsing information which is considered important for semantic related NLP tasks (Xue, 2008; Punyakanok et al., 2008; Pradhan et al., 2005). The work of Roth and Lapata (2016) and Sha et al. (2016) have the same motivation as ours, but in feature engineering way. Roth and Lapata (2016) embed dependency parsing path into feature representations using LSTM. Sha et al. (2016) use dependency parsing information as feature to do argument relationships classification. In contrast, LA-LSTM utilizes parsing information in an architecture engineering way, by absorbing the parsing tree structure into SA-LSTM structure.
+# 5 Conclusion
+We propose Syntax Aware LSTM model for Chinese semantic role labeling. SA-LSTM is able to model dependency information directly in an architecture engineering way. We experimentally testified that SA-LSTM gains more improvement from the SA-LSTM architecture than from the input of extra dependency parsing information. We push the state-of-the-art F1 to 79.64%, which outperforms the state-of-the-art significantly according to Student t-test(p < 0.05).
+# References
+Wilker Aziz, Miguel Rios, and Lucia Specia. 2011. Shallow semantic trees for smt. In Proceedings of the Sixth Workshop on Statistical Machine Translation. Association for Computational Linguistics, pages 316–322. Danqi Chen and Christopher D Manning. 2014. A fast and accurate dependency parser using neural networks. In EMNLP. pages 740–750. Wenliang Chen, Yujie Zhang, and Hitoshi Isahara. 2006. An empirical study of chinese chunking. In Proceedings of the COLING/ACL on Main conference poster sessions. Association for Computational Linguistics, pages 97–104. Ronan Collobert and Jason Weston. 2008. A unified architecture for natural language processing: Deep neural networks with multitask learning. In Proceedings of the 25th international conference on Machine learning. ACM, pages 160–167. Weiwei Ding and Baobao Chang. 2008. Improving chinese semantic role classification with hierarchical
+feature selection strategy. In Proceedings of the conference on empirical methods in natural language processing. Association for Computational Linguistics, pages 324–333.
+Weiwei Ding and Baobao Chang. 2009. Word based chinese semantic role labeling with semantic chunking. International Journal of Computer Processing Of Languages 22(02n03):133–154.
+ing. International Journal of Computer Processing Of Languages 22(02n03):133–154. Daniel Gildea and Daniel Jurafsky. 2002. Automatic labeling of semantic roles. Computational linguistics 28(3):245–288. Sameer Pradhan, Kadri Hacioglu, Wayne Ward, James H Martin, and Daniel Jurafsky. 2005. Semantic role chunking combining complementary syntactic views. In Proceedings of the Ninth Conference on Computational Natural Language Learning. Association for Computational Linguistics, pages 217– 220. Vasin Punyakanok, Dan Roth, and Wen-tau Yih. 2008. The importance of syntactic parsing and inference in semantic role labeling. Computational Linguistics 34(2):257–287. Michael Roth and Mirella Lapata. 2016. Neural semantic role labeling with dependency path embeddings. arXiv preprint arXiv:1605.07515 . Lei Sha, Tingsong Jiang, Sujian Li, Baobao Chang, and Zhifang Sui. 2016. Capturing argument relationships for chinese semantic role labeling. In EMNLP. pages 2011–2016. Honglin Sun and Daniel Jurafsky. 2004. Shallow semantic parsing of chinese. In Proceedings of NAACL 2004. pages 249–256. Weiwei Sun. 2010. Improving chinese semantic role labeling with rich syntactic features. In Proceedings of the ACL 2010 conference short papers. Association for Computational Linguistics, pages 168–172. Weiwei Sun, Zhifang Sui, Meng Wang, and Xin Wang. 2009. Chinese semantic role labeling with shallow parsing. In Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing: Volume 3-Volume 3. Association for Computational Linguistics, pages 1475–1483. Zhen Wang, Tingsong Jiang, Baobao Chang, and Zhifang Sui. 2015. Chinese semantic role labeling with bidirectional recurrent neural networks. In EMNLP. pages 1626–1631. Huijia Wu, Jiajun Zhang, and Chengqing Zong. 2016. An empirical exploration of skip connections for sequential tagging. arXiv preprint arXiv:1610.03167 . Deyi Xiong, Min Zhang, and Haizhou Li. 2012. Modeling the translation of predicate-argument structure
+Daniel Gildea and Daniel Jurafsky. 2002. Automatic labeling of semantic roles. Computational linguistics 28(3):245–288.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/56f4/56f4f344-d934-4262-8f8b-afd208c09b2d.png" style="width: 50%;"></div>
+for smt. In Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics: Long Papers-Volume 1. Association for Computational Linguistics, pages 902–911. Nianwen Xue. 2008. Labeling chinese predicates with semantic roles. Computational linguistics 34(2):225–255. Nianwen Xue and Martha Palmer. 2003. Annotating the propositions in the penn chinese treebank. In Proceedings of the second SIGHAN workshop on Chinese language processing-Volume 17. Association for Computational Linguistics, pages 47–54. Nianwen Xue and Martha Palmer. 2005. Automatic semantic role labeling for chinese verbs. In IJCAI. Citeseer, volume 5, pages 1160–1165. Haitong Yang, Chengqing Zong, et al. 2014. Multipredicate semantic role labeling. In EMNLP. pages 363–373. Jie Zhou and Wei Xu. 2015. End-to-end learning of semantic role labeling using recurrent neural networks. In Proceedings of the Annual Meeting of the Association for Computational Linguistics.

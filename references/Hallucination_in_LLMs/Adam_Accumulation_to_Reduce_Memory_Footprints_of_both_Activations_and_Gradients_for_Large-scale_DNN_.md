@@ -1,0 +1,237 @@
+# Adam Accumulation to Reduce Memory Footprints of both Activations and Gradients for Large-scale DNN Training
+Yijia Zhang * 1 Yibo Han * 1 Shijie Cao 2 Guohao Dai 1 Youshan Miao 2 Ting Cao 2 Fan Yang 2 Ningyi Xu 1
+Abstract
+Running out of GPU memory has become a main bottleneck for large-scale DNN training. How to reduce the memory footprint during training has received intensive research attention. We find that previous gradient accumulation reduces activation memory but fails to be compatible with gradient memory reduction due to a contradiction between preserving gradients and releasing gradients. To address this issue, we propose a novel optimizer accumulation method for Adam, named Adam Accumulation (AdamA), which enables reducing both activation and gradient memory. Specifically, AdamA directly integrates gradients into optimizer states and accumulates optimizer states over micro-batches, so that gradients can be released immediately after use. We mathematically and experimentally demonstrate AdamA yields the same convergence properties as Adam. Evaluated on transformer-based models, AdamA achieves up to 23% memory reduction compared to gradient accumulation with less than 2% degradation in training throughput. Notably, AdamA can work together with memory reduction methods for optimizer states to fit 1.26×~3.14× larger models over PyTorch and DeepSpeed baseline on GPUs with different memory capacities.
+arXiv:2305.19982v1
+# 1. Introduction
+The past few years have witnessed the remarkable achievements of large-scale DNN models across domains from computer vision to natural language processing (Devlin et al., 2018; Radford et al., 2019; Dosovitskiy et al., 2020; Smith et al., 2022). Training such big models requires massive powerful GPUs with indispensable large memory capacity, which is prohibitively expensive and inaccessible to most researchers. Even for fine-tuning a large pre-trained model
+where computational power is a less critical factor, running out of memory is increasingly becoming the first and foremost serious limitation (Ren et al., 2021; Rajbhandari et al., 2021).
+Recently, there has been an explosion of interest around methods to reduce the memory footprint during model training (Sohoni et al., 2019; Rajbhandari et al., 2020; Pudipeddi et al., 2020; Chen et al., 2016; Shazeer & Stern, 2018). However, there is hardly a one-size-fits-all solution to address the out-of-memory issue for two reasons. Firstly, many memory reduction methods usually come at the cost of sacrificing convergence (Mostafa & Wang, 2019; Micikevicius et al., 2017) or training throughput (Chen et al., 2016; Pudipeddi et al., 2020). It remains unclear how significant the cost of one method or a combination of methods would be for different models before testing. Secondly, the ratio of the memory footprint of various parts (e.g., weights, gradients, optimizer states, activations) varies with the model and training configurations. No single method always performs best in different cases.
+As DNN models get larger and larger, a research problem has arisen: can we enable all effective memory reduction techniques being applied together for the ultimate memory reduction?
+Among memory reduction methods, gradient accumulation and gradient release are two effective methods to reduce activation memory and gradient memory, respectively (Huang et al., 2019; Pudipeddi et al., 2020). Both methods have no negative impact on model convergence and training throughput. Unfortunately, these two methods are inherently mutually exclusive. Gradient accumulation reduces the activation memory by splitting a mini-batch into a sequence of microbatches and accumulating the gradients of all micro-batches. Gradient release reduces the gradient memory by freeing up the gradient-occupied space in a layer-by-layer manner. The contradiction preventing the two from being used together is one must preserve accumulated value of gradients until the last micro-batch, but the other releases the gradients immediately after use. Saving activations or gradients, previous works prefer the former as activations usually consume the most memory during training, while the gradients memory can be ignored when models are small. However,
+with the ever-increasing model size, the gradient memory consumption cannot be ignored. To make gradient accumulation and gradient release methods compatible for ultimate memory reduction, there are several challenges to overcome:
+• Usually trade-offs are made between memory footprint and training throughput. Efficient training pipelines should be proposed to support our memory reduction method with maximum training throughput.
+To overcome these challenges for saving memory footprints of both activations and gradients, we propose a novel optimizer accumulation method for large-scale DNN training with Adam, named Adam Accumulation (AdamA), which can still maintain the convergence and training throughput. Specifically, instead of accumulating gradients, AdamA integrates gradients into optimizer states (m and v in Adam) immediately after the gradients are produced, and accumulates optimizer states sequentially over micro-batches, as shown in Figure 1. This subtle change of directly integrating gradients to optimizer states makes the memory space for whole model gradients no longer needed, eliminating the aforementioned contradiction between preserving gradients and releasing gradients. Consequently, AdamA can reduce the gradient memory to 1/M of the original (M is the number of layers), and the activation memory to 1/N of the original (N is the number of micro-batches). We further mathematically and experimentally demonstrate AdamA performs the same as standard Adam in terms of the convergence properties and final model accuracy, although the optimizer update of AdamA deviates a little from standard Adam. Notably, AdamA is complementary to previous methods that reduce weights and optimizer states, providing a possibility to achieve an even higher memory reduction rate.
+We evaluate AdamA on both language and vision tasks, with the typical transformer architecture and convolution architecture. Our experimental results show that AdamA performs the same convergence properties as Adam. Compared with gradient accumulation baseline, AdamA can reduce memory footprint up to 23% with less than 2% degradation in training throughput. We further combine AdamA with DeepSpeed ZeRO-DP Pos, which aims to reduce optimizer states in distributed data parallel scenario. Training with
+• We propose AdamA, a novel optimizer accumulation method to enable reducing memory footprints of activations and gradients simultaneously. Compared with gradient accumulation baseline, AdamA can save up to 23% memory footprint.
+• We conduct a convergence analysis for AdamA. Mathematical and experimental results on real workloads show AdamA performs the same convergence properties as Adam.
+• We implement the training pipeline of AdamA with Pytorch and DeepSpeed. The system is easy to use and incurs less than 2% effect on training throughput.
+# 2. Background and Related Work
+The memory footprint during model training can be categorized into four parts: weights, gradients, optimizer states and activations. As different models, optimizers, or batch sizes lead to different ratios of the four parts, many works have been proposed to reduce them accordingly.
+# 2.1. Reducing weight and optimizer state memory.
+In model training iterations, weights and optimizer states inherently have the temporal dependency, i.e., the values at time step t update on the basis of their values at time step t −1. Hence, the training system must maintain weights and optimizer states for updates between two consecutive iterations. To reduce the weight and optimizer state memory, many compression-based methods (e.g., sparsification, quantization and matrix approximation) have been proposed, but often sacrifice the convergence or end model accuracy (Mostafa & Wang, 2019; Micikevicius et al., 2017; Shazeer & Stern, 2018).
+# 2.2. Reducing activation and gradient memory.
+Activations and gradients are computed and used only inside each training iteration, indicating a potential to release the memory occupation after finished. Gradient accumulation and gradient release are effective methods to reduce activations and gradients, respectively (Huang et al., 2019; Pudipeddi et al., 2020). The key idea behind gradient accumulation is to split a mini-batch into several micro-batches. This method computes the gradients of micro-batches sequentially and accumulates them to reduce the memory footprint of activations as well as to keep the same convergence properties as the original mini-batch. Gradient release executes the backward process in a layer-by-layer
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/7e53/7e536786-030a-4b40-a88f-e65c65c27efe.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 1. AdamA to integrate gradients into optimizer states and accumulate optimizer states over micro-batches.</div>
+Algorithm 1 Adam v.s. AdamA with micro-batches
+Initialize θ0, m0 ←0 , v0 ←0, t ←0, N ←# of micro-
+batches
+while θt not converged do
+t ←t + 1
+for each micro-batch i in a mini-batch do
+gt,i ←1
+N ∇θft,i(θt−1)
+end
+mt = β1mt−1 + (1 −β1) �N−1
+i=0 gt,i
+vt = β2vt−1 +(1−β2)[(�N−1
+i=0 gt,i)2v.s.�N−1
+i=0 (g2
+t,i)]
+Update
+ˆ
+mt ←
+mt
+1−βt
+1 , ˆvt ←
+vt
+1−βt
+2 , θt ←θt−1 −
+α ˆ
+mt
+√ˆ
+vt+ϵ
+end
+manner, which immediately releases the gradient-occupied memory after the weight updating is finished, so that the memory allocated for gradients can be reduced from the size of whole model size to the size of the maximum layer.
+# 2.3. The contradiction between gradient accumulation and gradient release.
+Unfortunately, gradient accumulation to save activation memory and gradient release to save gradient memory are mutually exclusive. Because one must maintain all gradients for accumulation until the last micro-batch, while the other frees up the gradients immediately after use. Our proposed AdamA resolves this contradictory and enables saving both activation and gradient memory. Please note that our method is complementary to previous memory reduction methods (e.g., checkpointing (Chen et al., 2016), Adafactor (Pudipeddi et al., 2020), offloading (Rajbhandari et al., 2021; Ren et al., 2021; Pudipeddi et al., 2020)), and can be applied together with these methods to achieve even higher memory reduction rate.
+# 3. Methods
+# 3.1. Adam Accumulation (AdamA)
+As mentioned, gradient accumulation to save activation memory contradicts gradient release to save gradient memory. The core reason is that gradient accumulation accumulates gradients till the last micro-batch, so that the gradient memory of the whole model must be preserved. Intuitively, as gradients are eventually used to update the optimizer states (m and v in Adam), if we can integrate gradients into optimizer states in advance, the gradients memory can be released, thus resolving this dilemma. Inspired by this insight, we for the first time propose an optimizer accumulation method, namely AdamA, that integrates gradients into optimizer states immediately after produced and then accumulates optimizer states sequentially over micro-batches.
+gradients and vt with the square of the accumulated gradients (as shown in the blue text). Different from the vt update mechanism in Adam, our proposed AdamA updates vt through accumulating the square of gradients generated from each micro-batch. This slight change in AdamA allows that gradients can be used and released immediately once they are generated, leading to a significant reduction on gradient memory during training. In order to analyze AdamA’s impact on model convergence, we mathematically prove that AdamA yields the same convergence rate as Adam (shown in Section 3.2), and experimentally demonstrate AdamA performs the same as Adam in vision and language tasks (shown in Section 4.1).
+In Algorithm 2, we show the detailed training pipeline of AdamA to reduce both activation and gradient memory. Similar to gradient accumulation, AdamA divides a mini-batch of training data into several micro-batches to reduce activation memory to 1 N of the original without micro-batches. During the backward pass of each micro-batch, once the gradients of a layer (gt,i,j) are produced, gt,i,j and g2 t,i,j will be accumulated to the optimizer states of this layer (mt,j and vt,j), respectively. In this process, gt,i,j memory is released after the accumulation procedure. As a result, the peak memory allocated for gradients can be reduced to only 1 M of the full model gradient size.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3bba/3bba4577-171d-4af5-be37-d92a1806711a.png" style="width: 50%;"></div>
+# 3.2. Convergence Analysis
+In this section, we demonstrate the convergence properties of AdamA. Adam (Kingma & Ba, 2014) is a optimization method that adaptively rescales the updating vector with second moment of the gradient. Compared with Adam, AdamA has the same updating direction (i.e., mt), but different adaptive scaling length (i.e., 1 √v). We refer to Adam’s proof methods to show that AdamA has the same theoretical convergence properties as Adam.
+In this section, we demonstrate the convergence properties of AdamA. Adam (Kingma & Ba, 2014) is a optimization method that adaptively rescales the updating vector with second moment of the gradient. Compared with Adam, AdamA has the same updating direction (i.e., mt), but different adaptive scaling length (i.e., 1 √v). We refer to Adam’s proof methods to show that AdamA has the same theoretical convergence properties as Adam. Following analysis method in the online learning framework(Zinkevich, 2003), we define ft as the convex cost function at time t, and θt as the parameter we predict. We evaluate the convergence properties of AdamA using the regret R(T) = �T t=1[ft(θt)−ft(θ∗)], which is the sum of all the previous difference between our prediction ft(θt) and the best fixed point parameter ft(θ∗) (Kingma & Ba, 2014). In Theorem 1, we guarantee that AdamA has the same regret bound O( √ T) with Adam and the detailed proof is given in the appendix. We define the vector g1:T,i, b ∈Rt as the ith dimension of gradients from the bth micro-batch in one mini-batch till T. Following Adam paper, Theorem 1 holds when the learning rate αt is decaying at a rate of t−1 2 and first moment running average coefficient β1,t decay exponentially with λ (Kingma & Ba, 2014). Lemma 1 and Lemma 2 are proved to support the proof of Theorem 1. Lemma 1. Let gt = ∇ft(θt) and g1:t be defined as above and bounded,∥gt∥2 ≤G, ∥gt∥∞≤G∞. Then.
+(1)
+Lemma 2. Let γ ≜ β2 1 √β2 . For β1, β2 ∈[0, 1) that satisfy β2 1 √β2 < 1 and bounded gt, ∥gt∥2 ≤G, ∥gt∥∞≤G∞, and the micro-batch number equals to N, the following inequality holds
+(2)
+Theorem 1. Assume β1, β2 ∈[0, 1) satisfy γ = β2 1 √β2 < 1. N is the number of micro-batches in a mini-batch. The function ft has bounded gradients, ∥∇ft(θ)∥≤G, ∥∇ft(θ)∥∞≤G∞for all θ ∈Rd. For any m, n ∈ {1, ..., T}, the distance between any θt generated by AdamA is bounded, which can be presented as ∥θn −θm∥2 ≤D, ∥θn −θm∥∞≤D∞. AdamA achieves the following guarantee, for all T ≥1.
+(3)
+In Corollary 1, we show the average regret of AdamA is O( 1 √ T ), which is the same as Adam. It is obvious the limit of the average regret is 0 when T gets larger. Corollary 1. Assume that the function ft has bounded gradients, ∥∇ft(θ)∥≤G, ∥∇ft(θ)∥∞≤G∞for all θ ∈ Rd. For any m, n ∈{1, ..., T}, the distance between any θt generated by AdamA is bounded, which can be presented as ∥θn −θm∥2 ≤D, ∥θn −θm∥∞≤D∞. Combining Theorem 1 with the upper bound �d i=1 �N b=1 ∥g1:T,i, b∥≤ dG∞ √ T we can get the average regret of AdamA:
+(4)
+# 3.3. System Implementation to Reduce Memory Footprint
+Our system design is intended to reduce memory and incur little impact on training throughput at the same time. The challenge is to achieve efficient memory allocation and low communication cost.
+In the single device scenario, the model forward computing is done as normal. When doing backward computing, we interleave back propagation and optimizer states update. For each model layer, gradients are accumulated to the corresponding optimizer states and immediately released. We implement this mechanism in PyTorch with backward hook to insert the optimizer states accumulation and layer gradient release operations. It should be mentioned that frequent memory allocation and free operations are costly. Nevertheless, the deep learning framework would maintain a memory pool for tensor memory assignment and release. This prevents the heavy overhead of system calls. In the distributed data parallel scenario, the same operations apply except that gradients need to be all-reduced among distributed devices. When training with AdamA, the straightforward implementation is to insert layer gradients all-reduce operation in each micro-batch to update optimizer states. And yet, compared with standard Adam procedure, where all-reduce only needs to be done once after all micro-batches, the communication cost would be increased from O(1) to O(N) in one mini-batch (N is accumulation steps). To reduce the communication volume, we choose to all-reduce optimizer states instead of gradients. In this way, local optimizer states are updated on each device and synchronized at the end of the mini-batch with PyTorch all-reduce API. Therefore, the communication volume stays constant in one mini-batch. In the distributed data parallel scenario, we pay efforts to make the update effect of mt and vt of AdamA (number of GPUs = M, number of micro-batches per mini-batch = N) consistent with the update effect of AdamA (number of micro-batches per mini-batch = NM) in single device scenarios. In this way, we keep the convergence behavior of AdamA unchanged in both single device scenarios and distributed data parallel scenarios. As mentioned before, we choose to all-reduce optimizer states instead of gradients at the end of each mini-batch. In this way, the value of mt and vt in each GPU are shown below before they are all-reduced. In the equation, M equals to the number of GPUs, and N equals to the number of micro-batches per mini-batch. Other symbols follow our definition in Algorithm 1, and gt,i ←1 N ∇θft,i(θt−1). Notice that we will multiply vt−1 by Mβ2 instead of β2 before the start of each mini-batch.
+To verify the convergence properties of AdamA, we experiment on both transformer-based and convolution-based models. We set the same mini-batch size when training with Adam and AdamA. We set the accumulation steps N to 2,4,8 when training with AdamA.
+vt = Mβ2vt−1 + (1 −β2) N−1 � i=0 g2 t,i = Mβ2vt−1
+(6)
+During all-reduce operations for mt, we take the average of mt from each GPU (add them together and divide by M). For vt, we divide by M 2 instead of M after summing vt from each GPU. After that, the value of mt and vt in each GPU are:
+(7)
+(8)
+It is easy to find the mt and vt keep consistent with the mt and vt from Algorithm 1, as long as we replace N with NM in line 6 "gt,i ←1 N ∇θft,i(θt−1)". In this way, we make the update effect of mt and vt in distributed scenarios (number of GPUs = M, number of microbatches per minibatch = N) consistent with the update effect of AdamA in single device scenario (number of microbatches per minibatch = NM). As the convergence properties of AdamA has been proven the same with Adam in single device scenarios, its convergence properties can also be guaranteed in distributed scenarios.
+# 4. Experiments
+In this section, we evaluate AdamA on both vision and language tasks. We show that AdamA does no harm to the convergence properties compared with Adam. Then, we demonstrate the memory reduction result of AdamA and its impact on training throughput. Finally, we include a case study where AdamA is combined with DeepSpeed ZeRO-DP to further explore the ability to train large-scale models and push the limit to reduce memory of gradients, activations and optimizer states.
+# 4.1. Convergence Behavior
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/269c/269cd3dc-f94b-408e-9cea-a0dab9e05457.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2. Sample-wise convergence properties for BERT-Large pre-training with sequence length 128 using a DGX A100. AdamA h almost the same training loss curve with Adam.</div>
+Setting
+MNLI-M
+MNLI-MM
+SST-2
+MRPC
+STS-B
+QNLI
+QQP
+RTE
+CoLA
+Adam
+80.62
+80.96
+90.48
+84.03
+86.56
+87.46
+86.53
+58.48
+43.25
+AdamA (N=2)
+80.50
+80.72
+90.83
+86.27
+84.18
+87.59
+86.49
+57.04
+43.27
+AdamA (N=4)
+80.38
+80.93
+90.48
+85.39
+85.71
+87.30
+86.52
+56.68
+43.11
+AdamA (N=8)
+80.39
+80.97
+89.79
+85.67
+85.62
+87.44
+86.51
+61.01
+43.86
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6cec/6cecefe5-b6c2-4efb-a5ef-0aec1741a9ef.png" style="width: 50%;"></div>
+For transformer-based model, we follow RoBERTa method (Liu et al., 2019) to pre-train the NLP model BERTLarge (L = 24, H = 1024, A = 16, 340M) on a DGX A100 with sequence length of 128 and mini-batch size of 1024. We use the implementation of BERT model from Microsoft DeepSpeed (Rasley et al., 2020). For the pre-training corpus, we use the English Wikipedia and BooksCorpus downloading from NVIDIA GitHub (NVIDIA). It should be noted that the corpus we use is different from that used in original BERT (Devlin et al., 2018) because the BERT corpus is not available to the public at this time. For the pre-training hyper-parameters, we follow the method in RoBERTa. Figure 2 presents the sample-wise convergence results when training BERT-Large with Adam and AdamA. No matter how many micro-batches in one mini-batch, we find the convergence curve of AdamA coincides with that of Adam. To further evaluate the convergence of the BERT-Large model trained by Adam and AdamA, we fine-tune the models on all tasks from GLUE benchmark (Wang et al., 2018). We finetune for 3 epochs for all tasks and select the best fine-tuning learning rate (among 2e-5, 3e-5, 4e-5, 5e-5) on the Dev set. Table 1 shows the fine-tuning results. Obviously, the model pre-trained with AdamA provides similar accuracy with that pre-trained with Adam.
+<div style="text-align: center;">(b) Test Top-1 accuracy</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/df4c/df4c84e4-1fa9-4a93-90c4-f8491682b5a8.png" style="width: 50%;"></div>
+For convolution-based model, we train ResNet-50 with 4 A100 GPUs on ImageNet (Deng et al., 2009) dataset to evaluate the convergence properties of AdamA. Following the training setting provided by MMClassification (mmlab), we train ResNet-50 with mini-batch size of 1024. For the learning rate, we initial it to 1e-3 and cosine decay it to 1e-5. Figure 3 presents the training loss curve and the test accuracy of ResNet-50.
+A100 GPUs on ImageNet (Deng et al., 2009) dataset to evaluate the convergence properties of AdamA. Following the training setting provided by MMClassification (mmlab), we train ResNet-50 with mini-batch size of 1024. For the learning rate, we initial it to 1e-3 and cosine decay it to 1e-5. Figure 3 presents the training loss curve and the test accuracy of ResNet-50. Besides, we conduct experiments on bigger convolutionbased models, including ResNet-101 (He et al., 2016) (43M parameters) and EfficientNet-B7 (Tan & Le, 2019) (66M parameters). The models are all trained on ImageNet dataset with Adam and AdamA (N=8, N is the number of microbatches in one mini-batch). Other hyperparameters (e.g. mini-batch size and learning rate) remain the same for each model. For ResNet-101, Adam baseline reaches 75.43% top-1 accuracy, and AdamA (N=8) reaches 75.39% top1 accuracy. For EfficientNet-B7, Adam baseline reaches 81.32% top-1 accuracy, and AdamA (N=8) reaches 81.43% top-1 accuracy. Therefore, we can jump to the conclusion that AdamA has almost the same convergence properties with that of Adam in convolution-based models. Considering that Batch Normalization (BN) (Ioffe & Szegedy, 2015) is used in convolution-based models, we also pay attention to the effect on model accuracy which may be brought by the difference of the micro-batch normalization statistics and that statistics of the entire mini-batch. Mentioned in (Sohoni et al., 2019), the influence of BN on model convergence tends to be constant if the micro-batch size increases above a certain extent. Therefore, we do not pay efforts to keep exactly the same BN algorithm between micro-batched training and non-micro-batched one. In the experimental results shown in Figure 3, we also find the impact on convergence can be ignored.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b13d/b13dc8e0-abd4-4b23-9171-cfe75ad45e4c.png" style="width: 50%;"></div>
+Figure 4. Statistics on the value of √ˆ vt � ˆ v′ t generated from ResNet-50 on CIFAR-100. The real line shows the coefficient mean during iterations and the area shows its range. It shows that the value AdamA deviates from the standard Adam is within 1%. To help understand the difference between AdamA and Adam during training process, we make the following statistics. From the update equation θt ←θt−1 −α ˆ mt √ˆ vt , it is clear
+To help understand the difference between AdamA and Adam during training process, we make the following statistics. From the update equation θt ←θt−1 −α ˆ mt √ˆ vt , it is clear
+<div style="text-align: center;">Figure 5. The memory reduction of AdamA compared with gradient accumulation when training BERT-Large.</div>
+Table 2. When training BERT-Large, AdamA achieves less memory usage than Adafactor (Shazeer & Stern, 2018) and SM3 (Anil et al., 2019).
+Optimizers
+ReductionMini-batch sizeMemory usage
+target
+per GPU
+per GPU (GB)
+Adam (baseline)
+N/A
+8
+6.15
+Adafactor
+OS
+8
+4.83
+SM3
+OS
+8
+4.90
+AdamA(N=8)
+A + G
+8
+4.18
+that our adaptive scaling length differs from the standard Adam in a coefficient √ˆvt/ � ˆvt ′. We track the coefficient in training ResNet-50 on CIFAR-100 dataset. In Figure 4, we plot the mean value of √ˆvt/ � ˆvt ′ during each training step and its value range. It shows generally the coefficient keeps around 1.0 and the deviation value range is within 1%. We think the minimal deviation in each iteration might contribute to the same convergence properties of Adam and AdamA during training.
+# 4.2. Memory Reduction
+As AdamA eliminates the contradiction when combining gradient accumulation and gradient release, we first show the improvement of AdamA compared with gradient accumulation. Compared with gradient accumulation, AdamA can save the memory footprint of both activations and gradients. We measure the memory footprint when training BERT-Large with AdamA on a DGX A100 (8 A100 GPUs) with the mini-batch size of 256 and the sequence length of 128. As shown in Figure 5, AdamA can save 1.6GB more memory than gradient accumulation no matter how many the accumulation steps are set in a mini-batch.
+To further show the memory saving effect of AdamA, we expand BERT model to BERT-4B with 4 billion weights using the scaling method of GPT-3 (Brown et al., 2020). We set the mini-batch size to 64 and accumulation steps to 8 in this experiment. In Figure 6(a), we train BERT4B with gradient accumulation and AdamA using PyTorch framework. It can be found that AdamA can save 23.2%
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/eb5e/eb5ee403-cadf-483b-bdb3-eff598302daa.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b79d/b79ddf3f-3385-433c-90ba-e875f7659e7d.png" style="width: 50%;"></div>
+<div style="text-align: center;">(b) DeepSpeed</div>
+Figure 6. The memory reduction of AdamA when training BERT4B using PyTorch and DeepSpeed.
+<div style="text-align: center;">Table 3. The largest model size can fit on different DGX systems</div>
+with AdamA.
+PyTorch
+DeepSpeed
+GA
+AdamA
+ZeRO-S1
+ZeRO-S1
++ AdamA
+DGX-1
+1.4B
+1.8B
+1.1B
+3.3B
+DGX-2
+3.0B
+4.0B
+2.5B
+6.8B
+DGX A100
+7.6B
+9.6B
+5.8B
+18.2B
+memory footprint compared with gradient accumulation when the weights number of a model get to 4 billion.
+Compared with other memory-efficient optimizers, e.g. Adafactor (Shazeer & Stern, 2018) and SM (Anil et al., 2019), the memory reduction of our proposal is bigger under the same experiment setting. The comparison with Adam baseline is shown in Table 2. In the table, OS stands for optimizer stats, A stands for activations, and G stands for gradients. The reason AdamA can reach more significant memory reduction is AdamA targets at reducing the memory usage of both activations and gradients, while other works only aimed to reduce optimizer states memory. At the same time, AdamA can work well with these previous works to get further memory reduction. To show the compatibility of AdamA with existing meth-
+ods, we combine AdamA with ZeRO-DP (Rajbhandari et al., 2020), a popular memory reduction method for optimizer states. ZeRO-DP Pos partitions the optimizer states to different GPUs when training with data parallelism. In Figure 6(b), we combine AdamA with ZeRO-DP Pos to further reduce gradients and activations. It shows that AdamA with ZeRO-DP Pos can save 20.1 GB more memory footprint than only ZeRO-DP Pos. Even compared with ZeRO-DP Pos+g, which partitions both optimizer states and gradients, our combined method can reduce 7.6 GB more memory. In Table 3, we explore the largest transformer-based model can fit on DGX systems with various memory capacity with AdamA. In the table, GA and ZeRO-S1 stand for gradient accumulation and ZeRO-DP Pos, respectively. At present, the mainstream DGX systems on the market include DGX-1 (8 V100-16GB GPUs), DGX-2 (16 V100-32GB GPUs), and DGX A100 (8 A100-80GB GPUs). In order to keep the same experimental settings, we set the number of GPUs to 8. The mini-batch size and accumulation steps are set to 256 and 8, respectively. With PyTorch framework, the largest model AdamA can train is 1.26x to 1.33x larger than gradient accumulation can train. Combined with DeepSpeed ZeRO-DP, AdamA can train a model with 18.2 billion weights in a DGX A100, which is 3.14x larger than the model the system can train with only ZeRO-DP Pos.
+# 4.3. Training Throughput
+In this section, we show AdamA has negligible impact on training throughput. During training, it is reasonable to set the micro-batch size as large as the device memory can contain, in order to saturate GPUs to achieve maximal training throughput. Therefore, the micro-batch size is fixed in this section.
+Single-GPU Scenario As mentioned in Section 3.3, our system design for AdamA Single-GPU implementation is intended to incur no extra throughput overhead. In Figure 7(a), we conduct a throughput comparison with standard Adam training ResNet-50 with one A100 GPU. We keep the micro-batch size to 256 and switch accumulation steps to 2, 4 and 8. We can conclude that training with AdamA has little throughput impact in single-GPU scenario.
+# Distributed Data Parallel Scenario Explained in Sec-
+# Distributed Data Parallel Scenario Ex
+tion 3.3, our system design keep the communication number to be constant by synchronizing the optimizer states. Although it may incur more communication volume compared with standard Adam that synchronizes the gradient, the impact on throughput is minimal. In Figure 7(b)(c), we conduct multi-GPU experiments with two models: BERT-Base with 4 A100 GPUs and BERT-Large with 8 A100 GPUs. The micro-batch size of all the models is set to 1024. The experiments show that the training throughput difference
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8804/8804776d-2ffb-4c30-9906-b2b9b41e9faf.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 7. AdamA has less than 2% effect on the training throughput compared with gradient accumulation using Adam: (a) trainin ResNet-50 with single GPU; (b) training BERT-Base with 4 A100 GPUs; (c) training BERT-Large with 8 A100 GPUs.</div>
+is within 2%. The throughput gap between AdamA and Adam is gradually decreasing with the increase of gradient accumulation steps. This is because the communication volume is constant in a mini-batch, the communication overhead proportion becomes smaller in a mini-batch with larger gradient accumulation steps.
+In the same scenarios in Figure 7, when training BertLarge with 8 A100 GPUs using ZeRO-DP Pos, the training throughput is 1401 samples/s. When we combine AdamA with ZeRO-DP Pos (N = 8), the total throughput will drop to 1337 samples/s (5% lower than ZeRO-DP alone). In return, the memory occupied by activation and gradient will be greatly reduced. We think this overhead is still small and the trade-off is very cost-effective.
+# 5. Discussion
+We think the attractiveness of AdamA includes enabling more researchers to benefit from the development of large models, and providing a memory-efficient design idea for future optimizers.
+Although large-scale models are proved to be effective in many scenarios, researchers can hardly benefit from the development of large-scale models because most researchers have very few GPUs or even only one GPU. Despite ZeRODP is widely used in large-scale models training, the memory reduction it brings is not enough in few/one GPUs scenarios. Thanks to the good compatibility of AdamA with ZeRO-DP Pos+g, the memory reduction can reach 35.4GB more than using ZeRO-DP Pos+g alone if we want to train a BERT-18.2B with 2 GPUs. In this way, AdamA lowers the bar for sharing the benefits brought by large-scale models with more researchers.
+Besides, AdamA provides a new perspective for future momentum-based optimizers to be more memory-efficient. With AdamA’s techniques, all momentum-based optimizers can be enabled to combine both gradient accumulation and gradient release at the same time.
+# 6. Conclusion
+This paper presents Adam Accumulation (AdamA), a novel optimizer method for large-scale DNN training. It enables saving memory footprints of activations and gradients simultaneously. Besides, AdamA yields the same convergence properties as Adam. Compared with gradient accumulation, AdamA can reduce the memory footprint up to 23% with less than 2% degradation in training throughput. Combined with memory reduction methods for optimizer states, AdamA can fit 1.26×~3.14× larger models over PyTorch and DeepSpeed baseline on different DGX systems.
+# References
+Anil, R., Gupta, V., Koren, T., and Singer, Y. Memory efficient adaptive optimization. Advances in Neural Information Processing Systems, 32, 2019.
+# Kingma, D. P. and Ba, J. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980, 2014.
+# A. Convergence Proof
+In this section, we show the convergence analysis of AdamA. Compared with proof in the original Adam paper Appendix, it’s easy to see AdamA follows almost the same analysis proof with Adam. The most obvious difference is that Adam doesn’t take micro-batch into consideration. Here we use symbol N as the number of micro-batch in AdamA and b as subscript for micro-batch index. Here we highlight those conclusions that differs between Adam and AdamA from Adam paper Appendix. First, we construct our proof based on the claim a convex function can be lower bounded by a hyperplane, which is Mathematically expressed in Lemma 2. Definition 1. A function f : Rd →R is convex if for all x, y ∈Rd , for all λ ∈[0, 1],
+λf(x) + (1 −λ)f(y) ≥f(λx + (1 −λ)y)
+f(y) ≥f(x) + ∇f(x)T (y −x)
+Lemma 3 and Lemma 4 are proved to support the proof of Theorem 5. Lemma 3. Let gt = ∇ft(θt) and g1:t be defined as above and bounded,∥gt∥2 ≤G, ∥gt∥∞≤G∞. Then.
+Proof. The proof is the same as Lemma 10.3 in Adam Appendix(Kingma & Ba, 2014) and hence is ommitted here. Lemma 4. Let γ ≜ β2 1 √β2 . For β1, β2 ∈[0, 1) that satisfy β2 1 √β2 < 1 and bounded gt, ∥gt∥2 ≤G, ∥gt∥∞≤G∞, and th micro-batch number equals to N, the following inequality holds
+T � t=1 ˆm2 t,i � tˆvt,i ≤ 2 1 −γ 1 √1 −β2 N � b=1 ∥g1:T,i, b∥2
+Proof.
+Theorem 5. Assume that the function ft has bounded gradients, ∥∇ft(θ)∥≤G, ∥∇ft(θ)∥∞≤G∞for all θ ∈Rd and distance between any θt generated by AdamA is bounded, ∥θn −θm∥2 ≤D, ∥θn −θm∥∞≤D∞for any m, n ∈{1, ..., T}, and β1, β2 ∈[0, 1) satisfy β2 1 √β2 < 1, and the micro-batch number equals to N. Let αt = α √ t and β1,t = β1λt−1, λ ∈(0, 1). AdamA achieves the following guarantee, for all T ≥1.
+Proof.
+Following the proof in Adam Appendix Theorem 10.5, by applying Lemma 4, we can get the final convergence bound by substituting �d i=1 �N b=1 ∥g1:T,i, b∥2 for �d i=1 ∥g1:T,i∥2. □ Thus, it can be claimed that the convergence rate R(T ) T = O( 1 √ T ), the same as Adam does.
+Following the proof in Adam Appendix Theorem 10.5, by applying Lemma 4, we can get the final convergence bound by substituting �d i=1 �N b=1 ∥g1:T,i, b∥2 for �d i=1 ∥g1:T,i∥2. □

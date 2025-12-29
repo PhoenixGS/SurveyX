@@ -1,0 +1,478 @@
+IEEE TRANSACTIONS ON CYBERNETICS, VOL. 14, NO. 8, AUGUST 2020
+# Any Part of Bayesian Network Structure Learning
+Zhaolong Ling, Kui Yu, Hao Wang, Lin Liu, and Jiuyong Li
+Abstract—We study an interesting and challenging problem, learning any part of a Bayesian network (BN) structure. In this challenge, it will be computationally inefficient using existing global BN structure learning algorithms to find an entire BN structure to achieve the part of a BN structure in which we are interested. And local BN structure learning algorithms encounter the false edge orientation problem when they are directly used to tackle this challenging problem. In this paper, we first present a new concept of Expand-Backtracking to explain why local BN structure learning methods have the false edge orientation problem, then propose APSL, an efficient and accurate Any Part of BN Structure Learning algorithm. Specifically, APSL divides the V-structures in a Markov blanket (MB) into two types: collider V-structure and non-collider Vstructure, then it starts from a node of interest and recursively finds both collider V-structures and non-collider V-structures in the found MBs, until the part of a BN structure in which we are interested are oriented. To improve the efficiency of APSL, we further design the APSL-FS algorithm using Feature Selection, APSL-FS. Using six benchmark BNs, the extensive experiments have validated the efficiency and accuracy of our methods. Index Terms—Bayesian network, Local structure learning, Global structure learning, Feature selection.
+ 23 Mar 2021
+[cs.LG]
+I. INTRODUCTION
+# I. INTRODUCTION
+B AYESIAN networks (BNs) are graphical models for representing multivariate probability distributions [1], [2], [3]. The structure of a BN takes the form of a directed acyclic graph (DAG) that captures the probabilistic relationships between variables. Learning a BN plays a vital part in various applications, such as classification [4], [5], feature selection [6], [7], [8], and knowledge discovery [9], [10]. However, in the era of big data, a BN may easily have more than 1,000 nodes. For instance, Munin1 is a wellknown BN for diagnosis of neuromuscular disorders [11], which has four subnetworks, and three of them have more than 1,000 nodes. When we are only interested in one of subnetwork structures, if we can start from any one of nodes of this subnetwork and then gradually expands to learn only this subnetwork structure, it will be much more efficient than learning the entire BN structure.
+This work is partly supported by the National Key Research and Development Program of China (under grant 2019YFB1704101), and the National Science Foundation of China (under grant 61876206 and 61872002). Z. Ling is with the School of Computer Science and Technology, Anhui University, Hefei, Anhui, 230601, China. E-mail: zlling@ahu.edu.cn. K. Yu and H. Wang are with Key Laboratory of Knowledge Engineering with Big Data of Ministry of Education (Hefei University of Technology), and the School of Computer and Information, Hefei University of Technology, Hefei, Anhui, 230009, China. E-mail: yukui@hfut.edu.cn, jsjxwangh@hfut.edu.cn. L. Liu and J. Li are with the School of Information Technology and Mathematical Sciences, University of South Australia, Adelaide, SA, 5095, Australia. E-mail: lin.liu@unisa.edu.au, jiuyong.li@unisa.edu.au. 1http://www.bnlearn.com/bnrepository/discrete-massive.html#munin4
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/6fad/6fadc8b7-cf8b-4ba3-b186-e34e882dd306.png" style="width: 50%;"></div>
+Fig. 1. An illustrative example of learning a part of a BN structure around node T to any depth from 1 to 4, which achieves a local BN structure around T when learning to a depth of 1, and achieves a global BN structure when learning to a depth of 4 (the maximum depth).
+Thus in this paper, we focus on learning any part of a BN structure, that is, learning a part of a BN structure around any one node to any depth. For example in Fig. 1, given a target variable, structure learning to a depth of 1 means to discover and distinguish the parents and children (PC) of the target variable, structure learning to a depth of 2 means to discover and distinguish the PC of each node in the target’s PC on the basis of structure learning to a depth of 1, and so on. Clearly, it is trivial to obtain any part of a BN structure if we can learn a global BN structure using a global BN structure learning algorithm [12], [13], [14]. However, learning a global BN structure is known as NP-complete [15], [16], and easily becomes non-tractable in large scale applications where thousands of attributes are involved [17], [18]. Furthermore, it is not necessary and wasteful to find a global BN structure when we are only interested in a part of a BN structure. Recently, Gao et al. [19] proposed a new global BN structure learning algorithm, called Graph Growing Structure Learning (GGSL). Instead of finding the global structure directly, GGSL starts from a target node and learns the local structure around the node using score-based local learning algorithm [20], then iteratively applies the local learning algorithm to the node’s PC for gradually expanding the learned local BN structure until a global BN structure is achieved. However, if we directly apply GGSL to tackle any part of BN structure learning problem, first, GGSL is still a global BN structure learning algorithm, and second, it is time-consuming or infeasible when the BN is large because the scored-based local learning algorithm [20] used by GGSL needs to learn a BN structure involving all nodes selected currently at each iteration [7].
+IEEE TRANSACTIONS ON CYBERNETICS, VOL. 14, NO. 8, AUGUST 2020
+Fig. 2. A simple Bayesian network. T is a target node in black. Existing local BN structure learning algorithms cannot orient the edge F −T when they only find the local structure of T. Then, they recursively find the local structure of the nodes F, D, and C for expanding the local structure of T. Finally, since the V-structure A →C ←B can be oriented in the local structure of C, the local algorithms backtrack the edges C →D →F → T, and thus F is a parent of T.
+Due to the limitation of the score-based local learning algorithm on large-sized BNs, existing local BN structure learning algorithms are constraint-based. Such as, PCDby-PCD (PCD means Parents, Children and some Descendants) [21] and Causal Markov Blanket (CMB) [22]. Local BN structure learning focus on discovering and distinguishing the parents and children of a target node [22], and thus PCD-by-PCD and CMB only learn a part of a BN structure around any one node to a depth of 1. More specifically, both of PCD-by-PCD and CMB first find a local structure of a target node. If the parents and children of the target node cannot be distinguished in the local structure, these algorithms recursively find the local structure of the nodes in the target’s PC for gradually expanding the learned local structure (Expanding phase), and then backtrack the edges in the learned expansive structure to distinguish the parents and children of the target (Backtracking phase). As illustrated in Fig. 2, we call this learning process Expand-Backtracking. However, if we directly apply the local BN structure learning algorithms to tackle any part of BN structure learning problem, this will lead to that many V-structures cannot be correctly found (i.e., V-structures missed) during the Expanding phase. Missing V-structures will generate many potential cascade errors in edge orientations during the Backtracking phase. Moreover, PCD-by-PCD uses symmetry constraint (see Theorem 3 in Section III) to generate undirected edges, so it takes time to find more unnecessary PCs. CMB spends time tracking conditional independence changes after Markov blanket (MB, see Definition 6 in Section III) discovery, and the accuracy of CMB is inferior on small-sized data sets because it uses entire MB set as the conditioning set for tracking conditional independence changes. Thus, even if the existing local BN structure learning algorithms do not miss the V-structures, they still cannot learn a part of a BN structure efficiently and accurately. In this paper, we formally present any part of BN structure learning, to learn a part of a BN structure around any one node to any depth efficiently and accurately. As illustrated in Fig. 1, any part of BN structure learning can learn a local BN structure with a depth of 1, and achieve a global BN structure with a depth of the maximum depth. And hence, any part of BN structure learning has strong scalability. The main contributions of the paper are summarized as follows.
+1) We present a new concept of Expand-Backtracking, to describe the learning process of the existing local BN structure learning algorithms. And we divide the Vstructures included in an MB into collider V-structures and non-collider V-structures to analyze the missing V-structures in Expand-Backtracking. 2) Based on the analysis, we propose APSL, an efficient and accurate Any Part of BN Structure Learning algorithm. Specifically, APSL starts from any one node of interest and recursively finds both of the collider Vstructures and non-collider V-structures in MBs, until all edges in the part of a BN structure are oriented. 3) We further design APSL-FS, an any part of BN structure learning algorithm using Feature Selection. Specifically, APSL-FS employs feature selection for finding a local skeleton of a node without searching for conditioning sets to speed up local skeleton discovery, leading to improve the efficiency of APSL. 4) We conduct a series of experiments on six BN data sets, to validate the efficiency and accuracy of the proposed algorithms against 2 state-of-the-art local BN structure learning algorithms and 5 state-of-theart global BN structure learning algorithms.
+The rest of this paper is organized as follows: Section II discusses related work. Section III provides notations and definitions. Section IV analyzes the missing V-structures in Expand-Backtracking. Section V presents the proposed algorithms APSL and APSL-FS. Section VI discusses the experimental results, and Section VII concludes the paper.
+# II. RELATED WORK
+Many algorithms for BN structure learning have been proposed and can be divided into two main types: local methods and global methods. However, there are some issues with these methods when we apply them to tackle the any part of BN structure learning problem. Local BN structure learning algorithms State-of-theart local methods apply standard MB or PC discovery algorithms to recursively find V-structures in the local BN structure for edge orientations, until the parents and children of the target node are distinguished, and thus they learn a part of a BN structure around any one node to a depth of 1. PCD-by-PCD (PCD means Parents, Children and some Descendants) [21] applies Max-Min Parents and Children (MMPC) [23] to recursively search for PC and separating sets, then uses them for local skeleton construction and finding V-structures, respectively, and finally uses the Vstructures and Meek rules [24] for edge orientations. However, at each iteration of any part of BN structure learning, since PCD-by-PCD only finds the V-structures connecting a node with its spouses V-structures, the V-structures included in the PC of the node are sometimes missed, then using the Meek-rules leads to false edge orientations in the part of a BN structure. Moreover, PCD-by-PCD uses symmetry constraint to generate undirected edges, so it needs to find the PC of each node in the target’s PC to generate the
+undirected edges between the target and target’s PC, which is time-consuming. Causal Markov Blanket (CMB) [22] first uses HITON-MB [25] to find the MB of the target, then orients edges by tracking the conditional independence changes in MB of the target. However, at each iteration of any part of a BN structure learning, since CMB only find V-structures included in the PC of a node, the V-structures connecting the node with its spouses are sometimes missed, then tracking conditional independence changes leads to false edge orientations in the part of a BN structure. In addition, CMB uses entire MB set as the conditioning set and needs to spend time for conditional independence tests after MB discovery, which deteriorates the performance of CMB in accuracy and efficiency, respectively. Global BN structure learning algorithms State-of-theart global methods first identify each variable’s MB/PC using the existing MB/PC methods, then construct a global BN skeleton (i.e., an undirected graph) using the found MBs/PCs, and finally orient the edge directions of the skeleton using constraint-based or score-based BN learning methods. Grow-Shrink (GS) [12] first applies constraint-based MB method, Grow-Shrink Markov blanket (GSMB) [12] to find MB of each node to construct global BN skeleton, then uses conditional independence test to find all V-structures, and finally orients undirect edges by using Meek-rules [24]. Since then, many structure learning algorithms have been proposed. Max-Min Hill-Climbing (MMHC) [13] first applies constraint-based PC method, MMPC [23] to find PC of each node to construct global BN skeleton, then uses scorebased method to orient edges. Both of Score-based Local Learning+Constraint (SLL+C) [26] and Score-based Local Learning+Greedy (SLL+G) [26] uses the score-based MB method, SLL [26] to find MB/PC of each node to construct global BN skeleton, then orient edges by using constraintbased and score-based methods, respectively. However, when we apply these global methods to any part of BN structure learning, it is time-consuming to learn an entire BN structure to achieve a part of a BN structure. Recently, Gao et al. [19] proposed graph growing structure learning (GGSL) to learn a global BN structure. Instead of finding the MB/PC of each variable in advance, GGSL starts from any one node and learns the local structure around the node using the score-based MB discovery algorithm, S2TMB [20], then iteratively applies S2TMB to the node’s neighbors for gradually expanding the learned local BN structure until an entire BN structure is achieved. However, GGSL still needs to learn an entire BN structure to achieve a part of a BN structure. In addition, although the score-based MB method can directly find the local BN structure without expanding outward, it is computationally expensive [7], because it needs to learn a BN structure involving all nodes selected currently at each iteration. And hence, GGSL is time-consuming or infeasible when the size of a BN is large. In summary, when we apply existing local and global BN structure learning algorithms to any part of BN structure learning, local methods are inaccurate and global methods
+Symbol
+Meaning
+U
+a variable set
+X, Y, T
+a variable
+x, y
+a value of a variable
+Q
+a regular queue (first in, first out)
+Z, S
+a conditioning set within U
+X ⊥⊥Y |Z
+X is conditionally independent of Y given Z
+X ̸⊥⊥Y |Z
+X is conditionally dependent on Y given Z
+PCT
+parents and children of T
+SPT
+spouses of T
+SPT (X)
+a subset of spouses of T, and each node in SPT (X)
+has a common child X with T
+V
+a queried variable set of variables
+SepT [X]
+a set that d-separates X from T
+|.|
+the size of a set
+SU(X; Y )
+the correlation between X and Y
+are inefficient. Thus in this paper, we attempt to solve the problem of any part of BN structure learning.
+# are inefficient. Thus in this paper, we attempt to solve the problem of any part of BN structure learning.
+III. NOTATIONS AND DEFINITIONS
+In the following, we will introduce the relevant definitions and theorems. Table I provides a summary of the notations used in this paper. Definition 1 (Conditional Independence) [27] Two variables X and Y are conditionally independent given Z, iff P(X = x, Y = y|Z = z) = P(X = x|Z = z)P(Y = y|Z = z). Definition 2 (Bayesian Network) [27] Let P be a discrete joint probability distribution of a set of random variables U via a directed acyclic graph (DAG) G. We call the triplet < U, G, P > a Bayesian Network (BN) if < U, G, P > satisfies the Markov Condition: every variable in U is conditionally independent of its non-descendant variables given its parents. Markov condition enables us to recover a distribution P from a known DAG G in terms of conditional independence relationships. Definition 3 (D-Separation) [27]. A path p between X and Y given Z ⊆U\{X ∪Y } is open, iff (1) every collider on p is in Z or has a descendant in Z, and (2) no other noncollider variables on p are in Z. If the path p is not open, then p is blocked. Two variables X and Y are d-separated given Z, iff every path from X to Y is blocked by Z. If two variables X and Y are d-separated relative to a set of variables Z in a BN, such a set Z would be called a separating set of X from Y , then they are conditionally independent given Z in all probability distributions where this BN can represent. Definition 4 (Faithfulness) [9]. A Bayesian network is presented by a DAG G and a joint probability distribution P over a variable set U. G is faithful to P iff every conditional independence present in P is entailed by G and the Markov condition. P is faithful iff there exists a DAG G such that G is faithful to P.
+The faithfulness condition enables us to recover a DAG G from a distribution P to completely characterize P. Definition 5 (V-Structure) [27]. The triplet of variables X, Y , and Z forms a V-structure if node Z has two incoming edges from X and Y , forming X →Z ←Y , and X is not adjacent to Y . Z is a collider if Z has two incoming edges from X and Y in a path, respectively. Definition 6 (Markov Blanket) [27] Under the faithfulness assumption, given a target variable T, the Markov blanket of T is unique and consists of parents, children, and spouses (other parents of the children) of T. Theorem 1 [9] Under the faithfulness assumption, X ∈U and Y ∈U. If X and Y are adjacent, then X ̸⊥⊥Y |S, ∀S ⊆U \ {X ∪Y }. Theorem 2 [9] Under the faithfulness assumption, X ∈ U, Y ∈U, and Z ∈U. If X, Y , and Z forms the V-structure X →Z ←Y , then X ⊥⊥Y |S and X ̸⊥⊥Y |{S ∪Z}, ∀S ⊆U \ {X ∪Y ∪Z}. X is a spouse of Y . Under the faithfulness assumption, Theorem 1 presents the property of PC, and Theorem 2 presents the property of spouses in an MB. Theorem 3 Symmetry constraint. [28] Under the faithfulness assumption, if X ∈PCY exists, then Y ∈PCX holds.
+The faithfulness condition enables us to recover a DAG G from a distribution P to completely characterize P. Definition 5 (V-Structure) [27]. The triplet of variables X, Y , and Z forms a V-structure if node Z has two incoming edges from X and Y , forming X →Z ←Y , and X is not adjacent to Y . Z is a collider if Z has two incoming edges from X and Y in a path, respectively. Definition 6 (Markov Blanket) [27] Under the faithfulness assumption, given a target variable T, the Markov blanket of T is unique and consists of parents, children, and spouses (other parents of the children) of T. Theorem 1 [9] Under the faithfulness assumption, X ∈U and Y ∈U. If X and Y are adjacent, then X ̸⊥⊥Y |S, ∀S ⊆U \ {X ∪Y }. Theorem 2 [9] Under the faithfulness assumption, X ∈ U, Y ∈U, and Z ∈U. If X, Y , and Z forms the V-structure X →Z ←Y , then X ⊥⊥Y |S and X ̸⊥⊥Y |{S ∪Z}, ∀S ⊆U \ {X ∪Y ∪Z}. X is a spouse of Y . Under the faithfulness assumption, Theorem 1 presents the property of PC, and Theorem 2 presents the property of spouses in an MB. Theorem 3 Symmetry constraint. [28] Under the faithfulness assumption, if X ∈PCY exists, then Y ∈PCX holds.
+# IV. MISSING V-STRUCTURES IN EXPAND-BACKTRACKING
+IV. MISSING V-STRUCTURES IN EXPAND-BACKTRACKING
+In this section, we first give the definition of ExpandBacktracking in Section IV-A, and then use two examples to analyze the missing V-structures in Expand-Backtracking in Section IV-B.
+# A. Definition of Expand-Backtracking
+In this subsection, we first summarize the main ideas of local BN structure learning algorithms, then give the definition of the Expand-Backtracking. Local BN structure learning aims to discover and distinguish the parents and children of a target variable, and thus the local BN structure learning algorithms are only able to learn a part of a BN structure around the target to a depth of 1. Moreover, existing local algorithms are constraintbased, because score-based local methods need to learn a BN structure involving all nodes selected currently at each iteration, which is time-consuming. As constraint-based algorithms, local BN structure learning algorithms first find a local structure of a target node using the following three steps. Then, since the parents and children of the target sometimes cannot be distinguished in the learned local structure, the local algorithms recursively apply these three steps to the target’s neighbors for gradually expanding the learned local structure, until the parents and children of the target node are distinguished. 1) Skeleton identification. Use standard local discovery algorithm to construct the local BN skeleton of a target node.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4779/4779f4c3-5cc5-4fd3-86e7-b41100301fd2.png" style="width: 50%;"></div>
+Fig. 3. The Markov blanket (in blue) of node T comprises A and B (parents), D and F (children), and C (spouse). (a) Collider Vstructure (T is a collider in the V-structure), and (b) noncollider V-structure (T is not a collider in the V-structure).
+2) V-structure discovery. Discover V-structures in the local BN skeleton. 3) Edge orientation. Orient as many edges as possible given the V-structures in the learned part of BN skeleton, to get a part of BN structure around the target node. Specifically, in the edge orientation step, given the discovered V-structures, local BN structure learning algorithms orient the edges not only in the local skeleton of a target node, but also the skeleton outside the local skeleton, to backtrack the edges into the parents and children of the target node for distinguishing them. To facilitate the next step in presentation and analysis, we give the definition of the learning process of the local BN structure learning algorithms as follows. Definition 7 (Expand-Backtracking) Under the faithfulness assumption, existing local BN structure learning algorithms first learn a local structure of a target node, then expand the learned local structure and backtrack the edges to distinguish parents and children of the target node. We call this learning process Expand-Backtracking. Thus, V-structure discovery plays a crucial role in ExpandBacktracking. However, when the local BN structure learning algorithms are Expand-Backtracking, they ignore the correctness of the V-structures found (i.e., V-structures missed). Since the edge orientation step is based on the V-structure discovery step, missing V-structures in ExpandBacktracking will cause a cascade of false edge orientations in the obtained structure.
+# B. Analysis of missing V-structures in Expand-Backtracking
+In this subsection, we first define two types of V-structures in an MB, then give the examples to demonstrate which type of V-structures cannot be correctly identified when the local BN structure learning algorithms are Expand-Backtracking. Definition 8 (Collider V-structure and Non-collider Vstructure) Under the faithfulness assumption, there are two types of the V-structure included in the MB of T, 1) collider
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/023b/023b6b57-3c39-4039-b9d0-cb01703b6fbf.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 4. (a) The ALARM Bayesian network; (b) an example of using PCD-by-PCD to find a part of an Alarm Bayesian network structure around node 10 to a depth of 2; (c) an example of using CMB to find a part of an Alarm Bayesian network structure around node 26 to a depth of 2. The red ’X’ symbol denotes the falsely oriented edges, the blue node is the node that needs to find local structure at each iteration, the number in parentheses represents the level of iterations of an algorithm, and ’· · · ’ means omitted correctly oriented iterations.</div>
+V-structure: T is a collider in the V-structure, and 2) noncollider V-structure: T is not a collider in the V-structure. Definition 8 gives two types of the V-structures included in an MB, as illustrated in Fig. 3. Thus, whether collider V-structures or non-collider V-structures cannot be correctly identified in the V-structure discovery step, it will cause the false edge orientations in the obtained structure. Below, we give the examples of the missing V-structures in ExpandBacktracking using two representative local BN structure learning algorithms. 1) Missing collider V-structures: PCD-by-PCD [21] is a state-of-the-art local BN structure learning algorithm, which recursively uses standard PC algorithm to find PCs and V-structures. However, PCD-by-PCD only finds the Vstructures connecting the node with its spouses at each iteration, and hence, PCD-by-PCD only finds non-collider V-structures leading to missing some collider V-structures at each iteration. In the following, under the faithfulness and correct independence tests assumption, we use PCD-by-PCD to find a part of an ALARM [29] BN structure around node 10 to a depth of 2, as illustrated in Fig. 4 (b). Before giving the example step by step, to make the process easier for readers to understand, as shown in Fig. 5, we first give a detailed description of the three Meek-rules [24] used by PCD-byPCD in edge orientation step as follows: R1 No new V-structure. Orient Y −Z into Y →Z whenever there is a directed edge X →Y such that X and Z are not adjacent; R2 Preserve acyclicity. Orient X −Z into X → Z whenever there is a chain X →Y →Z; R3 Enforce 3-fork V-structure. Orient X −Y into X → Y whenever there are two chains X −Z →Y and X −W →Y such that Z and W are not adjacent. 1st iteration: PCD-by-PCD finds PC of 10. PCD-by-PCD uses symmetry constraint to generate undirected edges, for example, PCD-by-PCD generates undirected edge A −B only if A belongs to the PC of B and B also belongs to the
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8f84/8f8407f5-6488-4ab7-b8e9-cd5f951e3c71.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 5. Three Meek-rules for edge orientations.</div>
+PC of A. Since PC of 10 is {11, 35}, but PCs of 11 and 35 are initialized as empty sets and can only be discovered in the next iterations, then 10 does not belong to the PCs of 11 and 35, and there are no undirected edges generated in this iteration. 2nd iteration: PCD-by-PCD finds PC of 11. Since PC of 10 is {11, 35} and PC of 11 is {10, 12}, then 10 belongs to the PC of 11 and 11 also belongs to the PC of 10, and PCD-by-PCD generates undirected edge 10-11. There are no V-structures generated in this iteration, so PCD-by-PCD does not need to orient edges. 3rd iteration: PCD-by-PCD finds PC of 35, then generates undirected edge 10-35. Since the non-collider V-structure 11 →10 ←35 is discovered, PCD-by-PCD orient the noncollider V-structure, and there are no other undirected edges can be oriented by using Meek-rules. 4th iteration: PCD-by-PCD finds PC of 12, then generates undirected edges 12-11 and 12-35. Since PCD-by-PCD only discovers non-collider V-structure at each iteration, it misses the collider V-structure 11 →12 ←35. And there are no other undirected edges can be oriented by using Meek-rules. 5th iteration: PCD-by-PCD finds PC of 9, and generates undirected edge 9-35. Then there are no new V-structures generated and no other undirected edges can be oriented by using Meek-rules. 6th-9th iterations: PCD-by-PCD iteratively finds PCs of 34, 36, 8, and 13, and PCD-by-PCD correctly orients edges in these iterations, so we omit them. 10th iteration: PCD-by-PCD finds PC of 15, then generates undirected edge 15-34, and discovers non-collider V-
+structure 15 →34 ←13. Finally, according to the R1 of Meek-rules, PCD-by-PCD backtracks the edges 34 →35, 35 →12, 35 →36, and 12 →11. Thus, the edge 12 →11 is falsely oriented. 2) Missing non-collider V-structures: CMB [22] is another state-of-the-art local BN structure learning algorithm, which recursively uses standard MB algorithm to find MBs and tracks the conditional independence changes to find V-structures. However, CMB only finds the V-structures included in the PC of the target at each iteration. Thus, CMB only finds collider V-structures and then misses some noncollider V-structures at each iteration. In the following, under the faithfulness and correct independence tests assumption, we use CMB to find a part of an ALARM BN structure around node 26 to a depth of 2, as illustrated in Fig. 4 (c). Moreover, CMB tracks the conditional independence changes in edge orientation step, which is similar to the three Meek-rules [22]. 1st iteration: CMB finds MB of 26 and generates undirected edges using PC of 26. Then CMB discovers the collider V-structures 25 →26 ←30, 30 →26 ←17, and 25 →26 ←17, and there are no other undirected edges can be oriented by tracking the conditional independence changes. 2nd iteration: CMB finds MB of 17, then generates undirected edge 17-31, and there are no other undirected edges can be oriented by tracking the conditional independence changes. 3rd iteration: CMB finds MB of 25 and generates undirected edges using PC of 25. Since CMB only finds collider V-structures at each iteration, it misses the non-collider V-structure 25 →31 ←17. Then there are no other undirected edges can be oriented by tracking the conditional independence changes. 4th iteration: CMB finds MB of 30 and generates undirected edges using PC of 30. Since CMB discovers collider V-structure 27 →30 ←29, CMB orients the collider Vstructure. Then according to the conditional independence changes, CMB executes the same way as the R1 of the Meekrules to backtrack the edges 30 →31, 31 →25, 31 →17, 25 →18, 25 →24, and 25 →32. Thus, the edges 31 →25 and 31 →17 are falsely oriented. Summary: Local BN structure learning algorithms miss V-structures in Expand-Backtracking, and thus they encounter the false edge orientation problem when learning any part of a BN structure. If we do not tackle the missing V-structures in Expand-Backtracking, many edges may be falsely oriented during the edge orientation step, leading to low accuracy of any part of BN structure learning. Clearly, to tackle the missing V-structures in ExpandBacktracking when learning any part of a BN structure, we need to correctly identify both of non-collider V-structures and collider V-structures in the current part of a BN skeleton at each iteration.
+V. THE PROPOSED APSL AND APSL-FS ALGORITHMS This section presents the proposed any part of BN structure learning algorithms, APSL in Section V-A and APSLFS in Section V-B.
+# A. APSL: Any Part of BN Structure Learning
+With the analysis of missing V-structures in ExpandBacktracking in Section IV, we present the proposed APSL (Any Part of BN Structure Learning) algorithm, as described in Algorithm 1. APSL recursively finds both of non-collider V-structures (Step 1: Lines 9-26) and collider V-structures (Step 2: Lines 28-36) in MBs, until all edges in the part of a BN structure around the target node are oriented (Step 3: Lines 38-58).
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ccee/ccee1798-34a4-4ca5-945a-80befe35e594.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 6. Four types of relationships between two variables.</div>
+APSL defines an adjacency matrix G of a DAG, to detect the relationship among all the variables. In G, the four types of the relationship between any two variables A and B are shown in Fig. 6, as follows: (a) A and B are not adjacent ⇒G(A, B) = 0 and G(B, A) = 0. (b) A and B are adjacent but cannot determine their edge direction ⇒G(A, B) = 1 and G(B, A) = 1. (c) A and B are adjacent and A →B ⇒G(A, B) = −1 and G(B, A) = 0. (d) A and B are adjacent and A ←B ⇒G(A, B) = 0 and G(B, A) = −1. APSL first initializes the queried variable set V to an empty set and initializes the queue Q, pre-storing the target variable T. Then, the next three steps will be repeated until all edges in the part of a BN structure around T to a depth of K are oriented, or the size of V equals to that of the entire variable set U, or Q is empty. Step 1: Find non-collider V-structures (Lines 9-26). APSL first pops the first variable A from the queue Q, and then uses MB discovery algorithms to find the MB (i.e., PC and spouse) of A. APSL will first find the PC and spouse of T since T is pre-stored in Q. Then, APSL pushes the PC of A into Q to recursively find the MB of each node in the PC of A in the next iterations, and stores A in V to prevent repeated learning. Finally, APSL generates undirected edges by using the PC of A (Lines 16-20), and orients the noncollider V-structures by using the spouses of A (Lines 2126). At Line 13, the MB discovery algorithm, we use is a constraint-based MB method, such as MMMB [23] or HITON-MB [25], because this type of MB methods do not require a lot of memory. Moreover, these MB methods can save the discovered PCs to avoid repeatedly learning PC
+orithm 1: APSL put: D: Data, T: Target, K: a given depth; tput: G: a part of a BN structure around T; = ∅; = {T}; = zeros(|U|, |U|); yer num = 1; er nodes(layer num) = T; = 1; peat /*Step 1 : Find non-colliderV -structures*/ A = Q.pop; if A ∈V then continue; end [PCA, SPA] = GetMB(D, A) V = V ∪{A}; Q.push(PCA); for each B ∈PCA do if G(A, B) = 0&G(B, A) = 0 then G(A, B) = 1, G(B, A) = 1; end end for each B ∈PCA do for each C ∈SPA(B) do G(A, B) = −1, G(B, A) = 0; G(C, B) = −1, G(B, C) = 0; end end /*Step 2 : Find collider V -structures*/ for every X, Y ∈PCA do if X ⊥⊥Y |Z for some Z ⊆PCX then SepX[Y ] = Z; if X ̸⊥⊥Y |SepX[Y ] ∪{A} then G(X, A) = −1, G(A, X) = 0; G(Y, A) = −1, G(A, Y ) = 0; end end end /*Step 3 : Orient edges */ update G by using Meek rules ; i = i −1; if i = 0 then layer num = layer num + 1; for each X ∈layer nodes(layer num −1) do layer nodes(layer num) = layer nodes(layer num) ∪PCX; end i = |layer nodes(layer num) \ V|; end if layer num > K then break flag=1; for each X ∈layer nodes(K) do if can find G(PCX, X) = 1 then break flag=0; break; end end if break flag then break; end end til |V| = |U|, or Q = ∅; turn G;
+sets during any part of BN structure learning, since they find spouses from the PC of each variable in the target’s PC. Line 17 aims to prevent the already oriented edges from being re-initialized as undirected edges. layer num represents the number of layers, starting from 1. Thus, the number of layers is one more than the corresponding number of depths, for example, when the number of depths is 2, the corresponding number of layers is 3. layer nodes stores the nodes of each layer. Step 2: Find collider V-structures (Lines 28-36). APSL finds collider V-structures in the PC of A. If two variables X and Y in the PC of A are conditionally independent, that is, they are not adjacent owing to Theorem 1. But these two variables are conditionally dependent given the union of the collider A and their separating set, then the triple of nodes X, Y , and A can form collider V-structure of A owing to Theorem 2, X →A ←Y . Step 3: Orient edges (Lines 38-58). Based on the oriented non-collider V-structures and collider V-structures, APSL uses Meek-rules to orient the remaining undirected edges (Line 38). The purpose of Lines 40-46 is to control the number of layers of recursion. Specifically, i reduced by 1 at each iteration, and i = 0 means that all the nodes in this layer have been traversed, then ASPL begins to traverse the nodes at the next layer in the next iterations. From Lines 4758, APSL determines whether all edges in the part of a BN structure around T are oriented. When the edges between the layer of K and K+1 of a part of a BN structure around T are all oriented, APSL terminates and outputs the part of a BN structure around T. Some edges with a number of layers less than K are not oriented because these edges can never be oriented due to the existence of Markov equivalence structures [30]. Theorem 4 Correctness of APSL Under the faithfulness and correct independence tests assumption, APSL finds a correct part of a BN structure. Proof Under the faithfulness and correct independence tests assumption, we will prove the correctness of APSL in three steps. 1) Step 1 finds all and only the non-collider V-structures. A standard MB discovery algorithm finds all and only the PC and spouses of a target node. APSL uses the MB method to find PC and spouses of the nodes that need to be found. Then, using the found PCs, APSL constructs a part of a BN skeleton with no missing edges and no extra edges. Using the found spouses, APSL finds all and only the non-collider V-structures. 2) Step 2 finds all and only the collider V-structures. APSL finds collider V-structures in PCs. First, APSL uses Theorem 1 to confirm that there is no edge between two nodes X and Y in the PC of A (the target node at each iteration). Then, owing to Theorem 2, if the collider A makes X and Y conditionally dependent, X ̸⊥⊥Y |SepX[Y ] ∪{A}, then X and Y are each other’s spouses with the common child A, and forms a collider V-structure X →A ←Y . Since APSL considers any two nodes in the PCs and their common child,
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/65e8/65e82e59-e847-4b23-a688-ccaed2bcd8d6.png" style="width: 50%;"></div>
+Fig. 7. (a) An example of using APSL to find a part of an Alarm Bayesian network structure around node 10 to a depth of 2; (b) an example of using APSL to find a part of an Alarm Bayesian network structure around node 26 to a depth of 2. The red ’✓’ symbol denotes the edges that local BN structure learning algorithm falsely orients but APSL correctly orients, the blue node is the target node during each iteration, the number in parentheses represents the level of iterations, and ’· · · ’ means omitted iterations.
+<div style="text-align: center;">Fig. 7. (a) An example of using APSL to find a part of an Alarm Bayesian network structure around node 10 to a depth of 2; (b) an example of using APSL to find a part of an Alarm Bayesian network structure around node 26 to a depth of 2. The red ’✓’ symbol denotes the edges that local BN structure learning algorithm falsely orients but APSL correctly orients, the blue node is the target node during each iteration, the number in parentheses represents the level of iterations, and ’· · · ’ means omitted iterations.</div>
+APSL finds all and only the collider V-structures. 3) Step 3 finds a correct part of a BN structure. Based on the part of a BN skeleton with all non-collider V-structures and collider V-structures, APSL uses Meek-rules to recover the part of a skeleton to a correct part of a structure, some edges cannot be oriented due to the existence of Markov equivalence structures. Finally, APSL terminates when the part of a structure expands to a given depth, and thus APSL finds a correct part of a BN structure. ■ Tracing APSL To further validate that our algorithm can tackle missing V-structures in Expand-Backtracking, we use the same examples in Fig. 4 to trace the execution of APSL. Case 1: As shown in Fig. 7 (a), APSL finds the collider V-structure of 10 at the 1st iteration, 11 →10 ←35. Then, at the 2nd iteration, APSL finds the non-collider V-structure of 11, 11 →12 ←35, which is missed by PCD-by-PCD. Case 2: As shown in Fig. 7 (b), At the 1st iteration, APSL finds the collider V-structures of 26. And at the 2nd iteration, APSL finds the non-collider V-structure of 17, 25 →26 ← 17, which is missed by CMB.
+# B. APSL-FS: APSL using Feature Selection
+In this section, we will propose an efficient version of APSL by using feature selection. APSL uses a standard MB discovery algorithm, MMMB or HITON-MB, for MB discovery. However, the standard PC discovery algorithms, MMPC [23] and HITON-PC [25] (used by MMMB and HITON-MB, respectively), need to perform an exhaustive subset search within the currently selected variables as conditioning sets for PC discovery, and thus they are computationally expensive or even prohibitive when the size of the PC set of the target becomes large.
+Feature selection is a common dimensionality reduction technique and plays an essential role in data analytics [31], [32], [10]. Existing feature selection methods can be broadly categorized into embedded methods, wrapper methods, and filter methods [33]. Since filter feature selection methods are fast and independent of any classifiers, they have attracted more attentions. It has been proven in our previous work [34] that some filter feature selection methods based on mutual information prefer the PC of the target variable. Furthermore, these methods use pairwise comparisons [35] (i.e., unconditional independence tests) to remove false positives with less correlations, they can find the potential PC of the target variable without searching for conditioning set, and thus improving the efficiency of PC discovery. Thus, to address the problem exists in APSL for PC discovery, we use a filter feature selection method based on mutual information instead of the standard PC discovery algorithm. However, the feature selection method we use cannot find spouses for edge orientations. Because the feature selection method uses pairwise comparisons rather than conditional independence tests [35], it cannot find the separating sets which is the key to finding spouses [6]. Standard PC discovery algorithms find separating sets to make a target variable and the other variables conditionally independent, only the variables in the PC of the target are always conditionally dependent on the target [6]. Thus, standard PC discovery algorithms find PC and separating sets simultaneously. However, these algorithms are computationally expensive in finding separating sets since they need to find the separating sets of all variables independent of the target. Instead, it is only necessary to find the separating sets of the variables in the PC of each variable in the target’s PC set, as spouses of the target variable exist only there. Thus in this subsection, based on using feature selection for PC discovery, we propose an efficient Markov blanket discovery algorithm for spouses discovery, called MB-FS (Markov Blanket discovery by Feature Selection). Moreover, we use MB-FS instead of the standard MB discovery algorithm for MB discovery in APSL to improve the efficiency, and we call this new any part of BN structure learning algorithm APSL-FS (APSL using Feature Selection), an efficient version of APSL using feature selection. In the following, we will go into details about using feature selection for PC discovery and MB discovery, respectively. (1) PC discovery: We choose a well-established feature selection method, Fast Correlation-Based Filter (FCBF) [35], for PC discovery because the size of the PC of each variable in a BN is not fixed. FCBF specifies a threshold δ to control the number of potential PC of the target variable, instead of specifying the number of the PC in advance. As illustrated in Algorithm 2, FCBF first finds a potential PC of the target variable from the entire variable set whose correlations with the target are higher than the threshold (Lines 1-6). Then, FCBF uses pairwise comparisons to remove false positives in the potential PC to get the true
+Algorithm 2: FCBF
+Input: D: Data, T: Target, δ: Threshold;
+Output: PCT : PC of T ;
+1 S = ∅;
+2 for each X ∈U \ {T} do
+3
+if SU(X; T) > δ then
+4
+S = S ∪X;
+5
+end
+6 end
+7 Order S in descending SU(X; T) value;
+8 i = 1;
+9 while i <= |S| do
+10
+j = i + 1;
+11
+while j <= |S| do
+12
+if SU(S(i); S(j)) > SU(S(j); T) then
+13
+S(j) = ∅;
+14
+else
+15
+j = j + 1;
+16
+end
+17
+end
+18
+i = i + 1;
+19 end
+20 PCT = S;
+21 Return PCT ;
+Algorithm 3: MB-FS
+Input: D: Data, T: Target, δ: Threshold;
+Output: [PCT , SPT ]: MB of T ;
+1 PCT = FCBF(D, T, δ);
+2 for each X ∈PCT do
+3
+PCX = FCBF(D, X, δ);
+4
+for each Y ∈PCX do
+5
+if T ⊥⊥Y |Z for some Z ⊆PCT then
+6
+SepT [Y ] = Z;
+7
+if T ̸⊥⊥Y |SepT [Y ] ∪{X} then
+8
+SPT (X) = SPT (X) ∪{Y };
+9
+end
+10
+end
+11
+end
+12 end
+13 Return [PCT , SPT ];
+PC (Lines 7-20). (2) MB discovery: As illustrated in Algorithm 3, MB-FS first uses FCBF to find the PC of the target variable T, and uses FCBF to find the PC of each variable in the T’s PC as the candidate spouses of T. Then, MB-FS finds the separating set from the subsets of the PC of T, to make T and the variable Y in the candidate spouses are conditionally independent. Finally, if T and Y are conditionally dependent given the union of the separating set and their common child X, Y is a spouse of T owing to Theorem 2.
+# VI. EXPERIMENTS
+In this section, we will systematically evaluate our presented algorithms. In Section VI-A, we describe the data sets, comparison methods, and evaluation metrics in the experiments. Then in Section VI-B and VI-C, we evaluate our algorithms with local BN structure learning algorithms and global BN structure learning algorithms, respectively.
+<div style="text-align: center;">TABLE II SUMMARY OF BENCHMARK BNS</div>
+Num.
+Num.
+Max In/out-
+Min/Max
+Network
+Vars
+Edges
+Degree
+|PCset|
+Child
+20
+25
+2/7
+1/8
+Insurance
+27
+52
+3/7
+1/9
+Alarm
+37
+46
+4/5
+1/6
+Child10
+200
+257
+2/7
+1/8
+Insurance10
+270
+556
+5/8
+1/11
+Alarm10
+370
+570
+4/7
+1/9
+# A. Experiment setting
+To evaluate the APSL and APSL-FS algorithms, we use two groups of data generated from the six benchmark BNs as shown in Table II2. One group includes 10 data sets each with 500 data instances, and the other group also contains 10 data sets each with 1,000 data instances. We compare the APSL and APSL-FS algorithms with 7 other algorithms, including 2 local BN structure learning algorithms, PCD-by-PCD [21] and CMB [22], and 5 global BN structure learning algorithms, GS [12], MMHC [13], SLL+C [26], SLL+G [26], and GGSL [19]. The implementation details and parameter settings of all the algorithms are as follows: 1) PCD-by-PCD, CMB, GS, MMHC3, APSL, and APSLFS are implemented in MATLAB, SLL+C/G4 and GGSL are implemented in C++. 2) The conditional independence tests are G2 tests with the statistical significance level of 0.01, the constrained MB algorithm used by APSL is HITON-MB [25], and the threshold of the feature selection method FCBF [35] used by APSL-FS is 0.05. 3) In all Tables in Section VI, the experimental results are shown in the format of A±B, where A represents the average results, and B is the standard deviation. The best results are highlighted in boldface. 4) All experiments are conducted on a computer with an Intel Core i7-8700 3.20 GHz with 8GB RAM. Using the BN data sets, we evaluate the algorithms using the following metrics: • Accuracy. We evaluate the accuracy of the learned structure using Ar Precision, Ar Recall, and Ar Distance. The Ar Precision metric denotes the number of correctly predicted edges in the output divided by the number of true edges in a test DAG, while the Ar Recall metric represents the number of correctly predicted edges in the output divided by the number of predicted edges in the output of an algorithm. The 2The public data sets are available at http : //pages.mtu.edu/ ∼ lebrown/supplements/mmhc paper/mmhc index.html. 3The codes of MMHC in MATLAB are available at http : //mensxmachina.org/en/software/probabilistic −graphical − model −toolbox/. 4The codes of SLL+C and SLL+G in C++ are available at https : //www.cs.helsinki.fi/u/tzniinim/uai2012/.
+2The public data sets are available at http : //pages.mtu.edu/ ∼ lebrown/supplements/mmhc paper/mmhc index.html. 3The codes of MMHC in MATLAB are available at http : //mensxmachina.org/en/software/probabilistic −graphical − model −toolbox/. 4The codes of SLL+C and SLL+G in C++ are available at https : //www.cs.helsinki.fi/u/tzniinim/uai2012/.
+<div style="text-align: center;">TABLE III AR DISTANCE, AR PRECISION, AR RECALL, AND RUNTIME (IN SECONDS) ON LEARNING A PART OF BN STRUCTURES TO A DEPTH OF 1 USING DIFFERENT DATA SIZES (A ± B: A REPRESENTS THE AVERAGE RESULTS WHILE B IS THE STANDARD DEVIATION. THE BEST RESULTS ARE HIGHLIGHTED IN BOLDFACE.)</div>
+Size=500
+Size=1,000
+Network
+Algorithm
+Ar Distance
+Ar Precision
+Ar Recall
+Runtime
+Ar Distance
+Ar Precision
+Ar Recall
+Runtime
+Child
+PCD-by-PCD
+0.57±0.55
+0.66±0.42
+0.56±0.39
+0.17±0.08
+0.46±0.47
+0.69±0.35
+0.67±0.34
+0.25±0.14
+CMB
+0.54±0.52
+0.61±0.38
+0.65±0.39
+0.63±0.24
+0.39±0.50
+0.73±0.36
+0.73±0.36
+0.67±0.38
+APSL
+0.63±0.48
+0.55±0.34
+0.57±0.37
+0.12±0.06
+0.45±0.50
+0.70±0.36
+0.68±0.36
+0.18±0.06
+ASPL-FS
+0.37±0.46
+0.80±0.32
+0.70±0.35
+0.03±0.02
+0.37±0.46
+0.83±0.32
+0.70±0.35
+0.03±0.03
+Insurance
+PCD-by-PCD
+0.90±0.38
+0.45±0.35
+0.33±0.28
+0.16±0.15
+0.70±0.46
+0.64±0.38
+0.43±0.32
+0.23±0.20
+CMB
+0.81±0.44
+0.49±0.36
+0.40±0.33
+0.36±0.22
+0.77±0.43
+0.52±0.34
+0.42±0.31
+0.56±0.37
+APSL
+0.83±0.38
+0.48±0.34
+0.38±0.25
+0.10±0.09
+0.51±0.36
+0.76±0.30
+0.59±0.27
+0.14±0.10
+ASPL-FS
+0.66±0.50
+0.67±0.43
+0.48±0.33
+0.05±0.06
+0.85±0.48
+0.49±0.42
+0.36±0.32
+0.07±0.06
+Alarm
+PCD-by-PCD
+0.61±0.57
+0.60±0.42
+0.56±0.41
+0.21±0.22
+0.50±0.55
+0.69±0.40
+0.63±0.40
+0.29±0.27
+CMB
+0.65±0.59
+0.58±0.44
+0.53±0.42
+0.32±0.33
+0.58±0.58
+0.62±0.42
+0.58±0.41
+0.24±0.19
+APSL
+0.53±0.57
+0.66±0.42
+0.63±0.40
+0.17±0.16
+0.41±0.49
+0.75±0.36
+0.70±0.36
+0.23±0.20
+ASPL-FS
+0.61±0.55
+0.61±0.41
+0.55±0.40
+0.07±0.09
+0.51±0.55
+0.69±0.41
+0.62±0.39
+0.07±0.09
+Child10
+PCD-by-PCD
+0.91±0.49
+0.38±0.38
+0.35±0.35
+2.03±3.29
+0.73±0.55
+0.51±0.41
+0.48±0.40
+2.46±3.73
+CMB
+0.60±0.47
+0.60±0.36
+0.60±0.36
+2.41±2.61
+0.55±0.49
+0.62±0.36
+0.63±0.36
+1.98±2.06
+APSL
+0.68±0.49
+0.52±0.37
+0.56±0.38
+0.83±1.62
+0.48±0.45
+0.66±0.33
+0.69±0.34
+1.05±2.16
+ASPL-FS
+0.53±0.53
+0.70±0.40
+0.59±0.38
+0.08±0.06
+0.47±0.52
+0.75±0.39
+0.63±0.37
+0.15±0.11
+Insurance10
+PCD-by-PCD
+0.85±0.41
+0.45±0.33
+0.38±0.31
+1.33±4.15
+0.72±0.43
+0.58±0.36
+0.44±0.30
+1.22±3.93
+CMB
+0.82±0.39
+0.46±0.31
+0.42±0.31
+1.49±1.30
+0.68±0.41
+0.57±0.33
+0.50±0.31
+2.06±1.84
+APSL
+0.71±0.38
+0.54±0.31
+0.50±0.30
+0.50±1.23
+0.54±0.40
+0.67±0.31
+0.61±0.31
+0.84±2.56
+ASPL-FS
+0.71±0.40
+0.66±0.37
+0.42±0.29
+1.09±1.86
+0.60±0.40
+0.79±0.35
+0.48±0.30
+0.34±0.32
+Alarm10
+PCD-by-PCD
+0.83±0.51
+0.50±0.43
+0.38±0.36
+5.55±9.42
+0.72±0.53
+0.59±0.42
+0.45±0.37
+4.91±9.64
+CMB
+0.81±0.53
+0.47±0.42
+0.42±0.39
+1.42±1.48
+0.70±0.55
+0.57±0.42
+0.49±0.40
+0.92±0.87
+APSL
+0.70±0.48
+0.56±0.39
+0.49±0.36
+3.16±6.21
+0.55±0.48
+0.69±0.37
+0.59±0.36
+5.19±8.97
+ASPL-FS
+0.68±0.48
+0.61±0.39
+0.49±0.35
+0.82±1.86
+0.65±0.51
+0.65±0.41
+0.49±0.36
+1.48±2.64
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d82c/d82c144d-ba7a-404a-afc6-d43573281262.png" style="width: 50%;"></div>
+<div style="text-align: center;">gram of the Nemenyi test of Ar Distance and Runtime on learning a part of BN structu</div>
+<div style="text-align: center;">Fig. 8. Crucial difference diagram of the Nemenyi test of Ar Distance and Runtime o</div>
+<div style="text-align: center;">menyi test of Ar Distance and Runtime on learning a part of BN structures (Depth=1).</div>
+Ar Distance metric is the harmonic average of the Ar Precision and Ar Recall, Ar Distance = � (1 −Ar Precision)2 + (1 −Ar Recall)2, where the lower Ar Distance is better. • Efficiency. We report running time (in seconds) as the efficiency measure of different algorithms. The running time of feature selection is included in the total running time of our method.
+# B. Comparison of our methods with local methods
+In this subsection, using six BNs, we compare our methods with the local methods on learning a part of a BN structure around each node to a depth of 1, Tables III summarizes the detailed results. In efficiency. PCD-by-PCD uses symmetry constraint to generate undirected edges, then it finds more PCs than APSL, and thus it is slower than APSL. CMB spends
+time tracking conditional independence changes after MB discovery, so it is inferior to APSL in efficiency. APSL-FS does not need to perform an exhaustive subset search within conditioning sets for PC discovery, then it is much faster than APSL. In accuracy. The symmetry constraint used by PCDby-PCD may remove more true nodes, leading to a low accuracy of PCD-by-PCD. CMB uses entire MB set as the conditioning set for tracking conditional independence changes, so it is also inferior to APSL in accuracy. APSL-FS does not use conditioning set for independence tests, then it reduces the requirement of data samples, and more accurate than APSL on samll-sized sample data sets. To further evaluate the accuracy and efficiency of our methods against local methods, we conduct the Friedman test at a 5% significance level under the null hypothesis, which states that whether the accuracy and efficiency of
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/a630/a630f0c8-f513-449d-949d-b0b26f908b49.png" style="width: 50%;"></div>
+<div style="text-align: center;">of BN structures to a depth of 3 using different data sizes (the labels of the x-axis from  d10. 5: Insurance10. 6: Alarm10, and all figures use the same legend).</div>
+<div style="text-align: center;">Fig. 9. The experimental results of learning a part of BN structures to a depth of 3 using different data sizes (the labels of the x-axis from 1 to 6 denote the BNs. 1: Child. 2: Insurance. 3: Alarm. 4: Child10. 5: Insurance10. 6: Alarm10, and all figures use the same legend).</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/72e1/72e180a8-8fb5-4ea6-8662-e7ed204fe93a.png" style="width: 50%;"></div>
+<div style="text-align: center;">The experimental results of learning a part of BN structures to a depth of 5 using differe as those in Fig. 10, and all figures use the same legend).</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/10c3/10c34a27-9840-4c60-8335-b2ff6d8dbe45.png" style="width: 50%;"></div>
+<div style="text-align: center;"> experimental results of learning a part of BN structures to a depth of the maximum dept are the same as those in Fig. 10, and all figures use the same legend).</div>
+<div style="text-align: center;">Fig. 11. The experimental results of learning a part of BN structures to a depth of the maximum depth using different data sizes (the labels of the x-axi rom 1 to 6 are the same as those in Fig. 10, and all figures use the same legend).</div>
+APSL and APSL-FS and that of PCD-by-PCD and CMB have no significant difference. Both of the null hypotheses of Ar Distance and Runtime are rejected, the average ranks of Ar Distance for PCD-by-PCD, CMB, APSL, and APSLFS are 1.54, 2.17, 3.04, and 3.25, respectively (the higher the average rank, the better the performance in accuracy), and the average ranks of Runtime for PCD-by-PCD, CMB, APSL, and APSL-FS are 1.75, 1.58, 2.83, 3.83, respectively (the higher the average rank, the better the performance in efficiency). Then, we proceed with the Nemenyi test as a posthoc test. With the Nemenyi test, the performance of two methods is significantly different if the corresponding average ranks differ by at least the critical difference. With the Nemenyi test, both of the critical differences of Ar Distance and Runtime are up to 1.35. Thus, we can observe that APSL-FS is significantly more accurate than PCD-by-PCD, and APSLFS is significantly more efficient than both of PCD-by-PCD CMB on learning a part of a BN structure to a depth of 1. We plot the crucial difference diagram of the Nemenyi test in Fig. 8.
+<div style="text-align: center;">TABLE IV FIVE NODES WITH THE LARGEST PC SET ON EACH BN</div>
+Network
+Selected five nodes
+Child
+2, 6, 7, 9, 11
+Insurance
+2, 3, 4, 5, 8
+Alarm
+13, 14, 21, 22, 29
+Child10
+12, 52, 92, 132, 172
+Insurance10
+164, 166, 191, 193, 245
+Alarm10
+13, 23, 66, 103, 140
+# C. Comparison of our methods with global methods
+In this subsection, we compare our methods with the global methods on learning a part of a BN structure to a depth of 3, 5, and the maximum depth, respectively. In Fig. 9-11, we plot the results of Ar Distance and Runtime of APSL and APSL-FS against global methods on learning part of BN structures around the five nodes with the largest PC set on each BN to a depth of 3, 5, and the maximum, respectively. The selected five nodes of each BN
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3d0c/3d0c6544-f78e-41e7-a0f8-1c34b37e8913.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d54d/d54dd2c3-c737-4a6e-9c64-6e86bdfdc2e8.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/92da/92daa383-80dd-4037-8f5a-8e6cf36130bf.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b7da/b7da136e-61a3-40fe-aa76-b4ce92bbd20d.png" style="width: 50%;"></div>
+are shown in Table IV. Since SLL+C, SLL+G, and GGSL cannot generate any results on Child10, Insurance10, and Alarm10 due to memory limitation, we only plot the results of them on Child, Insurance, and Alarm. In efficiency. When learning a part of BN structures to depths of 3 and 5, since APSL and APSL-FS do not need to find the entire structures, they are faster than the global BN structure learning algorithms. When learning a part of BN structures to a depth of the maximum depth, both of our methods and global methods need to find the entire structure. However, 1) Although GS uses GSMB, an efficient MB discovery algorithm without searching for conditioning set, to find MB of each node, it still takes extra time to search for conditioning set during V-structure discovery. So GS is slightly inferior to APSL in efficiency. 2) May be using conditional independence tests is faster than using
+score functions for edge orientations, then MMHC is slower than APSL. 3) As for SLL+C, SLL+G, and GGSL, the scorebased MB/PC methods used by them need to learn a local BN structure involving all nodes selected currently at each iteration, so they are time-consuming on small-sized BNs, and infeasible on large-sized BNs. 4) Clearly, APSL-FS is more efficient than APSL. In accuracy. When learning a part of BN structures to depths of 3 and 5, since global methods consider the global information of the structures, the accuracy of our methods is lower that of global methods except for GS. Because the GSMB (used by GS) require a large number of data samples, and its heuristic function also leads to a low MB discovery accuracy. When learning a part of BN structures to a depth of the maximum depth, 1) since the same reason of GS when learning to a depth of 3 and 5, GS is inferior
+to our methods in accuracy. 2) MMHC uses score functions for edge orientations, it can also remove false edges in the learned skeleton, while APSL can only orient edges in the learned skeleton using conditional independence tests, then MMHC is more accurate than APSL. 3) As for SLL+C, SLL+G, and GGSL, since they involve all nodes selected currently at each iteration, they are slightly more accurate than other methods on small-sized BNs, but cannot generate any results on large-sized BNs. 4) Similarly, APSL-FS is more accurate than APSL. To further evaluate the accuracy and efficiency of our methods against global methods, we conduct the Friedman test at a 5% significance level under the null hypothesis. Since SLL+C, SLL+G, and GGSL fail on the large-sized BN data sets, we do not compare our methods with them using the Friedman test. 1) Depth=3. Both of the null hypotheses of Ar Distance and Runtime are rejected, the average ranks of Ar Distance for GS, MMHC, APSL, and APSL-FS are 1.08, 3.42, 2.71, and 2.79, respectively, and the average ranks of Runtime for GS, MMHC, APSL, and APSL-FS are 2.08, 1.08, 2.83, and 4.00, respectively. Then, With the Nemenyi test, both of the critical differences of Ar Distance and Runtime are up to 1.35. Thus, we can observe that APSL and APSL-FS are significantly more accurate than GS and significantly more efficient than MMHC, and APSL-FS is significantly more efficient than GS on learning a part of a BN structure to a depth of 3. We plot the crucial difference diagram of the Nemenyi test in Fig. 12. 2) Depth=5. Similar to the results in Depth=3, the average ranks of Ar Distance for GS, MMHC, APSL, and APSL-FS are 1.08, 3.46, 2.50, and 2.96, respectively, and the average ranks of Runtime for GS, MMHC, APSL, and APSL-FS are 2.25, 1.08, 2.67, and 4.00, respectively. With the critical differences of Ar Distance and Runtime are up to 1.35, we can observe that APSL and APSL-FS are significantly more accurate than GS and significantly more efficient than MMHC, and APSL-FS is significantly more efficient than GS on learning a part of a BN structure to a depth of 5. We plot the crucial difference diagram of the Nemenyi test in Fig. 13. 3) Depth=max. Similarly, the average ranks of Ar Distance for GS, MMHC, APSL, and APSL-FS are 1.04, 3.13, 2.92, and 2.92, respectively, and the average ranks of Runtime for GS, MMHC, APSL, and APSL-FS are 2.38, 1.08, 2.54, and 4.00, respectively. With the critical differences of Ar Distance and Runtime are up to 1.35, we can observe that APSL and APSL-FS are significantly more accurate than GS and significantly more efficient than MMHC, and APSL-FS is significantly more efficient than GS on learning a part of a BN structure to a depth of the maximum. We plot the crucial difference diagram of the Nemenyi test in Fig. 14. VII. CONCLUSION In this paper, we present a new concept of Expand-
+# VII. CONCLUSION
+In this paper, we present a new concept of ExpandBacktracking to describe the learning process of the exsiting
+local BN structure learning algorithms, and analyze the missing V-structures in Expand-Backtracking. Then we propose an efficient and accurate any part of BN structure learning algorithm, APSL. APSL learns a part of a BN structure around any one node to any depth, and tackles missing V-structures in Expand-Backtracking by finding both of collider V-structures and non-collider V-structures in MBs at each iteration. In addition, we design an any part of BN structure learning algorithm using feature selection, APSLFS, to improve the efficiency of APSL by finding PC without searching for conditioning sets. The extensive experimental results have shown that our algorithms achieve higher efficiency and better accuracy than state-of-the-art local BN structure learning algorithms on learning any part of a BN structure to a depth of 1, and achieve higher efficiency than state-of-the-art global BN structure learning algorithms on learning any part of a BN structure to a depth of 3, 5, and the maximum depth. Future research direction could focus on using mutual information-based feature selection methods for V-structure discovery without searching for conditioning sets, because performing an exhaustive subset search within PC for finding V-structures is time-consuming.
+[1] J. Pearl, “Morgan kaufmann series in representation and reasoning,” Probabilistic reasoning in intelligent systems: Networks of plausible inference. San Mateo, CA, US: Morgan Kaufmann, 1988. [2] G. F. Cooper, “A simple constraint-based algorithm for efficiently mining observational databases for causal relationships,” Data Mining and Knowledge Discovery, vol. 1, no. 2, pp. 203–224, 1997. [3] I. Guyon, C. Aliferis et al., “Causal feature selection,” in Computational methods of feature selection. Chapman and Hall/CRC, 2007, pp. 75–97. [4] C. F. Aliferis, A. Statnikov, I. Tsamardinos, S. Mani, and X. D. Koutsoukos, “Local causal and markov blanket induction for causal discovery and feature selection for classification part ii: Analysis and extensions,” Journal of Machine Learning Research, vol. 11, no. Jan, pp. 235–284, 2010. [5] I. Tsamardinos and C. F. Aliferis, “Towards principled feature selection: relevancy, filters and wrappers.” in AISTATS, 2003. [6] C. F. Aliferis, A. Statnikov, I. Tsamardinos, S. Mani, and X. D. Koutsoukos, “Local causal and markov blanket induction for causal discovery and feature selection for classification part i: Algorithms and empirical evaluation,” Journal of Machine Learning Research, vol. 11, no. Jan, pp. 171–234, 2010. [7] Z. Ling, K. Yu, H. Wang, L. Liu, W. Ding, and X. Wu, “Bamb: A balanced markov blanket discovery approach to feature selection,” ACM Transactions on Intelligent Systems and Technology (TIST), vol. 10, no. 5, pp. 1–25, 2019. [8] H. Wang, Z. Ling, K. Yu, and X. Wu, “Towards efficient and effective discovery of markov blankets for feature selection,” Information Sciences, vol. 509, pp. 227–242, 2020. [9] P. Spirtes, C. N. Glymour, and R. Scheines, Causation, prediction, and search. MIT press, 2000. 10] K. Yu, L. Liu, J. Li, W. Ding, and T. Le, “Multi-source causal feature selection,” IEEE transactions on pattern analysis and machine intelligence, vol. DOI: 10.1109/TPAMI.2019.2908373, 2019. 11] S. Andreassen, A. Rosenfalck, B. Falck, K. G. Olesen, and S. K. Andersen, “Evaluation of the diagnostic performance of the expert emg assistant munin,” Electroencephalography and Clinical Neurophysiology/Electromyography and Motor Control, vol. 101, no. 2, pp. 129–144, 1996. 12] D. Margaritis and S. Thrun, “Bayesian network induction via local neighborhoods,” in Advances in neural information processing systems, 2000, pp. 505–511.
+[13] I. Tsamardinos, L. E. Brown, and C. F. Aliferis, “The max-min hillclimbing bayesian network structure learning algorithm,” Machine learning, vol. 65, no. 1, pp. 31–78, 2006. [14] J.-P. Pellet and A. Elisseeff, “Using markov blankets for causal structure learning,” Journal of Machine Learning Research, vol. 9, no. Jul, pp. 1295–1342, 2008. [15] J. Pearl, “Fusion, propagation, and structuring in belief networks,” Artificial intelligence, vol. 29, no. 3, pp. 241–288, 1986. [16] D. M. Chickering, D. Heckerman, and C. Meek, “Large-sample learning of bayesian networks is np-hard,” Journal of Machine Learning Research, vol. 5, no. Oct, pp. 1287–1330, 2004. [17] M. Scanagatta, G. Corani, C. P. de Campos, and M. Zaffalon, “Learning treewidth-bounded bayesian networks with thousands of variables,” in Advances in neural information processing systems, 2016, pp. 1462–1470. [18] D. Vidaurre, C. Bielza, and P. Larra˜naga, “Learning an l1-regularized gaussian bayesian network in the equivalence class space,” IEEE Transactions on Systems, Man, and Cybernetics, Part B (Cybernetics), vol. 40, no. 5, pp. 1231–1242, 2010. [19] T. Gao, K. Fadnis, and M. Campbell, “Local-to-global bayesian network structure learning,” in International Conference on Machine Learning, 2017, pp. 1193–1202. [20] T. Gao and Q. Ji, “Efficient score-based markov blanket discovery,” International Journal of Approximate Reasoning, vol. 80, pp. 277– 293, 2017. [21] J. Yin, Y. Zhou, C. Wang, P. He, C. Zheng, and Z. Geng, “Partial orientation and local structural learning of causal networks for prediction,” in Causation and Prediction Challenge, 2008, pp. 93–105. [22] T. Gao and Q. Ji, “Local causal discovery of direct causes and effects,” in Advances in Neural Information Processing Systems, 2015, pp. 2512–2520. [23] I. Tsamardinos, C. F. Aliferis, and A. Statnikov, “Time and sample efficient discovery of markov blankets and direct causal relations,” in Proceedings of the ninth ACM SIGKDD international conference on Knowledge discovery and data mining. ACM, 2003, pp. 673–678. [24] C. Meek, “Causal inference and causal explanation with background knowledge,” in Proceedings of the Eleventh conference on Uncertainty in artificial intelligence. Morgan Kaufmann Publishers Inc., 1995, pp. 403–410. [25] C. F. Aliferis, I. Tsamardinos, and A. Statnikov, “Hiton: a novel markov blanket algorithm for optimal variable selection,” in AMIA annual symposium proceedings, vol. 2003. American Medical Informatics Association, 2003, pp. 21–25. [26] T. Niinimki and P. Parviainen, “Local structure discovery in bayesian networks,” in 28th Conference on Uncertainty in Artificial Intelligence, UAI 2012; Catalina Island, CA; United States; 15 August 2012 through 17 August 2012, 2012, pp. 634–643. [27] J. Pearl, Probabilistic reasoning in intelligent systems: networks of plausible inference. Elsevier, 2014. [28] T. Gao and Q. Ji, “Efficient markov blanket discovery and its application,” IEEE transactions on cybernetics, vol. 47, no. 5, pp. 1169–1179, 2017. [29] I. A. Beinlich, H. J. Suermondt, R. M. Chavez, and G. F. Cooper, “The alarm monitoring system: A case study with two probabilistic inference techniques for belief networks,” in AIME 89. Springer, 1989, pp. 247–256. [30] X. Xie, Z. Geng, and Q. Zhao, “Decomposition of structural learning about directed acyclic graphs,” Artificial Intelligence, vol. 170, no. 4-5, pp. 422–439, 2006. [31] I. Guyon and A. Elisseeff, “An introduction to variable and feature selection,” Journal of machine learning research, vol. 3, no. Mar, pp. 1157–1182, 2003. [32] K. Yu, X. Wu, W. Ding, and J. Pei, “Scalable and accurate online feature selection for big data,” ACM Transactions on Knowledge Discovery from Data (TKDD), vol. 11, no. 2, pp. 1–39, 2016. [33] X. Wu, K. Yu, W. Ding, H. Wang, and X. Zhu, “Online feature selection with streaming features,” IEEE transactions on pattern analysis and machine intelligence, vol. 35, no. 5, pp. 1178–1192, 2013. [34] K. Yu, L. Liu, and J. Li, “A unified view of causal and non-causal feature selection,” arXiv preprint arXiv:1802.05844, 2018. [35] L. Yu and H. Liu, “Efficient feature selection via analysis of relevance and redundancy,” Journal of machine learning research, vol. 5, no. Oct, pp. 1205–1224, 2004.

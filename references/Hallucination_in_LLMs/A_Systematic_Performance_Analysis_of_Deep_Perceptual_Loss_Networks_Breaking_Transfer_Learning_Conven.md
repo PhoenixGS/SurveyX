@@ -1,0 +1,482 @@
+# A Systematic Performance Analysis of Deep Perceptual Loss Networks: Breaking Transfer Learning Conventions
+# Gustav Grund Pihlgren∗†, Konstantina Nikolaidou†, Prakash Chandra Chhipa†, Nosheen Abid†, Rajkumar Saini†, Fredrik Sandin†, Marcus Liwicki†
+∗Explainable AI Group Umeå University, Sweden gustav.pihlgren@umu.se † Machine Learning Group Luleå University of Technology, Sweden {firstname}.{lastname}@ltu.se
+gustav.pihlgren@umu.se † Machine Learning Group Luleå University of Technology, Sweden {firstname}.{lastname}@ltu.se
+ 3 Jul 2024
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c2e6/c2e68d86-8752-4412-a90b-5e01c6ad2c31.png" style="width: 50%;"></div>
+Abstract—In recent years, deep perceptual loss has been widely and successfully used to train machine learning models for many computer vision tasks, including image synthesis, segmentation, and autoencoding. Deep perceptual loss is a type of loss function for images that computes the error between two images as the distance between deep features extracted from a neural network. Most applications of the loss use pretrained networks called loss networks for deep feature extraction. However, despite increasingly widespread use, the effects of loss network implementation on the trained models have not been studied. This work rectifies this through a systematic evaluation of the effect of different pretrained loss networks on four different application areas. Specifically, the work evaluates 14 different pretrained architectures with four different feature extraction layers. The evaluation reveals that VGG networks without batch normalization have the best performance and that the choice of feature extraction layer is at least as important as the choice of architecture. The analysis also reveals that deep perceptual loss does not adhere to the transfer learning conventions that better ImageNet accuracy implies better downstream performance and that feature extraction from the later layers provides better performance. Index Terms—Perceptual loss, perceptual similarity, image similarity, loss network, deep convolutional neural networks, super-resolution, image segmentation, autoencoding
+arXiv:2302.04032v3
+# I. INTRODUCTION
+I. INTRODUCTION
+The calculation of loss functions is currently an essential part of training the most successful machine learning models for computer vision. The ability to calculate the difference between a model output and the target output is, in turn, an essential component of most loss functions. For models with image outputs, this comparison has traditionally been performed by comparing the individual pixels of the output image and the target image, so-called pixel-wise loss. However, pixel-wise losses have flaws, such as disregarding inter-pixel dependencies and weighing all regions of the image equally [1]. One successful direction of research into improved loss calculation is to use an auxiliary neural network as part of the loss calculation of the one being trained. Methods following this direction include milestone achievements such as adversarial
+Fig. 1. The procedure followed in this work. This work investigates the effect of loss networks with different ImageNet [5] pretrained architectures and feature extraction layers on the downstream performance of deep perceptual loss and similarity applications. Loss networks with 14 pretrained architectures are examined for four different feature extraction layers by evaluating them on four application areas of deep perceptual loss and similarity. For each application area, a benchmark derived from a prior work is used for evaluation [6, 7, 8, 9]. The attributes and performance of each loss network are analyzed and cross-referenced with the other loss networks to uncover which attributes are correlated with performance and other trends. This work makes novel contributions (blue, round-corner) regarding feature extraction layers, systematic analysis of loss networks, and systematic evaluation on Benchmarks 2 through 4. The major contribution of this work (green, cut-corner) is the large analysis and cross-reference of the attributes and performance scores.
+examples [2], generative adversarial networks [3], and deep visualization [4]. The auxiliary neural networks used for loss calculation in these cases are called loss networks. A popular method that makes use of loss networks that has proven effective for a range of computer vision applications is deep perceptual loss. Deep perceptual loss aims to create loss functions for machine learning models that mimic human perception of similarity. This is typically done by calculating the similarity between the output image and ground truth by measuring how similar the deep features (activations) of the loss network are when each image is used as input. This method of
+examples [2], generative adversarial networks [3], and deep visualization [4]. The auxiliary neural networks used for loss calculation in these cases are called loss networks.
+similarity measurement is known as deep perceptual similarity, and when used as part of a loss function it is known as deep perceptual loss. Deep perceptual loss is well suited for image synthesis, where it is utilized to improve performance tasks, such as style-transfer [10], image generation [11], super-resolution [7], and image denoising [12]. In addition to image synthesis, the method has been successful for tasks with image-like outputs such as image segmentation [13], dimensionality reduction [1], and image depth prediction [14]. Additionally, deep perceptual similarity has become one of the dominant techniques for measuring the perceptual similarity of images [6, 15]. Despite the diverse and widespread use of deep perceptual loss and similarity, how to implement a suitable loss network for a given task remains unexplored. The choice of loss network architectures used in prior works has either been justified by prior use [1, 14] or not at all [7, 8, 9, 10, 13, 16]. However, some rare exceptions give justifications based on hypotheses regarding the suitability of the architecture to the given data [17], though these hypotheses are not actually tested. Furthermore, the choice of extraction layers also typically lacks justification [7, 9, 13, 14]. In the cases when a justification does exist it is usually not tested [1, 10, 16] or limited to similar layers [8]. With the increasing use of deep perceptual loss, a study into improved loss network selection is well justified. The aim of this work is to provide a systematic evaluation of loss networks in order to provide insight into which loss network implementations are most suitable for a given task. Specifically, this work focuses on Convolutional Neural Network (CNN) architectures pretrained in ImageNet. The work evaluates 14 different architectures with deep features extracted at four different layers on four application areas. The loss networks are evaluated on one benchmark for each application area. The performance scores gathered from the evaluation on the benchmarks are analyzed to provide insight into what loss network attributes are correlated with performance under different conditions. An illustration of the procedure followed in this work, from the four prior works and loss networks to the analysis, is shown in Fig 1 and the complete implementation is available online1. Additional supplementary materials are described in the Appendix.
+# A. Scope
+There are many aspects to consider when implementing a loss network for deep perceptual loss. There is an abundance of neural network architectures available, plenty of datasets that could be used to train them, and a plethora of ways to perform feature extraction from those networks. It is clearly outside the scope of any one study to look into them all, but through analyzing carefully curated combinations much insight can be gained. This work investigates how the selection of pretrained architecture and feature extraction layers affects the performance of loss networks when used on different deep perceptual loss tasks. It does this by systematically evaluating loss networks
+1https://github.com/LTU-Machine-Learning/ Analysis-of-Deep-Perceptual-Loss-Networks
+based on 14 easily accessible and well-known pretrained CNN architectures and comparing their performance as loss networks with deep features extracted at four different layers. The loss networks are evaluated as perceptual similarity metrics and as part of deep perceptual loss to train models. For deep perceptual similarity, they are applied as metrics of similarity and scored by their alignment with human perception. For deep perceptual loss, they are applied to train models for each of the three major application areas of deep perceptual loss; image synthesis and transformation, pixel-level prediction, and image embedding. For each of the four application areas, a benchmark task based on prior work is used for evaluation. The benchmark tasks used in this work are perceptual similarity measurement [6], training image transformation networks for super-resolution [7], training U-nets [18] for image segmentation [8], and training autoencoders for embeddings used in downstream prediction [9]. The results obtained from the benchmark tasks are analyzed to gain insight into how the choice of architecture and feature extraction layer affects performance. These insights have been the basis for further suggestions on how to select pretrained architectures and extraction layers for loss networks. Details regarding the four benchmarks and justification for their use can be found in Section IV. This work focuses on the use of pretrained networks as they are by far the most common use of deep perceptual loss and are easier to implement. The pretrained models selected for evaluation are some of the classification architectures provided by Torchvision [19], a package of the PyTorch [20] framework. All of the selected models have been pretrained with the ImageNet [5] dataset. These networks, with or without pretrained parameters, are readily available for public use, which is itself a motivation for their usage; however, there are more reasons for using the networks provided in Torchvision. The pretrained neural networks available in Torchvision contain a wide variety of architectures based on several renowned papers [21, 22, 23, 24, 25]. There are also multiple different implementations of the different networks within Torchvision. This provides the ability to test how different architectures behave as loss networks and how this behavior changes with more minor changes in implementation. Additionally, applications of deep perceptual loss commonly use the pretrained networks in Torchvision to create loss networks. This work only considers models pretrained on ImageNet in the loss networks. Aside from ease of access, the ImageNet dataset is a good choice for loss network pretraining as it is the most popular pretraining dataset for deep perceptual loss. Additionally, it is one of the largest and most well-used computer vision datasets. This work also investigates how the choice of layers in the loss networks from which features are extracted affects the trained models. CNNs typically have millions of parameters across several layers from which features could be extracted. Therefore this work focuses on whether to extract from the earlier, mid, or later layers. The impact of different layers for feature extraction has often been left out of prior works and no systematic evaluation has been conducted. In this work, the loss networks extract features in a straightforward manner. For a given architecture and extraction
+layer, the activations are propagated forward to the extraction layer and then used directly to calculate the loss, as detailed in Section III. While more elaborate feature extraction methods exist, they are not considered in this work.
+# B. Contributions
+This work is the first to systematically analyze performance of loss networks for deep perceptual loss. Additionally, the work builds on and adds to a recent systematic analysis of loss networks for deep perceptual similarity [26]. The work provides valuable insight into which pretrained architectures and feature extraction layers perform best as loss networks for specific tasks across multiple application areas. The analysis also reveals that deep perceptual loss does not adhere to two conventions of transfer learning. The first convention is that better ImageNet accuracy implies better downstream performance and the second is that feature extraction from the later layers provides better performance. Based on the findings and analysis, suggestions for future work are made including further analysis of loss networks, overarching studies for deep perceptual loss, and reevaluation of transfer learning conventions.
+# II. BACKGROUND
+The terminology of the subfield of perceptual loss is only sometimes used consistently between pieces of literature. For clarity, this section is prefaced with a description of how some standard terms are used in this work. Additionally, these terms are introduced with greater detail throughout the literature eview. • A perceptual loss is a loss function that is meant to estimate a factor of human perception, often to have model predictions be closer to those of humans. • A loss network is a neural network used as part of the loss calculation for training another machine learning model. For cohesion, this work also uses the term loss network to refer to networks used to compute image similarity. • Deep perceptual loss is when the deep features of a loss network are used to calculate the perceptual loss of another machine learning model by comparing the deep features generated by the model output to those generated by the ground truth.
+# A. Feature Extraction
+Feature extraction in machine learning is the process of converting input data into descriptive and non-redundant features. Before feature learning became widely adopted, most feature extraction methods relied on task-related features handcrafted by experts [27]. With the advancement of deep models and autoencoders [28, 29], feature extraction has been automated to cater to complex invariances in the data [30]. Feature extraction using deep models has been successfully used in many computer vision applications like image classification [27, 31, 32, 33], cross-media retrieval [34], and reinforcement learning [35]. However, determining an architecture for feature extraction and how to pretrain the network is difficult, and the best practice
+often varies among fields and individual tasks. Generally, for many computer vision tasks, the trend has been to use pretrained models based on ImageNet [5] which, in general, has improved downstream performance [26, 36]. Nevertheless, it has also been shown that for unsupervised pretraining, better pretraining performance does not always lead to better downstream performance [37]. As such it can be difficult to tell what feature extraction methods will perform well on a given task without prior evaluation.
+# B. Perceptual Similarity Metrics
+Measuring the similarity of images has many important applications such as image retrieval [38], image quality assessment [39], and, as is described in the next section, loss calculation. A simple approach to creating an image similarity metric is to calculate the distance between each pair of pixels, typically using the ℓ2 norm. Such metrics based on the differences of corresponding pixels are called pixel-wise metrics. Pixel-wise metrics are widely known to be flawed measurements of image similarity, especially when estimating human perception [11]. For example, they do not take into account the relations between different pixels or the differing importance of various pixel regions [1]. To mitigate the flaws of pixelwise metrics, several metrics have been proposed that estimate human perception of visual similarity, so-called perceptual similarity. Among these perceptual similarity metrics are some that have become widely used for computer vision applications such as the Structural Similarity Index Measure (SSIM) [39]. With the advent of deep learning, the deep features extracted by neural networks from the input images were used to do similarity comparison for content-based image retrieval [40] and later applied as a perceptual similarity metric [6]. The method has been further improved by Ding et al. [15] which takes inspiration from neural style transfer [10] and uses the network to calculate both texture and content similarity. This use of deep neural networks to calculate perceptual similarity is called deep perceptual similarity. Deep perceptual similarity metrics commonly make use of pretrained networks. Training the networks specifically for perceptual similarity can give a small increase in performance [6], especially when used together with ensemble methods [41]. However, this improvement is marginal at best, which attests to how effective the deep features of pretrained CNNs are for perceptual similarity. A study by Kumar et al. [26] analyzed how different network architectures and pretraining methods affect performance in the context of deep perceptual similarity. The study shares similarities in methodology to the present work; however, it did not examine deep perceptual loss. The results of the study indicates that better pretraining performance does not necessarily lead to an improved perceptual similarity metric. In fact, after a certain point, enhanced pretraining performance was shown to be detrimental to the perceptual similarity results. The upper bound of the perceptual similarity performance as a function of ImageNet accuracy was shown to gradually increase until a certain threshold, after which the performance decreased.
+While prior studies have also shown limited correlations between the pretraining and downstream performance [37], the clear performance increase until a certain point followed by a clear decrease is a surprising result. Moreover, previous works have shown that the selected model and pretraining strategy substantially impact the perceptual similarity results [26]. Thus, selecting the appropriate architecture and pretraining procedure is more important than any training step involving actual perceptual similarity data. A recent work has expanded these findings to more human similarity datasets, including semantic similarity [42].
+# C. Deep Perceptual Loss
+In image models trained by comparing the output to some ground truth image, that comparison is inherently a similarity measurement. Despite the known flaws of pixel-wise metrics, they have long been the most popular method for calculating image similarity in loss calculation of machine learning models [1, 11]. However, in recent years improvements have been made to many applications by transitioning to perceptual similarity metrics for loss calculation. For example, SSIM has been adapted as a perceptual loss function [43, 44, 45]. The most popular and widespread group of perceptual losses are those based on deep perceptual similarity, so-called deep perceptual loss. Deep perceptual loss was first used with neural style transfer [10] where features from a pretrained version of VGG-19 [46] were used to estimate perceptions of style and content. These perceptions were then used as a loss to generate images with the perceived content of one image and the perceived style of another. Since its introduction, deep perceptual loss has been a popular tool for imagegeneration tasks. It was used in the VAE-GAN (variational autoencoder, generative adversarial network) in which the discriminator acts as a loss network to facilitate higher quality image generation [11]. In the VAE-GAN, the discriminator is trained alongside the generator; however, other works have used pretrained loss networks, removing the need for extra training [16]. Despite the growing use and popularity of deep perceptual loss, there has been relatively little effort in investigating how to best utilize the method. Most works pick a pretrained architecture without further investigation. Rare works investigate a few different models [16] or a few different feature extraction layers [8]. While studies exist that cover how useful different models are for general feature learning applications [36, 47, 48] and deep perceptual similarity [26], no such studies exist for deep perceptual loss.
+# D. Applications of Deep Perceptual Loss
+Deep perceptual similarity metrics can be directly applied to any task where measuring the similarity of images is useful such as image quality assessment and content-based image retrieval. In the former the similarity of a distorted image to its ideal counterpart can be used as a measurement of image quality [15] and in the latter the similarity metric can be used to identify images in the database with similar content [40]. Deep perceptual similarity metrics can also be directly applied
+to perceptual similarity datasets to evaluate how well they align with human perception of similarity [6, 15]. Finally, deep perceptual similarity metrics can also be applied as part of a deep perceptual loss to train machine learning models for other applications. This work studies loss networks as directly applied to image similarity as well as training with deep perceptual loss. While deep perceptual similarity metrics have been systematically studied previously [26], this work expands the study by examining additional architectures. Additionally, analyzing how loss network performance on perceptual similarity correlates with the performance of models trained with that loss network is interesting. Deep perceptual loss, on the other hand, has not been systematically studied previously. This work evaluates loss networks for the three main application areas of deep perceptual loss; image synthesis and transformation, pixel-level prediction, and image embedding. Deep perceptual loss can be applied to any task where the output of the model being trained can be used as the input to an image network. The most straightforward such application area is image synthesis and transformation where the model is trained to output images. Deep perceptual loss is frequently used in this application area for tasks such as image fusion [17], style-transfer [7, 10], and super-resolution [12, 49]. Deep perceptual loss has also been used to improve the training of models with outputs that make predictions at the pixel level. As these outputs share the structure of an image, deep perceptual loss can be used to compare the image-like predictions to the ground truth. Tasks in this application area include image segmentation [8], object detection [50], and image depth prediction [14]. Not all models that are trained to output images are used for that purpose. Instead, the deep features of the models can be used as a starting point or input for other downstream tasks. This application area is image embedding and here deep perceptual loss may be used like in any of the two previous application areas for training a model. However, the model is evaluated by the performance on the downstream task that makes use of the embeddings. A prominent example of image embedding where the output image is only used for training is dimensionality reduction via autoencoding, which has been improved with the use of deep perceptual loss [1]. For each of the application areas, this work uses a specific application as a benchmark. Super-resolution transformation, image segmentation, and image autoencoding are used respectively as the applications for image synthesis and transformation, pixel-level prediction, and image embedding. The chosen applications of deep perceptual loss are described in more detail below. 1) Super-resolution: Super-resolution is the task of transforming a low-resolution image into a high-resolution image [51]. The practicality of super-resolution models has been demonstrated in real-world applications such as security [52] and medical image processing [53, 54]. Deep perceptual loss has been widely adopted to train super-resolution models [7, 12, 55]. 2) Image Segmentation: Image segmentation involves dividing an image into different segments representing classes or
+<div style="text-align: center;">TABLE I TRIBUTES OF THE IMAGENET PRETRAINED TORCHVISION [19] MODELS USED IN THIS WORK. SHOWN ARE THEIR ACCURACY ON IMAGENET, DEPTH MFLOPS FOR THE FORWARD PASS (FOR A 224 × 224 PIXEL IMAGE), AND WHETHER THE ARCHITECTURE HAS SKIP-CONNECTION, BRANCHES, 1 × 1 CONVOLUTIONS, OR BATCH NORMALIZATION.</div>
+Family
+Architecture
+ImageNet
+Acc. (%)
+Depth
+MFLOPS
+Skip-
+conn.
+Branch
+1 × 1
+conv.
+Batch
+norm
+VGG
+VGG-11 [23]
+69.020
+11
+7637
+VGG-16 [23]
+71.592
+16
+15517
+VGG-16_bn [23]
+73.360
+16
+15544
+✓
+VGG-19 [23]
+72.376
+19
+19682
+ResNet
+ResNet-18 [24]
+69.758
+18
+1827
+✓
+✓
+ResNet-50 [24]
+76.130
+50
+4143
+✓
+✓
+✓
+ResNeXt-50 32x4d [60]
+77.618
+50
+4298
+✓
+✓
+✓
+✓
+Inception
+GoogLeNet [25]
+69.778
+22
+1516
+✓
+✓
+✓
+InceptionNet v3 [61]
+77.294
+49
+2850
+✓
+✓
+✓
+EfficientNet
+EfficientNet_B0 [62]
+77.692
+81
+407
+✓
+✓
+EfficientNet_B7 [62]
+78.642
+271
+5308
+✓
+✓
+Other
+AlexNet [22]
+56.522
+8
+717
+DenseNet-121 [59]
+74.434
+121
+2899
+✓
+✓
+✓
+SqueezeNet 1.1 [63]
+58.178
+18
+360
+✓
+✓
+instances at the pixel level. Each pixel in the image is assigned a class or instance, and the resulting segmentation model output is a 2D lattice that can be interpreted as an image. Deep perceptual loss has been used to train segmentation models in applications such as delineating roads in aerial images, locating cracks in roads, identifying the edges of cells in microscope images [8], and segmenting medical images [13]. 3) Autoencoding: Autoencoders have been used for decades as a tool for dimensionality reduction and feature learning [56, 57]. They have also been used for purposes beyond dimensionality reduction, such as image generation [58]. Deep perceptual loss has been used to train autoencoders for image generation [11] as well as for their original dimensionality reduction purposes [1].
+# E. Pretrained Torchvision Networks
+The Torchvision package [19] provides many different renowned CNN architectures that have been pretrained on the ImageNet dataset [5]. Many of these CNN architectures have won challenges and awards like the ILSVRC-challenges in 2012 [21] and 2014 [25], and the CVPR award 2017 [59]. This section briefly covers the accomplishments, innovations, and general design of the architectures. However, for exact implementation details, the reader is referred to the works that introduced those architectures. The ImageNet accuracy as well as some attributes of the pretrained models used can be found in Table I. The investigated Torchvision architectures are described below. 1) VGG: VGG is an innovative object-detection deep model proposed by Simonyan and Zisserman in 2012 [23]. It is a CNN that is one of the best object-detection models even today. VGG uses small-size convolution filters that allow the integration of more weighted layers. This work explores some of its versions, namely, VGG-11, VGG-16, VGG-19, and a
+version of VGG-16 that uses batch normalization (batch norm) called VGG-16_bn. 2) Residual Networks: To solve the problem of vanishing or exploding gradients in very deep networks, residual networks (ResNet) using skip connections were introduced [24]. Skip connections connect later layers to earlier ones skipping some layers in between. Many updated versions of ResNet were introduced later to improve the performance. One of the subsequent versions, called ResNeXt-50, redesigned the fundamental building block of ResNet to use a multi-branch setup similar to inception networks [60]. This work uses three residual networks; ResNet-18, ResNet-50, and ResNeXt-50 32x4d. 3) Inception Networks: Choosing the appropriate filter size for different layers in a CNN architecture can be challenging. If the filter size is large, it may lose the distribution locally; if the filter is small, it may lose the information distributed globally. Inception networks [25] were introduced to handle this issue by using multiple filter sizes at each layer, leading the networks to be "wider" rather than "deeper". Inception networks have achieved state-of-the-art performance in image classification. This work explores the first version of Inception Network developed by the Google team, i.e., , GoogLeNet [25] and Inception Network version 3 [61]. 4) EfficientNet: EfficientNet [62] is a CNN-based architecture that uses compound coefficients to scale the architecture’s dimensions uniformly. Unlike traditional methods that arbitrarily scale these factors, a set of fixed scaling coefficients is used to scale the networks in a principled way uniformly. This method combined with neural architecture search [64] produced the state-of-the-art EfficientNet architectures. In this work, the two versions of EfficientNet with the fewest and most layers are explored, i.e., , EfficientNet_B0 and EfficientNet_B7. 5) AlexNet: AlexNet is the name given to the network introduced by Krizhevsky et al. [21] and further built upon
+in [22]. While AlexNet has lower performance and robustness than more recent CNN architectures [65], its features have proven competitive to those same networks when used as a perceptual similarity metric [6]. 6) DenseNet: DenseNet [59] focused on using fewer parameters with densely connected layers to achieve higher accuracy. It is composed of dense blocks. Each layer in the dense block takes the feature maps of preceding layers as input. This concept of DenseNet reduces the vanishing gradient problem, improves feature propagation, stimulates feature reuse, and considerably reduces the number of parameters. In this work, the DenseNet121 implementation is examined. 7) SqueezeNet: While much of the contemporary research on deep CNNs focused on improving the performance, Iandola et al. [63] focused on reducing the size of deep models by proposing SqueezeNet. It has a similar performance to AlexNet with 50 times fewer parameters. To achieve these benefits, SqueezeNet has reduced the kernels with size 3 to 1×1 convolutions, used squeeze layers to decrease the number of input channels to the kernels and downsample later in the architecture to have large activation maps with the assumption that it leads to higher classification accuracy.
+III. LOSS NETWORKS AND FEATURE EXTRACTION This work primarily explores the effects of (1) different pretrained architectures and (2) feature extraction layers on performance. 14 architectures pretrained from ImageNet from the Torchvision framework [19] are used in this work. Four extraction layers have been chosen for each architecture such that they represent layers that are early, semi-early, middle, and late in the convolutional layers. Each architecture along with the feature extraction layers is detailed in Table II. The loss networks used for all the benchmark experiments are created by selecting a pretrained model and one of the extraction layers, resulting in 56 different loss networks. Feature extraction from the loss networks is simple and consists of propagating activations forwards through the network to the extraction layer after which they are applied without any additional computation as defined in each benchmark. The feature extraction layers have been limited to the convolutional layers of the networks as these are typically used for deep perceptual loss. The convolutional layers also benefit from having no upper limit to the size of the input images, while using later layers typically requires the use of an exact input size. Additionally, for architectures of similar design, the extraction layers are chosen such that they represent the "same" layers in each network. For example, in the residual networks, the extraction layers are after the first ReLU as well as after the same block stacks with the difference that each residual network architecture has a varying number of layers in the different block stacks.
+# IV. BENCHMARKS
+In order to evaluate the effects of loss networks with different pretrained architectures and feature extraction layers this work uses one benchmark each from the application areas of image similarity, image synthesis and transformation, pixel-level
+<div style="text-align: center;">TABLE II LOSS NETWORK ARCHITECTURES AND FEATURE EXTRACTION LAYER</div>
+<div style="text-align: center;">LOSS NETWORK ARCHITECTURES AND FEATURE EXTRACTION LAYERS</div>
+Architecture
+Feature Extraction Layers
+VGG Networks
+VGG-11 [23]
+1st, 2nd, 4th, and 8th ReLU
+VGG-16 [23]
+2nd, 4th, 7th, and 13th ReLU
+VGG-16_bn [23]
+2nd, 4th, 7th, and 13th ReLU
+VGG-19 [23]
+2nd, 4th, 8th, and 16th ReLU
+Residual Networks
+ResNet-18 [24]
+1st ReLU, 1st, 2nd, and 4th Block Stack
+ResNet-50 [24]
+1st ReLU, 1st, 2nd, and 4th Block Stack
+ResNeXt-50 32x4d [60]
+1st ReLU, 1st, 2nd, and 4th Block Stack
+Inception Networks
+GoogLeNet [25]
+1st BN, 1st, 3rd, and 9th Inception Module
+InceptionNet v3 [61]
+3rd BN, 1st, 3rd, and 8th Inception Module
+EfficientNet
+EfficientNet_B0 [62]
+1st SiLU, 1st, 4th, and 7th MBConv
+EfficientNet_B7 [62]
+1st SiLU, 1st, 4th, and 7th MBConv
+Other Networks
+AlexNet [22]
+1st, 2nd, 3rd, and 5th ReLU
+DenseNet-121 [59]
+1st ReLU, 1st, 2nd, and 4th Dense Block
+SqueezeNet 1.1 [63]
+1st ReLU, 1st, 4th, and 8th Fire Module
+prediction, and image embedding. The four benchmarks cover the most common applications of loss networks in each area; perceptual similarity (Benchmark 1), super-resolution transformation (Benchmark 2), image segmentation (Benchmark 3), and autoencoding (Benchmark 4). The four benchmarks are based on the experiments from The Unreasonable Effectiveness of Deep Features as a Perceptual Metric [6] (Benchmark 1), Perceptual Losses for Real-Time Style Transfer and SuperResolution [7] (Benchmark 2), Beyond the Pixel-Wise Loss for Topology-Aware Delineation [8] (Benchmark 3), and Pretraining Image Encoders without Reconstruction via Feature Prediction Loss [9] (Benchmark 4). The benchmark experiments are run with each of the loss networks and the performance scores of those experiments are collected. These scores are used to analyze how different attributes of the loss networks affect the downstream performance across different tasks. The specific experiments selected for the benchmarks were based on three criteria; (i) diversity of applications, (ii) ease of implementation, and (iii) popularity. All four works had preexisting implementations and were decided to be easy to adapt for the evaluation in this work. As some of the authors had previously worked with Benchmark 4, this implementation was already well understood and adapted for these experiments. Benchmarks 1 and 2 both have had a significant impact with citations in the thousands. While Benchmarks 3 and 4 do not boast as many citations they have been referenced plenty, especially considering that they represent less popular application areas than the other two. Each benchmark experiment along with the datasets and performance scores they use are detailed in the subsections below. For complete technical details on the benchmarks, it is recommended to read the original works. Some changes have been made to the benchmarks from the original experiments,
+A. Benchmark 1: Perceptual Similarity
+One popular benchmark of perceptual similarity is the Berkeley-Adobe Perceptual Patch Similarity (BAPPS) dataset [6]. BAPPS contains human judgments of image similarity on a host of distorted image patches and is used to evaluate similarity metrics by measuring how closely they align with these judgments. BAPPS was introduced in a paper called The Unreasonable Effectiveness of Deep Features as a Perceptual Metric [6] which used the dataset to compare a few deep perceptual similarity metrics trained by different means against a variety of traditional metrics. The paper shows that ImageNet pretrained deep perceptual similarity metrics outperform unsupervised pretraining [66], semi-supervised pretraining [67, 68, 69, 70], and rule-based methods on perceptual similarity on BAPPS and come close to human performance without any task-specific training. The BAPPS dataset consists of 197000 64 × 64 image patches from several sources [5, 71, 72, 73, 74, 75] along with versions of those patches that have been distorted by common image augmentations and algorithms such as autoencoding, super-resolution upscaling, frame interpolation, deblurring, and colorization. The BAPPS dataset is split into two parts; Two Alternative Forced Choice (2AFC) and Just Noticable Differences (JND). The former consists of triplets with an image patch and two distorted versions of that image patch. Each 2AFC triplet is labeled by the fraction of human judges that considered each distorted version to be more similar to the original. The JND part consists of image pairs that are labeled by the fraction of human judges that considered the pair to be the same image after a brief viewing. During judgment collection, there were additional image pairs that were actually the same as well as completely different to make the task non-trivial. The 2AFC part is further split into training and test sets while JND is purely used for testing. For Benchmark 1 no training is performed so only the test sets are used. Benchmark 1 consists of evaluating loss networks on the BAPPS test sets according to the procedure set out in the paper where it was introduced. This follows the same general procedure as most deep perceptual similarity evaluations, except more architectures and extraction layers are considered. The deep features extracted from each loss network are used to calculate a similarity between two images x and x0 according to
+(1)
+� where z and z0 are the channel-wise unit-normalized feature extractions from the loss network and w are the importance weights. The performance scores used for Benchmark 1 are the same as those used for the BAPPS dataset; the average 2AFC score and mAP% on the JND part. The 2AFC score for a single triplet is described as
+(2)
+where d is a similarity metric, x, x0 and x1, an image and its distorted versions, and J the fraction of judgments that consider x1 more similar to x than x0.
+# B. Benchmark 2: Super-resolution
+The most common application of deep perceptual loss is super-resolution. One successful work that shows how deep perceptual loss can improve the performance of super-resolution applications is Perceptual Losses for Real-Time Style Transfer and Super-Resolution [7]. This is shown through peak signalto-noise ratio (PSNR) and SSIM [39] measurements as well as evaluation by human subjects. Interestingly, deep perceptual loss was outperformed by a state-of-the-art model called SRCNN [76] on PSNR and SSIM but won with a large margin on the human judgments. The improvement is achieved by implementing an image transformation network consisting of five modified [77] residual blocks [24] and training that network with deep perceptual loss. The performance of the image transformation network is then compared to one trained with pixel-wise loss. The deep perceptual loss is calculated according to
+where x is the ground truth image, ˆx the output of the transformation network, and ϕn(x) are the features at layer n of the loss network ϕ with input x. The image transformation networks are trained on 288×288 image patches from the MS-COCO training set [78], a dataset of 300000 natural images used for object detection, dense pose estimation, keypoint detection, image captioning, and semantic, instance, and panoptic segmentation. The networks are tested on the images in the Set5 [79], Set14 [80] and BSD100 [81] datasets. The three test sets are collections of high-quality images that have become standard for evaluation of superresolution models [74]. Since the transformation networks are fully convolutional, they are applied to the full images of the test sets. The transformation networks are trained and tested for ×4 and ×8 upscaling. The input images are downscaled by applying Gaussian blur with σ = 1.0 and downsampling by the given factor with bicubic interpolation. Benchmark 2 consists of the training of image transformation networks for ×4 and ×8 upscaling following the same procedure as the paper. Training is performed using 10K images randomly chosen from the MS-COCO 2014 training set using a specific seed for reproducibility purposes. The original paper performed training for 200K iterations, but it is unclear whether a validation step was performed and which model was finally used for inference. In the preliminary experiments, several architectures collapsed in the final epochs and produced black images. To avoid having a collapsed model, in the final experiments, the training has a validation step in every epoch to retain the best model according to the PSNR metric for 100 images from the MS-COCO 2014 validation set. As commonly used in super-resolution, the performance scores for Benchmark 2 are the PSNR and SSIM scores for the Set 5, Set 14, and BSD100 datasets, with ×4 and ×8 upscaling. Since the style-transfer applications in the original work do
+not have performance scores they have not been included in the benchmark.
+# C. Benchmark 3: Image Segmentation
+The paper Beyond the Pixel-Wise Loss for Topology-Aware Delineation [8] applies deep perceptual loss to the task of delineating curvilinear structures through semantic segmentation. The paper shows that the addition of deep perceptual loss improves performance compared to solely using pixel-wise loss. This is done by training the U-net architecture [18] using a combination of pixel-wise binary cross entropy loss (Lbce) and deep perceptual loss (Ltop). The loss is defined as
+(4)
+where x and y are the input image and ground truth segmentation map and µ is a scalar that is set to keep the two losses at the same order of magnitude. The deep perceptual loss is calculated as
+ (5)
+� � where U is the U-net model being trained, and ϕm n is m-th feature map in layer n of the loss network ϕ with extraction layers n ∈N with Cn channels of size Wn × Hn. Both during training and testing the U-net is applied iteratively three times to improve the prediction. To achieve this the network is given both the input image and the output of the previous iteration as input. The data from the previous iteration is left blank for the first iteration. In the original work, the method is evaluated on three datasets: Cracks [82], The Massachusetts Roads Dataset (MRD) [83], and the ISBI’12 challenge [84]. The evaluation scores used are completeness, correctness, and quality of delineation on the test sets as defined in [85]. Completeness quantifies the fraction of ground truth objects that have been correctly delineated by the model and correctness measures the fraction of predicted objects that have a matching ground truth object. The quality metric is a balance between the two by giving the fraction of all ground truth and predicted objects that were correctly delineated. In short, completeness, correctness, and quality are analogs to recall, precision, and critical success index respectively. Benchmark 3 only considers evaluation on MRD with input patches resized to 224×224 for computational efficiency. MRD is a set of 1171 aerial images with corresponding segmentation maps of the roads. The benchmark follows the training and testing procedure of the original paper. The benchmark uses 100 training epochs and 0.01 as the value of µ as both of these are ambiguous in the original paper. The performance scores for Benchmark 3 are the completeness, correctness, and quality of the trained U-nets on the MRD test set.
+# D. Benchmark 4: Autoencoding
+In Pretraining Image Encoders without Reconstruction via Feature Prediction Loss [9] deep perceptual loss is applied to autoencoder training for downstream prediction. The work
+shows that image autoencoders trained with deep perceptual loss learn more useful features for downstream prediction, than those trained with pixel-wise loss. This is achieved by adapting a previous image autoencoder setup [35], training it to encode and reproduce images, and training small MultiLayer Perceptrons (MLP) on downstream tasks using the autoencoder embeddings as input. The performance of the downstream MLP reflects how useful the learned embeddings are for predictions and, therefore, which loss is best to use for training the autoencoders for downstream prediction. The loss calculation for autoencoder training is defined as
+(6)
+where x is the input image, A(x) is the autoencoder reconstruction, ϕ is a loss network with m extracted features. The downstream tasks that the autoencoders are evaluated on are classification on the SVHN [86] and STL-10 [87] datasets, as well as object positioning on images gathered from the LunarLander-v2 environment of the OpenAI Gym [88]. For all three evaluations, the autoencoders are trained on an auxiliary set of images in the data, the MLPs are trained and validated on an 80/20 split of the training sets, and the MLPs for each autoencoder with the best validation score are tested on the test sets. The auxiliary images are those in the extra set from SVHN and the unlabeled images from STL-10. For Benchmark 4 evaluation is only performed on the easily accessible and often used SVHN and STL-10 datasets. SVHN consists of 32 × 32 pixel images of house number digits that are labeled by the digit, which are scaled up to 64×64 images through reflection padding. STL-10 consists of 96 × 96 pixel images of animals and vehicles taken from ImageNet, where the training and test sets consist of 4 vehicle and 6 animal classes. The autoencoders have an embedding size of 64 and are trained for 10 epochs using the loss in Eq. 6 with the different loss networks. For each autoencoder, seven different MLPs with zero, one, and two hidden layers and various layer sizes are trained for 100 epochs each. The performance scores for the benchmark are the test set accuracies of the MLP with the best validation accuracy for each autoencoder on SVHN and STL-10. The training epochs are reduced compared to the original work to save computation and it has been confirmed through smaller-scale experiments that this only minimally affects performance.
+# V. RESULTS AND ANALYSIS
+The performance scores on the four benchmarks have been analyzed together with a host of different attributes to attempt to provide insights into how to decide which architecture to choose and what layers to extract features from. The attributes that have been analyzed can be split into those that depend only on the architecture and those that depend on the architecture and extraction layer. The attributes that depend on the architecture are, ImageNet accuracy, number of parameters, depth2, flops
+2Depth is measured as the maximum number of non-linearly separated matrix multiplications up to the given layer (i.e., if the architecture branches and then rejoins only the longest branch is counted).
+in the forward pass, and whether the architecture uses skipconnections, branching, 1 × 1-convolutions, or batch norm. The attributes that also depend on the extraction layer are the number of parameters and depth before the extraction layer as well as the number of features and channels at the extraction layer. Additionally, some attributes derived from these were used, such as the fraction of the architecture’s total parameters that exist up until the extraction layers. Finally, the performance scores of the four benchmarks were compared with each other to identify potential task-independent trends. From the data gathered three primary findings related to how to select a loss network were identified. The three findings relate to what impact architecture, extraction layer, and pretraining accuracy have on the performance scores. Those three findings are summarized below and then expanded on in their respective subsections. 1) In general, the VGG networks without batch norm and SqueezeNet perform well for most tasks if the correct layers are used. 2) Using the correct extraction layer is at least as important as selecting the architecture. 3) There is no simple correlation between an architecture’s performance on ImageNet and its performance as a loss network. The three findings also show that some correlations, which are typically assumed in the field of transfer learning, do not apply to deep perceptual loss and similarity. The analysis of the implications of these results is further expanded in the Discussion section. Information on how to access the raw data, including a spreadsheet that can be used to create figures similar to Figs. 2, 3, and 4, can be found in the supplementary material as detailed in the Appendix.
+# A. Impact of Architecture
+To gain insight into what architecture attributes are beneficial for a loss network, the performance of all the architectures is analyzed. In Table III, a summary of the performance of all architectures is presented. For each performance score, the architectures are ranked according to the performance of the best extraction layer between 1 (best) and 14 (worst). The table presents the average ranking of each architecture per benchmark as well as the overall average (each benchmark is weighted equally). Across all four benchmarks two VGG networks without batch norm place in the top three when averaging the rankings of all performance scores. Interestingly the VGG-16 network with batch norm places in the bottom four on all benchmarks except perceptual similarity (Benchmark 1). The only network besides the VGG networks that do not use batch norm is AlexNet, which gets an average of 8th place over all four benchmarks. Another architecture that performs well is SqueezeNet which has an average performance on the delineation (Benchmark 3) and autoencoder training (Benchmark 4) scores but is second best at perceptual similarity (Benchmark 1) and the best at super-resolution (Benchmark 2). SqueezeNet is also a good option in all benchmarks when looking for performance as well as low computational needs. It is also worth noting that
+TABLE III RANKINGS OF THE BEST LOSS NETWORK FOR EACH ARCHITECTURE ON THE PERFORMANCE SCORES AVERAGED PER BENCHMARK
+Average ranking per benchmark
+Architecture
+1
+2
+3
+4
+All
+VGG Networks
+VGG-11 [23]
+2.5
+2.33
+2.67
+6
+3.38
+VGG-16 [23]
+4.5
+6.75
+3.67
+1.5
+4.10
+VGG-16_bn [23]
+4.5
+11.08
+11.33
+9.5
+9.10
+VGG-19 [23]
+7
+4.25
+1.67
+1.5
+3.60
+Residual Networks
+ResNet-18 [24]
+5.5
+7.08
+12.67
+8
+8.31
+ResNet-50 [24]
+10
+7.33
+6.67
+8.5
+8.13
+ResNeXt-50 32x4d [60]
+11.5
+5.67
+5.67
+9.5
+8.08
+Inception Networks
+GoogLeNet [25]
+8.5
+9.67
+10.33
+5.5
+8.50
+InceptionNet v3 [61]
+10.5
+11.83
+4.67
+11
+9.50
+EfficientNet
+EfficientNet_B0 [62]
+9
+9.92
+11.67
+8.5
+9.77
+EfficientNet_B7 [62]
+12.5
+8.83
+3
+8.5
+8.21
+Other Networks
+AlexNet [22]
+5
+8.58
+9.33
+10
+8.23
+DenseNet-121 [59]
+10.5
+10.5
+13.67
+8.5
+10.79
+SqueezeNet 1.1 [63]
+3.5
+1.17
+8
+8.5
+5.29
+besides adding batch norm to VGG, the architectures within the same basic template (VGGs, ResNets, and EfficientNets) perform similarly, with little indication of which would be the better choice.
+# B. Impact of Extraction Layer
+The selection of where the features used for loss calculation are extracted in the network has a huge impact on the performance across all performance scores and architectures. For all performance scores, selecting the best extraction layer of the worst architecture will give around the same performance as selecting the worst extraction layer of the best architecture. This shows that selecting the extraction layer for the loss network is as significant as selecting which model to use. In Table IV the best layer for each architecture is shown for some performance score of each benchmark. The architecture with the best performance for the performance score is underlined. In Figure 2 the performance of each architecture is shown for all their extraction layers for some of the performance scores. Interestingly, for most performance scores the extraction layer which performs best is similar across architectures. This indicates that the selected extraction layers are roughly equivalent which is desired and reinforces the existing consensus that two deep networks will learn similar features at similar layers along their depth. However, the spread of which extraction layers give the best performance on the different performance scores goes against the common practice of using the last or later layer for feature extraction. For a majority of architectures, the earliest extraction layer is the best for the super-resolution experiments (Benchmark 2) on all performance scores, while
+The best performing extraction layer per performance score.
+Benchmark 1
+Benchmark 2
+Benchmark 3
+Benchmark 4
+Architecture
+2AFC
+JND
+4x MSSIM
+BSDS100
+8x MSSIM
+BSDS100
+MRD (All)
+SVHN
+STL-10
+VGG Networks
+VGG-11 [23]
+L
+L
+E
+E
+L
+M
+L
+VGG-16 [23]
+L
+L
+E
+E
+E
+M
+L
+VGG-16_bn [23]
+L
+L
+M
+E
+S
+M
+L
+VGG-19 [23]
+L
+L
+E
+E
+M
+M
+L
+Residual Networks
+ResNet-18 [24]
+L
+L
+E
+E
+M
+M
+S
+ResNet-50 [24]
+S
+L
+S
+E
+E
+M
+S
+ResNeXt-50 32x4d [60]
+L
+L
+E
+E
+M
+M
+M
+Inception Networks
+GoogLeNet [25]
+M
+L
+E
+E
+L
+S
+L
+InceptionNet v3 [61]
+S
+S
+S
+M
+L
+S
+M
+EfficientNet
+EfficientNet_B0 [62]
+M
+M
+S
+S
+L
+M
+L
+EfficientNet_B7 [62]
+M
+M
+S
+E
+L
+M
+M
+Other Networks
+AlexNet [22]
+M
+L
+E
+E
+L
+E
+L
+DenseNet-121 [59]
+M
+L
+M
+E
+L
+M
+L
+SqueezeNet 1.1 [63]
+M
+L
+E
+E
+L
+S
+L
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9ea5/9ea55045-24a0-4c66-848d-413195fe487b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 2. The results of each loss network ordered by extraction layer (earliest to latest) for some performance scores for each benchmark.</div>
+the last extraction layer gives the highest downstream accuracy on STL-10 (Benchmark 4). So, while there exists some agreement between architectures as to which extraction layer to use, that layer depends on
+the task and dataset. While the gathered data does not give a conclusive way to predict which extraction layer will be best for a given task and dataset, there are some trends. Selecting an extraction layer for a loss network determines what features will be compared during the calculation of loss or similarity. When optimizing the loss, the output will trend towards an image that gives rise to similar activations at the extraction layer. Deeper layers of networks are known to represent higher-level features, so the extraction layer directly affects which type of features will be emphasized in image generation. Extracting from early layers means that the smaller pixel level patterns affect loss more while from later layers means that the general content and structure of the image affect the loss more. Whether it is best to optimize images on lower or higher-level features depends on the task. For example, in the super-resolution experiments (Benchmark 2) for all three test datasets, the optimal extraction layer was early. Since super-resolution is a task where the individual pixels matter a lot, it is not unexpected that earlier extraction layers that are focused on low-level features are best. For the task of training an autoencoder for downstream predictions (Benchmark 4) later extraction layers perform better. Likely this is due to classification tasks relying on higher-level features which means that autoencoders trained to replicate images that are similar in the later layers, would therefore also encode information relevant to higher-level features. The difference between the two evaluated datasets, SVHN and STL10, is also noteworthy. For SVHN accuracy most architectures
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/df7c/df7cbed3-4260-4806-95d6-3db85a2fa68e.png" style="width: 50%;"></div>
+Fig. 3. The performance of all loss networks on Benchmark 4 as measured by the downstream accuracy on SVHN and STL-10 where the loss networks have been grouped by extraction layer. More figures like these can be quickly generated in the supplementary spreadsheet, using any combination of investigated attributes and performance scores.
+performed the best using the middle extraction layer, compared to STL-10 accuracy for which the late extraction layer was preferred. This difference is visualized in Fig. 3 which shows the performance of the different loss networks, grouped by extraction layer, on the two datasets. This is notable since STL10 is derived from a subset of ImageNet. SVHN on the other hand is the adjusted close-up images of house number digits, which are different from the typical photos in the ImageNet dataset. This also fits into the idea that the extraction layer should match the task since the features in the later layers are expected to be more specific to the pretraining dataset and therefore more useful for extracting features of a similar dataset. When selecting an extraction layer it is therefore worth considering how similar the dataset is to the one used for pretraining the loss networks. Another consideration when selecting an extraction layer (and architecture) is the computational demands during training. Some of the architectures that were evaluated require high amounts of computation on top of that required for the model that is being trained. For training smaller models this could potentially increase the computation power needed to train an order of magnitude. Using earlier extraction layers means smaller loss networks, which reduce this additional computation. Taking into account that the later extraction layers do not always perform better, this makes the argument for using earlier extraction layers stronger. This is illustrated in Fig. 4 where, for each loss network, the 2AFC score is plotted against the log10
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9d37/9d374b89-54ab-4f88-8463-a73917594c04.png" style="width: 50%;"></div>
+Fig. 4. The performance of all loss networks on the 2AFC split of BAPPS compared to the log10 amount of flops in a forward pass of that loss network. amount flops for the forward pass. It is clear that selecting an earlier extraction layer can potentially reduce the computation requirements by orders of magnitude.
+<div style="text-align: center;">Fig. 4. The performance of all loss networks on the 2AFC split of BAPPS compared to the log10 amount of flops in a forward pass of that loss network.</div>
+amount flops for the forward pass. It is clear that selecting an earlier extraction layer can potentially reduce the computation requirements by orders of magnitude.
+# C. Loss Network Performance vs. ImageNet Accuracy
+For the architectures and extraction layers tested in this work, there does not seem to be any strong correlation between the ImageNet accuracy of the loss network and the downstream performance of the models trained with them. The positive linear correlation between ImageNet accuracy and downstream performance that is often expected in computer vision transfer learning was absent in all performance scores. This has previously been shown to hold for deep perceptual similarity [26], and now also seems to hold for deep perceptual loss. However, the upper bound of perceptual similarity as a function of ImageNet performance that was reported in that work has not been replicated or refuted for deep perceptual loss. It would likely require an evaluation of orders of magnitude more loss networks to do so. The performance of the best loss network for each architecture on MRD Quality compared to the ImageNet top-1 accuracy is shown in Fig. 5.
+# VI. DISCUSSION
+The discussion of this work is divided into four subsections. The first suggests an approach to implementing a suitable loss network for a given task and dataset based on the findings in this work and others. The second discusses the two transfer learning conventions that do not hold for deep perceptual loss and what this entails for the larger field. The third describes the limitations of this work and what weaknesses there may be in the findings. The final subsection suggests promising directions for future research, both regarding deep perceptual loss and the wider field of transfer learning.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5d49/5d494ebe-f3dd-46af-8a84-38edfa694662.png" style="width: 50%;"></div>
+<div style="text-align: center;">Fig. 5. The MRD Quality performance of each loss network compared to the ImageNet top-1 accuracy or the pretrained models.</div>
+# A. Implementing a Suitable Loss Network
+A. Implementing a Suitable Loss Network This work evaluates 14 different ImageNet pretrained architectures with four different extraction layers on four benchmarks. The results of this evaluation, combined with results from previous works, provide insight into how to implement a suitable ImageNet pretrained loss network for a given task. When it comes to the choice of architecture, the VGG networks without batch norm perform well on all four benchmarks. Out of them, VGG-11 performs best on average, though both VGG-16 and 19 have benchmarks where they outperform the other VGG networks. While it may be interpreted that batch norm leads to poor performance it cannot be stated whether this generalizes beyond the VGG networks. Additionally, in Torchvision the models with batch norm use a different pretraining procedure than those without, specifically they use a larger learning rate. This means that even if there was a clear difference between the architectures with and without batch norm, this difference might be due to the training procedure rather than the architecture itself. SqueezeNet also performs well on Benchmarks 1 and 2 which focus more on smallscale features, especially super-resolution where focus on the large-scale features is not as necessary as they are part of the input to the image transformation network. SqueezeNet has average performance on the remaining benchmarks. Despite these clear indicators of some architectures performing better, it is difficult to generalize their findings to which attributes of these networks make them perform well. There is no strong correlation in the gathered data between different architecture attributes and loss of network performance. For most attributes, this lack of correlation may be due to the size of the data, and studies targeting specific attributes may find those. However, it seems clear from the data that the total depth and number of parameters of a model do not affect its downstream performance as a loss network. Some of the most novel findings of this work regard the choice of extraction layer for deep features of the loss networks. The choice of feature extraction layer has at least as much
+impact on loss network performance as the choice of pretrained architecture. It is also interesting to note that the extraction layer that performs best on a performance score is correlated between different architectures. So if one architecture performs well on a task with a certain feature extraction layer, it is likely that other architectures will perform, relatively, well on the task with feature extraction at a similar relative depth. Though, the optimal feature extraction depth does not correlate between benchmarks, nor between tasks if the tasks are substantially different. Some inferences can be made as to which feature extraction layers will perform well on a task based on the parameters of that task. Most performance scores on Benchmark 2 are improved for the earlier layers. One factor is that the performance is measured with scores focusing on low-level features, which likely align closer to the features detected by earlier layers. Another factor is that the input to the image transformation network contains the higher level structures, learning to replicate those structures should be easier as this can be achieved with the identity function, while the pixel-level differences are more difficult to learn. In such cases, early layers perform better. If the performance scores are less dependent on low-level structures, such as classification accuracy, or if the relevant high-level structures are not included in the input, such as image segments, later layers likely perform better. Additionally, how similar the pretraining data is to the task data likely also affects which extraction layer is more suitable. This can be observed in Benchmark 4, where the later extraction layers in general perform well on STL-10 which is derived from the pretraining dataset, while scores on SVHN, which is drawn from a substantially different distribution, are better for earlier extraction layers. This is likely since the later layers have learned features that are specifically useful for the classes in ImageNet, and thus do not generalize well to SVHN. An aspect that is not explored in this work is how the loss network is pretrained. Kumar et al. [26] showed that performance on the BAPPS perceptual similarity dataset could be improved by pretraining models on ImageNet with other parameters and for fewer epochs than what would give optimal ImageNet accuracy. It is possible that such specialized pretraining could improve performance on deep perceptual loss tasks as well. However, since deep perceptual loss tasks require training another model with the loss network, such experiments would likely be prohibitively computationally expensive. Additional pretraining on the distribution of the downstream task might lead to more suitable deep features in the later layers as was observed in Benchmark 4 with SVHN and STL-10 accuracy. Another interesting finding is that, besides VGG networks generally performing well, the performance of a loss network on one benchmark does not predict its performance on another. This means that for a new task, it can be difficult to predict which loss networks should perform well and likely several will have to be tested. If computation is limited, evaluating feature extraction layers on VGG networks is recommended. If more computation is available it is also worth exploring some additional architectures with similar relative depth of the feature extraction layers as the best-performing VGG networks.
+As pretraining architectures can be orders of magnitude more expensive than evaluating them, this is only recommended in circumstances where resources are plentiful, slight gains in performance are important, and the model will be extensively used for inference. There are other potential methods for implementing betterperforming loss networks that have not been analyzed in this work. Some of those methods are presented later in Subsection VI-D.
+# B. Breaking Transfer Learning Conventions
+The field of transfer learning has many conventions and accepted good practices. For some problems and conventions, there is extensive empirical support, though the conventions are often followed beyond these cases. The results in this work show that deep perceptual loss breaks two commonly held transfer learning conventions. First, it extends the findings on perceptual similarity by Kumar et al. [26] that ImageNet accuracy is not positively correlated with downstream performance, to deep perceptual loss. Second, it demonstrates that for deep perceptual loss and similarity the later layers are not necessarily better for feature extraction. Both of these findings are expanded upon below. In computer vision, it is a common convention that improved ImageNet accuracy leads to better downstream performance on transfer learning tasks and this convention has been supported by trends [26] and specific studies [36] for some problems. However, on no benchmark can a positive correlation between the ImageNet accuracy of a model and its performance as a loss network be found. Kumar et al. [26] also shows that downstream performance improves with ImageNet accuracy until some threshold accuracy after which downstream performance decreases as ImageNet accuracy increases. Though to find this correlation several thousands of loss networks were examined. No such correlation could be found in the data gathered in this work, though likely if more loss networks were examined such patterns would reveal themselves. Another interesting point is that ImageNet accuracy is correlated with the depth of the network, but this correlation cannot be found in the results of this work either. This lack of correlation with depth might be part of the reason why deep perceptual loss and similarity break this transfer learning convention. Especially, since it was also shown that the perceptual similarity scores of shallower architectures do not decay as much with increased ImageNet accuracy as their deeper counterparts [26]. In transfer learning in general it is also often held that the feature extraction should be performed in the later layers for better performance as these layers contain more advanced features [48]. However, the results of this work show that for deep perceptual loss and similarity the best layer for feature extraction is heavily dependent on the task and dataset. Since the loss networks are applied to the task of loss calucaltion without fine-tuning on that task, it is likely that the later layers contain more specialized features that are not generally applicable, leading to worse performance for some tasks. In most other transfer learning tasks the model that uses the extracted features is trained and can therefore learn low weights
+for features that are not useful for the application. Additionally, it is clear that for tasks where lower-level features are more important, training with earlier layers on which such features have greater impact is likely a good choice.
+# C. Limitations of The Study
+The findings of this work are limited by a number of factors. The limited number of architectures tested is likely one of the reasons why no conclusion can be drawn relating to some attributes. The datasets used were mostly limited, especially within tasks, leading to the interpretations related to changing datasets being weak. The selected extraction layers for each architecture are assumed to be equivalent, however, this might not be the case. Some architectures might perform worse simply due to the features at the selected extraction layers being unsuitable for the tasks. However, in transfer learning settings it is commonly held that slight differences in extraction layers only lead to minor changes in performance, especially if fine-tuning is used [47]. This reasoning might extend to deep perceptual loss as well, though further study would be needed. Another potential problem with the work is the performance scores used in Benchmark 2. The performance scores, PSNR and SSIM, are the same as in the original work [7]. However, these metrics have been called into question when it comes to how well they represent the human perception of similarity [6]. This shortcoming is also noted in the original work, where their use is justified as a way to identify differences between losses rather than an attempt at showing state-of-the-art performance. In addition to this, it could be argued that performing well on both of these metrics might be a good indicator of quality even if it does not correlate directly with human perception of quality. However, the preference for earlier extraction layers on Benchmark 2 is likely due to using performance scores that compare local and low-level features. The obvious alternatives to using such metrics would be to use deep perceptual similarity or human judgments, the former of which will bias the results towards the loss network chosen for similarity and the latter of which is expensive. Interestingly, there is no correlation between performance on the super-resolution subset of BAPPS and performance on the super-resolution metrics in Experiment 3, which seems to further indicate that the lowlevel metrics used do not correspond well to human perceptions of quality.
+# D. Future Work
+This work provides initial insight into how to implement suitable loss networks using pretrained architectures for a given task. However, there are some parameters that were unexplored in this work, and of those that were explored more insight is needed. Additionally, more exploration of deep perceptual loss and similarity is needed, including studies that aggregate knowledge regarding the method. This work also has implications for the transfer learning field at large which suggests that further studies into other transfer learning applications are of interest. Below, these suggestions for future work are elaborated on.
+While this work has shown that the popular VGG architectures are a good choice for loss networks, more data is needed to understand what attributes in general make an architecture perform well as a loss network. Ablation studies focusing on specific architecture attributes might provide further insight. However such studies would likely be computationally expensive in comparison to the usefulness of their findings, as which architectures perform well are not necessarily consistent between tasks. A more beneficial approach might be to find if performance on certain deep perceptual loss tasks is correlated with other tasks and if those tasks could be used as a proxy for evaluating loss networks. The results of this work indicate that the optimal feature extraction layer for deep perceptual loss and similarity can be predicted based on the task and pretraining data. Whether these indications hold on tasks and datasets beyond those evaluated in this work would require additional experiments. As is discussed below, such evaluations may be useful in the larger transfer learning domain. Other important aspects of pretrained loss networks that are not covered by this work are the pretraining procedure and dataset. Kumar et al. [26] showed that pretraining on ImageNet specifically for performance on perceptual similarity rather than accuracy can give significant improvement on perceptual similarity datasets. However, attempting to explore the same for deep perceptual loss would likely be orders of magnitude more computationally expensive. Additionally, it has recently been shown that the pretraining dataset and task can have a significant impact on alignment with human perception of similarity [42]. In the field of contrastive learning, it has been shown that ImageNet transfer learning is not as beneficial in image domains that are sufficiently different from natural scenes, such as medical images [89]. As a supplement, pretraining on images from the application domain is being investigated [89]. Such supplementary pretraining could likely benefit deep perceptual loss applications as well. Beyond using pretrained loss networks, another common approach to deep perceptual loss is to train the loss network along with the network performing the task [11]. This is often done in a generative adversarial network setup where the discriminator is also used as a loss network. These methods are more difficult to evaluate and compare as they are typically designed to be task-specific and would require extensive computation for a systematic evaluation as has been performed in this work. A challenge for many of the presented directions of future analysis of loss networks is the computational demands needed for systematic evaluation. While the increasingly widespread use of deep perceptual loss might justify such studies, there are less demanding ways to aggregate knowledge of the method. As of yet no extensive survey covering either improvements or applications of deep perceptual loss exists. Such a survey would likely be highly beneficial to the field as it could identify patterns of when the method performs better. Another strong benefit would be to unify the body of work and to spread insight between application areas that may otherwise be isolated from each other.
+The findings of this work also suggest further work in the field of transfer learning. While it has been clearly demonstrated that increased ImageNet accuracy is correlated with increased performance for some cases [26, 36], it has also been shown that ImageNet pretraining is not as beneficial in other cases [90]. The Pareto front between ImageNet accuracy and perceptual similarity performance found by Kumar et al. [26], likely exists for other tasks as well. It is well established in multitask learning that a solution that is optimal for one task is rarely optimal for another [91]. As such Pareto fronts are likely to exist in most transfer learning settings. Studies probing when ImageNet pretraining is beneficial and at which accuracy the optimal downstream performance is reached would be beneficial to the field at large. Another transfer learning convention in need of reevaluation is that the later layers are best suited for feature extraction. This work showed that this convention does not hold for deep perceptual loss and similarity. Likely this is the case for other transfer learning methods. Additionally, other findings relating to which layer is optimal and how the optimal layer correlates between layers might also generalize to the larger field of transfer learning. To investigate these conventions, surveys are likely a useful tool.
+# VII. CONCLUSION
+Large-scale systematic testing and analysis of loss networks with varying architectures and extraction layers have been performed. The results and analysis point to the three primary findings. First, selecting the extraction layer for features is at least as important as selecting the architecture, and good practice for making this selection is suggested. Secondly, while no general rule for selecting the architecture could be identified, the VGG networks without batch norm are a good choice. Thirdly, there is no simple correlation between architecture attributes such as ImageNet accuracy, depth, and the number of parameters and downstream performance when used as a loss network. The results also reinforce and expand earlier works showing that two established conventions within the field of transfer learning do not apply to deep perceptual loss and similarity. The conventions in question are that the final layers are the best candidates for feature extraction and that better ImageNet accuracy implies better downstream transfer learning performance. Further studies into these conventions and when they are applicable are needed.
+# ACKNOWLEDGMENT
+This work required a lot of computation to complete, which was provided through the GPU data lab of Luleå University of Technology. We would also like to thank Christian Günther for help with setting up the coding and execution environments, and Prof. Elisa Barney Smith for her in-depth peer-review.
+# REFERENCES
+[1] G. G. Pihlgren, F. Sandin, and M. Liwicki, “Improving image autoencoder embeddings with perceptual loss,” in
+[1] G. G. Pihlgren, F. Sandin, and M. Liwicki, “Improving image autoencoder embeddings with perceptual loss,” in
+2020 International Joint Conference on Neural Networks, 2020, pp. 1–7. [2] C. Szegedy, W. Zaremba, I. Sutskever, J. Bruna, D. Erhan, I. Goodfellow, and R. Fergus, “Intriguing properties of neural networks,” in 2nd International Conference on Learning Representations, 2014. [3] I. Goodfellow, J. Pouget-Abadie, M. Mirza, B. Xu, D. Warde-Farley, S. Ozair, A. Courville, and Y. Bengio, “Generative adversarial nets,” in Advances in Neural Information Processing Systems, 2014, pp. 2672–2680. [4] J. Yosinski, J. Clune, A. M. Nguyen, T. J. Fuchs, and H. Lipson, “Understanding neural networks through deep visualization,” arXiv preprint, 2015. [5] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. FeiFei, “ImageNet: a large-scale hierarchical image database,” in 2009 IEEE Conference on Computer Vision and Pattern Recognition, 2009, pp. 248–255. [6] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, 2018, pp. 586–595. [7] J. Johnson, A. Alahi, and L. Fei-Fei, “Perceptual losses for real-time style transfer and super-resolution,” in European Conference on Computer Vision. Springer, 2016, pp. 694– 711. [8] A. Mosinska, P. Marquez-Neila, M. Kozi´nski, and P. Fua, “Beyond the pixel-wise loss for topology-aware delineation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, 2018, pp. 3136– 3145. [9] G. G. Pihlgren, F. Sandin, and M. Liwicki, “Pretraining image encoders without reconstruction via feature prediction loss,” in 2020 25th International Conference on Pattern Recognition, 2021, pp. 4105–4111. 10] L. A. Gatys, A. S. Ecker, and M. Bethge, “Image style transfer using convolutional neural networks,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, 06 2016. 11] A. B. L. Larsen, S. K. Sønderby, H. Larochelle, and O. Winther, “Autoencoding beyond pixels using a learned similarity metric,” in Proceedings of The 33rd International Conference on Machine Learning, ser. Proceedings of Machine Learning Research, vol. 48. PMLR, 06 2016, pp. 1558–1566. 12] Q. Yang, P. Yan, Y. Zhang, H. Yu, Y. Shi, X. Mou, M. K. Kalra, Y. Zhang, L. Sun, and G. Wang, “Lowdose CT image denoising using a generative adversarial network with wasserstein distance and perceptual loss,” IEEE Transactions on Medical Imaging, vol. 37, no. 6, pp. 1348–1357, 2018. 13] Z. Chai, K. Zhou, J. Yang, Y. Ma, Z. Chen, S. Gao, and J. Liu, “Perceptual-assisted adversarial adaptation for choroid segmentation in optical coherence tomography,” in 2020 IEEE 17th International Symposium on Biomedical Imaging, 2020, pp. 1966–1970. 14] X. Liu, H. Gao, and X. Ma, “Perceptual losses for self-supervised depth estimation,” Journal of Physics:
+Conference Series, vol. 1952, no. 2, p. 022040, 06 2021. [15] K. Ding, K. Ma, S. Wang, and E. P. Simoncelli, “Image quality assessment: Unifying structure and texture similarity,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 44, no. 5, pp. 2567–2581, 2022. [16] A. Dosovitskiy and T. Brox, “Generating images with perceptual similarity metrics based on deep networks,” in Advances in Neural Information Processing Systems, 2016, pp. 658–666. [17] D. Xu, Y. Wang, X. Zhang, N. Zhang, and S. Yu, “Infrared and visible image fusion using a deep unsupervised framework with perceptual loss,” IEEE Access, vol. 8, pp. 206 445–206 458, 2020. [18] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks for biomedical image segmentation,” in International Conference on Medical Image Computing and Computer-assisted Intervention. Springer, 2015, pp. 234–241. [19] S. Marcel and Y. Rodriguez, “Torchvision the machinevision package of torch,” in Proceedings of the 18th ACM International Conference on Multimedia. Association for Computing Machinery, 2010. [20] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf, E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner, L. Fang, J. Bai, and S. Chintala, “PyTorch: an imperative style, highperformance deep learning library,” in Advances in Neural Information Processing Systems. Curran Associates, Inc., 2019, pp. 8024–8035. [21] A. Krizhevsky, I. Sutskever, and G. E. Hinton, “ImageNet classification with deep convolutional neural networks,” in Advances in Neural Information Processing Systems. Curran Associates, Inc., 2012, pp. 1097–1105. [22] A. Krizhevsky, “One weird trick for parallelizing convolutional neural networks,” arXiv preprint, 2014. [23] K. Simonyan and A. Zisserman, “Very deep convolutional networks for large-scale image recognition,” in International Conference on Learning Representations, 2015. [24] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in 2016 IEEE Conference on Computer Vision and Pattern Recognition, 2016, pp. 770–778. [25] C. Szegedy, Wei Liu, Yangqing Jia, P. Sermanet, S. Reed, D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich, “Going deeper with convolutions,” in 2015 IEEE Conference on Computer Vision and Pattern Recognition, 2015, pp. 1–9. [26] M. Kumar, N. Houlsby, N. Kalchbrenner, and E. D. Cubuk, “Do better imagenet classifiers assess perceptual similarity better?” Transactions on Machine Learning Research, 2022. [27] G. Farias, S. Dormido-Canto, J. Vega, G. Rattá, H. Vargas, G. Hermosilla, L. Alfaro, and A. Valencia, “Automatic feature extraction in large fusion databases by using deep learning approach,” Fusion Engineering and Design, vol. 112, pp. 979–983, 2016. [28] G. E. Hinton and R. R. Salakhutdinov, “Reducing the
+dimensionality of data with neural networks,” Science, vol. 313, no. 5786, pp. 504–507, 2006. [29] Y. Bengio, P. Lamblin, D. Popovici, and H. Larochelle, “Greedy layer-wise training of deep networks,” Advances in Neural Information Processing Systems, vol. 19, 2006. [30] Q. V. Le, “Building high-level features using large scale unsupervised learning,” in 2013 IEEE International Conference on Acoustics, Speech and Signal Processing. IEEE, 2013, pp. 8595–8598. [31] Y. Hayakawa, T. Oonuma, H. Kobayashi, A. Takahashi, S. Chiba, and N. M. Fujiki, “Feature extraction of video using deep neural network,” in 2016 IEEE 15th International Conference on Cognitive Informatics & Cognitive Computing. IEEE, 2016, pp. 465–470. [32] S. H. Lee, C. S. Chan, S. J. Mayo, and P. Remagnino, “How deep learning extracts and learns leaf features for plant classification,” Pattern Recognition, vol. 71, pp. 1– 13, 2017. [33] H. Mohsen, E.-S. A. El-Dahshan, E.-S. M. El-Horbaty, and A.-B. M. Salem, “Classification using deep learning neural networks for brain tumors,” Future Computing and Informatics Journal, vol. 3, no. 1, pp. 68–71, 2018. [34] B. Jiang, J. Yang, Z. Lv, K. Tian, Q. Meng, and Y. Yan, “Internet cross-media retrieval based on deep learning,” Journal of Visual Communication and Image Representation, vol. 48, pp. 356–366, 2017. [35] D. Ha and J. Schmidhuber, “Recurrent world models facilitate policy evolution,” in Advances in Neural Information Processing Systems. Curran Associates, Inc., 2018, pp. 2450–2462. [36] S. Kornblith, J. Shlens, and Q. V. Le, “Do better imagenet models transfer better?” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, 06 2019. [37] M. Alberti, M. Seuret, R. Ingold, and M. Liwicki, “A pitfall of unsupervised pre-training,” in Conference on Neural Information Processing Systems, Deep Learning: Bridging Theory and Practice, 2017. [38] M. Hatzigiorgaki and A. N. Skodras, “Compressed domain image retrieval: A comparative study of similarity metrics,” in Visual Communications and Image Processing 2003, vol. 5150, International Society for Optics and Photonics. SPIE, 2003, pp. 439 – 448. [39] Z. Wang, A. Bovik, H. Sheikh, and E. Simoncelli, “Image quality assessment: From error visibility to structural similarity,” IEEE Transactions on Image Processing, vol. 13, no. 4, pp. 600–612, 2004. [40] A. Babenko, A. Slesarev, A. Chigorin, and V. Lempitsky, “Neural codes for image retrieval,” in Computer Vision – ECCV 2014. Springer International Publishing, 2014, pp. 584–599. [41] M. Kettunen, E. Härkönen, and J. Lehtinen, “E-LPIPS: robust perceptual image similarity via random transformation ensembles,” arXiv preprint, 2019. [42] L. Muttenthaler, J. Dippel, L. Linhardt, R. A. Vandermeulen, and S. Kornblith, “Human alignment of neural network representations,” in The 11th International Conference on Learning Representations,
+2023. [Online]. Available: https://openreview.net/forum? id=ReDQ1OUQR0X [43] H. Zhao, O. Gallo, I. Frosio, and J. Kautz, “Loss functions for image restoration with neural networks,” IEEE Transactions on Computational Imaging, vol. 3, no. 1, pp. 47–57, 2017. [44] J. Snell, K. Ridgeway, R. Liao, B. D. Roads, M. C. Mozer, and R. S. Zemel, “Learning to generate images with perceptual similarity metrics,” in 2017 IEEE International Conference on Image Processing, 2017, pp. 4277–4281. [45] C. Shi and C.-M. Pun, “Adaptive multi-scale deep neural networks with perceptual loss for panchromatic and multispectral images classification,” Information Sciences, vol. 490, pp. 1–17, 2019. [46] K. Simonyan, A. Vedaldi, and A. Zisserman, “Deep inside convolutional networks: Visualising image classification models and saliency maps,” in Workshop at International Conference on Learning Representations, 2014. [47] J. Yosinski, J. Clune, Y. Bengio, and H. Lipson, “How transferable are features in deep neural networks?” Advances in Neural Information Processing Systems, vol. 27, 2014. [48] F. Zhuang, Z. Qi, K. Duan, D. Xi, Y. Zhu, H. Zhu, H. Xiong, and Q. He, “A comprehensive survey on transfer learning,” Proceedings of the IEEE, vol. 109, no. 1, pp. 43–76, 2021. [49] C. Ledig, L. Theis, F. Huszár, J. Caballero, A. Cunningham, A. Acosta, A. Aitken, A. Tejani, J. Totz, Z. Wang et al., “Photo-realistic single image super-resolution using a generative adversarial network,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, 2017, pp. 4681–4690. [50] J. Li, X. Liang, Y. Wei, T. Xu, J. Feng, and S. Yan, “Perceptual generative adversarial networks for small object detection,” in The IEEE Conference on Computer Vision and Pattern Recognition, 07 2017. [51] Z. Wang, J. Chen, and S. C. H. Hoi, “Deep learning for image super-resolution: A survey,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 43, pp. 3365–3387, 2021. [52] P. Rasti, T. Uiboupin, S. Escalera, and G. Anbarjafari, “Convolutional neural network super resolution for face recognition in surveillance monitoring,” in Articulated Motion and Deformable Objects. Cham: Springer International Publishing, 2016, pp. 175–184. [53] H. Greenspan, “Super-Resolution in Medical Imaging,” The Computer Journal, vol. 52, no. 1, pp. 43–63, 2009. [54] J. S. Isaac and R. Kulkarni, “Super resolution techniques for medical image processing,” in 2015 International Conference on Technologies for Sustainable Development, 2015, pp. 1–6. [55] M. S. Rad, B. Bozorgtabar, U.-V. Marti, M. Basler, H. K. Ekenel, and J.-P. Thiran, “SROBB: targeted perceptual loss for single image super-resolution,” in Proceedings of the IEEE/CVF International Conference on Computer Vision, 10 2019. [56] D. E. Rumelhart, G. E. Hinton, and R. J. Williams, “Learning internal representations by error propagation,”
+California Univ San Diego La Jolla Inst for Cognitive Science, Tech. Rep., 1985. [57] D. H. Ballard, “Modular learning in neural networks,” in AAAI, 1987, pp. 279–284. [58] D. P. Kingma and M. Welling, “Auto-encoding variational bayes,” arXiv preprint, 2013. [59] G. Huang, Z. Liu, L. Van Der Maaten, and K. Q. Weinberger, “Densely connected convolutional networks,” in 2017 IEEE Conference on Computer Vision and Pattern Recognition, 2017, pp. 2261–2269. [60] S. Xie, R. Girshick, P. Dollár, Z. Tu, and K. He

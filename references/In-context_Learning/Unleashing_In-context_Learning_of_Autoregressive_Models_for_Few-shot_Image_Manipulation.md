@@ -1,0 +1,533 @@
+# Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation
+
+Bolin Lai 1, 2 † Felix Juefei-Xu 1 Miao Liu 1 Xiaoliang Dai 1 Nikhil Mehta 1 Chenguang Zhu 1
+Zeyi Huang 5 James M. Rehg 3 Sangmin Lee 4 Ning Zhang 1 Tong Xiao 1
+1 GenAI, Meta 2 Georgia Institute of Technology 3 University of Illinois Urbana-Champaign 4 Sungkyunkwan University 5 University of Wisconsin–Madison
+bolin.lai@gatech.edu {felixu,miaoliu,xiaoliangdai,nikhilmeht,chezhu,ningzhang,xiaot} @meta.com
+zeyihuang@cs.wisc.edu jrehg@illinois.edu sangmin.lee@skku.edu
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1866/1866d335-8951-4f08-a674-64a65994c7c3.png" style="width: 50%;"></div>
+<div style="text-align: center;">gure 1. When learning a new image manipulation operation that is unseen in the training set (as shown above), textual inst ectly point out the subject and provide high-level semantic guidance, while exemplar images mitigate linguistic ambiguity an ore local details that are difficult to describe in language. Our proposed multi-modal autoregressive model – InstaManip takes ad both textual and visual guidance to learn a representation of the desired transformation, and applies it to a new query image.
+</div>
+Abstract Text-guided image manipulation has experienced notable advancement in recent years. In order to mitigate linguistic ambiguity, few-shot learning with visual examples has been applied for instructions that are underrepresented in the training set, or difficult to describe purely in language. However, learning from visual prompts requires strong reasoning capability, which diffusion models are struggling with. To address this issue, we introduce a novel multi-modal autoregressive model, dubbed  InstaManip, that can insta ntly learn a new image manip ulation operation from textual and visual guidance via in-context
+
+learning, and apply it to new query images. Specifically, we propose an innovative group self-attention mechanism to break down the in-context learning process into two separate stages – learning and applying, which simplifies the complex problem into two easier tasks. We also introduce a relation regularization method to further disentangle image transformation features from irrelevant contents in exemplar images. Extensive experiments suggest that our method surpasses previous few-shot image manipulation models by a notable margin (≥ 19% in human evaluation). We also find our model can be further boosted by increasing the number or diversity of exemplar images. Please check out our project page (https://bolinlai.github.io/projects/InstaManip/).
+
+# 1. Introduction
+
+The recent emergence and advancement of diffusion models have greatly facilitated the boom of text-to-image generation [3, 9, 10, 13, 44, 48, 52– 55], which has further driven a remarkable development in text-guided image manipulation [7, 23, 40, 42, 57, 83]. However, existing models still suffer from a notable performance drop when the manipulation is difficult to articulate textually or when instructions deviate from the training data [7, 43]. For example, when we want to turn a plain car to a Lamborghini, the model may fail to correctly understand the shape and texture only from the word “Lamborghini”, if it is not included in training data (Fig. 2 (a)). It is also hard for humans to accurately describe all details of Lamborghini in texts. Moreover, we are living in a world where new concepts constantly emerge across the Internet and social media, which are rarely covered in any training set. The generalization limitation hinders existing models from being applied in the real world. A straightforward solution to this problem is additionally providing a few exemplar images for the model (i.e., few-shot image manipulation as shown in Figs. 1 and 2 (b)), which has been studied in some recent work [43, 62, 75, 86]. All of these methods rely on the architectures of diffusion model [54] and ControlNet [84]. However, learning from visual examples requires a strong reasoning capability to separate image-to-image transformation features from the irrelevant content in exemplar images. Diffusion models are excellent in generation, yet still weak in reasoning [65]. In contrast, autoregressive architectures, especially large language models (LLMs), have shown remarkable reasoning performance, which enables them to learn new tasks from prompts without finetuning (i.e., in-context learning) [2, 11, 45, 76, 87]. In this paper, we make an attempt to address few-shot image manipulation problem by harnessing the in-context learning feature of autoregressive models, specifically multi-modal large language models (MLLMs). Prior to our work, many efforts have been made to turn an autoregressive architecture into a generalist model that can handle various visual tasks [2, 17, 20, 22, 25, 38, 56, 61, 74, 82], such as visual question answering, image completion, and semantic segmentation. However, in-context learning for few-shot image manipulation with autoregressive models is still an understudied problem. In addition, few-shot image manipulation essentially consists of two stages: (1) learning  the desired transformation from textual guidance and visual examples, and then (2) applying learned knowledge to a new query image (which has also been shown in human’s learning process [64, 67]). Most existing autoregressive models combine the two stages in a single step while applying in-context learning, and fully rely on self-attention to automatically model the dependence across given examples, query images and desired output. These straightforward approaches increase the problem
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/258e/258ea02a-c565-4007-b738-f81fc98426de.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2. Comparison of InstructPix2Pix [7] and our model. We exclude “Lamborghini” from training set for both models.
+</div>
+complexity, which leads to a bottleneck in learning the desired manipulation rules and transferring to other images. To address these issues in few-shot image manipulation, we introduce InstaManip, an innovative multi-modal autoregressive architecture that models the two stages separately. Specifically, we propose a novel group self-attention mechanism, which disentangles the learning and applying stages by splitting the input prompt into two groups and conducting self-attention in each group separately, exactly aligned with aforementioned human’s cognition. Furthermore, we introduce a relation regularization  scheme to encourage instances with similar manipulation to be encoded close to each other, which drives the model to distinguish the desired manipulation features from irrelevant image contents. The experiments show that the proposed method achieves new state-of-the-art performance when applied to unseen  image manipulation instructions. Overall, our contributions can be summarized as follows: • We introduce InstaManip, a novel autoregressive model that unleashes in-context learning capability of MLLMs for few-shot image manipulation.
+• We propose the innovative group self-attention method that breaks down in-context learning into two stages – learning and applying, following human’s learning process. We also propose a relation regularization strategy to further separate underlying transformation rules from undesired visual features.
+• Extensive experiments suggest that our proposed method prominently improves the in-context learning capability and outperforms existing few-shot image manipulation models. Our model is further improved by using more examples or increasing the diversity of visual prompts.
+
+# 2. Related Work
+
+Few-shot Image Manipulation.  Text-guided image manipulation has been widely studied since the emergence of diffusion models [6, 7, 12, 15, 23, 29, 30, 34, 40– 42, 46, 47, 57, 70]. Recently, few-shot learning is adopted to this problem for a better performance by using one or more exemplar image pairs as reference [33, 58]. Sun et al. [62] propose ImageBrush, which frames query image and a pair of exemplar images into a 2 × 2 grid, and then models their relation by a diffusion model. Wang et al. [75] encode exemplar images and the query image by convo
+
+lutional layers and inject the embeddings into a diffusion model through ControlNet [84]. Their method shows excellent performance in layout-based inpainting tasks. Nguyen et al. [43] freeze a pre-trained InstructPix2Pix [7] model and finetune the condition tokens to learn the editing representations from exemplar images in CLIP space. The learned tokens can be used as conditions to edit input images. Likewise, Zhao et al. [86] propose to directly learn the representations of keys and values in each cross-attention layer. All previous work relies on diffusion models as incontext learners, which are strong in generation, yet weak in reasoning [65]. In contrast, we propose an innovative autoregressive model that can leverage the strong reasoning capability of MLLMs for few-shot image manipulation.
+Visual In-context Learning. In recent years, the strong in-context learning capability has been observed in LLMs [8], and subsequently extends to vision-related tasks, such as segmentation [31, 63, 71, 73], scene understanding [4], 3D point cloud modeling [18] and generalist vision models [25, 27, 36, 56, 79, 80, 85]. Bar et al. [5] first propose visual in-context learning by enabling models to learn from visual prompts via inpainting. Similarly, Wang et al. [72] introduce Painter, a model that learns the dependence of image patches through masked image modeling, and shows strong in-context learning capability in many dense visual prediction tasks (e.g., segmentation, depth, denoising, etc.). In addition to dense prediction, the latest work shows that visual in-context learning also applies to generative models [2, 21, 26, 38, 77, 81]. Sun et al. [61] develop Emu2, a unified autoregressive model showing strong in-context learning performance in text-to-image generation. Tang et al. [65] propose Codi-2, which leverages an LLM to reason from in-context examples, and uses a diffusion model to synthesize the image or audio conditioned on LLM output. Prior work mostly aims at establishing a versatile in-context learner for a variety of vision tasks, in which few-shot image manipulation is still understudied. In this work, we propose a novel method to unleash the in-context learning capability of autoregressive models on this specific problem.
+Autoregressive Models for Image Generation. Recent studies show an increasing interests in extending LLMs into unified autoregressive models that can take in and generate image tokens directly [14, 16, 17, 22, 28, 35, 39, 59, 66, 68, 77, 78, 82]. Sun et al. [60] introduce Emu, which takes in text-image interleaved prompts and synthesizes texts and images in a unified autoregressive manner. They further extend the work to Emu2 [61] and Emu3 [74] by using discrete image embeddings and scaling up the training data. Likewise, Ge et al. [19] present SEED, an LLM-based architecture that generates language and images following instructions. They also propose SEED-X [20] which is a versatile model for many vision-language tasks, such as visual question answering, open-vocabulary object localiza
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/168e/168e355f-b19b-47fa-917c-f137b1867813.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3. Comparison of the performance of plain self-attention (with causal mask) and the proposed group self-attention.
+</div>
+tion and image editing. Zhou et al. [88] replace causal masks with block masks on image tokens for a holistic understanding of images. Li et al. [32] find vector quantization is unnecessary in autoregressive image generation. They propose a diffusion loss to model per-token probability, achieving strong image generation performance. Most of existing work directly uses the autoregressive architectures of off-the-shelf LLMs by finetuning. How to design a novel autoregressive model for a specific problem remains to be explored, which is exactly the focus of our work.
+
+# 3. Method
+
+In few-shot image manipulation, the input is an image X and a textual instruction T. We additionally use a handful of exemplar image pairs as input showing how to transform a source image X ′ to a target image Y ′. The desired output is a manipulated image Y following both the textual and the visual guidance. The problem is formulated as learning a distribution of Y conditioned on (X, T, X ′, Y ′):
+
+(1)
+
+, (2)
+Y|X T X Y Early studies in cognitive science [64, 67] reveal that human brains follow a 2-stage learning mechanism when learning a new skill from examples – abstracting high-level concepts from concrete examples, and then applying the learned knowledge to new cases. Inspired by this, we introduce a variable Z to denote abstract manipulation features, which is independent from the query image X. Then the problem formulated in Eq. (1) is broken down into two stages: P (Y|X, T, X ′, Y ′) = P (Z|T, X ′, Y ′) � �� �
+· P (Y|X, Z) � �� �
+
+(2)
+
+� �� �
+� �� �
+where 1 corresponds to the learning stage and 2 indicates the applying stage. Previous autoregressive models mix up the two stages when doing in-context learning, thus increasing the problem complexity. In contrast, our model solves this problem in a divide-and-conquer manner. We explicitly split the input prompt into two groups by introducing manipulation tokens (i.e., Z), and then implement self-attention within each group. Our proposed group self-attention mechanism (in Sec. 3.2) therefore is able to model learning stage and applying stage separately (following Eq. (2)) during endto-end training, which decomposes the complex in-context learning problem into two easier tasks, thus leading to a better performance (see Fig. 3). Furthermore, we introduce
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/c750/c7509dee-92d0-412d-95c8-9c1ebb888189.png" style="width: 50%;"></div>
+<div style="text-align: center;">view of the proposed InstaManip architecture (left) and group self-attention mechanism (right, represented by query-key tokenize all input texts and images, and fill them in a prompt template with learnable manipulation and generation tokens. ompt into the proposed model which is composed of N blocks. The group self-attention layer in each block learns an ation representation Z and applies it to the new query image. We forward final generation tokens and query image to the or final image synthesis. In the left part, we only show the self-attention correlations that connect with manipulation tokens kens for brevity. We also omit encoders, input projection layers and skip connections for simplicity.
+</div>
+# 3.1. Prompt Composition
+
+The architecture of our proposed InstaManip model is demonstrated in Fig. 4. Following previous work [20, 60], we use a pre-trained image encoder to tokenize the exemplar images and the query image each into 64 visual tokens, and then use a linear layer to align visual tokens with the embedding space of autoregressive model. Different from previous methods [2, 20] that use discrete visual embeddings, we encode images into a continuous space for better representation [32]. The M learnable manipulation tokens are initialized from pre-trained word embeddings. We construct the full input prompt using the following template.
+
+Prompt Template: “Here is an image manipulation instruction {textual instruction}, which can edit source image {exemplar source image} to target image {exemplar target image}. The editing is embedded in {manipulation tokens}. Learn from the instruction with the exemplar pairs and apply the same manipulation to this image {query image}.”
+
+Note that the manipulation tokens are placed between exemplar images and query image, so that the manipulation features learned with causal mask are independent from the query image. We will elaborate more details in Sec. 3.2. We append 64 learnable generation tokens to the end as the initial state for generating the target manipulated image. Finally, we tokenize all texts in the well-designed prompt with
+
+a pre-trained text encoder. The tokenized prompt is then fed into the proposed InstaManip model.
+
+# 3.2. Group Self-Attention
+
+As illustrated in Fig. 4, InstaManip is composed of N self-attention blocks. Each block consists of a group selfattention (GSA) layer and a multi-layer perception (MLP). Our key innovation is dividing the input prompt tokens into two groups with the manipulation tokens as the only bridge to connect them. Then we conduct self-attention with causal masks in the two groups separately in a single forward pass.
+As demonstrated in Fig. 4 (right), in the first group that contains textual instructions T and exemplar images (X ′, Y ′), the self-attention is written as
+
+(3)
+
+where we use subscript [T, X ′, Y ′, Z] for Q, K, V  to denote the query, key and value tokens of (T, X ′, Y ′, Z). To apply causal mask, S 1 is an upper triangular matrix with values above the diagonal filled with infinity and values at the other locations being zeros. σ is the softmax function and D denotes the length of each token. We omit template embedding for brevity in Eq. (3). In this group, manipulation tokens Z abstract high-level manipulation embeddings from both textual instructions and visual examples, regardless of the query image (i.e., learning stage 1 in Eq. (2)). Likewise, in the second group covering the query image X
+
+# and the generation tokens ˜ Y, the group self-attention i
+
+(4)
+
+
+
+where S 2 is also an upper triangular matrix akin to S 1. We constrain the scope of tokens within the second group, so that textual instruction and exemplar images are invisible to generation tokens when they are evolving to the desired output (i.e., applying stage 2 in Eq. (2)). The manipulation tokens are the only condition used to manipulate the query image, which hence enforces the model to learn transferrable manipulation features in these tokens. The output of GSA is then input into an MLP. Skip connections are applied to GSA and MLP to compensate some missing details. After going through N  blocks, the generation tokens and query image are fed into a pre-trained visual decoder to reconstruct the output image after manipulation.
+
+# 3.3. Relation Regularization
+
+In group self-attention, the manipulation tokens may still learn misleading features that are unrelated to the desired transformation. To tackle this challenge, we propose a relation regularization strategy to make manipulation embeddings of semantically similar instructions stay close, and keep a proper distance from those of different instructions. Specifically, with a training batch size of B, we average the M manipulation tokens Z i ∈ R B × M × D in the i-th block to get a single feature vector for each sample, and then apply L2-normalization to each feature vector, resulting in a representation of ¯ Z i ∈ R B × D. A relation matrix can be obtained through the inner product of each pair of data samples, i.e., ¯ Z i ¯ Z T i ∈ R B × B, where a greater value implies a closer relation between the two manipulation features. Moreover, the relation of manipulations can be directly represented by the semantic similarity of textual instructions. We utilize a pre-trained CLIP [51] text encoder ϕ  to encode textual instructions and apply L2-normalization to the embedding. Likewise, the relation matrix is then obtained also by inner product, i.e., ϕ (T) ϕ (T) T ∈ R B × B. We use CLIP encoded relation matrix to regularize the optimization of manipulation tokens by enforcing the two matrices to be close in each GSA layer using MSE loss. The proposed relation regularization strategy is formulated as
+
+(5)
+
+� �
+where ∥· ∥ F is the Frobenius norm which is the square root of the sum of the squares of all matrix elements. Relation regularization encourages our model to learn features directly relevant with the manipulation operation, leading to notable gains in model performance. In addition, we also use MSE as reconstruction loss L recon between the ground
+
+truth image tokens and generation tokens in the final output. The final training loss is a linear combination of reconstruction loss and relation regularization with a coefficient α balancing the two components, which is written as
+
+(6)
+
+# L L
+3.4. Implementation Details
+
+InstaManip exploits the autoregressive architecture of LLaMA-13B [69] consisting of N = 40  self-attention layers. We use the ViT of Qwen [1] as image encoder and SDXL [50] as image decoder. We use M = 30 learnable manipulation tokens in the experiments. In training, we freeze image encoder and decoder, and only optimize group self-attention layers and MLP using LoRA [24]. Please refer to Sec. C.2 in supplementary for more training details.
+
+# 4. Experiments
+
+# 4.1. Dataset and Metrics
+
+Dataset.  We implement experiments using the dataset collected in the work of InstructPix2Pix [7], which is composed of 313,010 diverse image manipulation instructions. For each instruction, there are 1-4 image pairs (source and target) and corresponding captions. We count the occurrence of each word in the instructions and select 30 keywords with low occurrence as test set candidates. Then we filter out all instructions that contain any of the 30 keywords from the training set, to make sure all test instructions (and their variants) are invisible to models during training. We further check out the test data and remove the samples with incorrect ground truth. Finally, we end up with 325 instructions and 1296 data samples in the test set. More details are further elaborated in Sec. C.1 of the supplementary. Metrics.  We adopt image-to-image similarity, image-totext similarity, and user study as metrics to measure the model performance. To begin with, we adopt three metrics that are widely used in previous image manipulation studies [7, 57, 62], including (1) CLIP image-text direction alignment (CLIP-Dir) – measuring the alignment of image change and caption change, (2) CLIP image-text output similarity (CLIP-T) – measuring the agreement of manipulated image and output caption, and (3) CLIP image-image similarity (CLIP-I) – measuring the similarity of query and manipulated images. For the few-shot learning setting, we use (4) visual CLIP similarity (CLIP-Vis) [43] as an additional metric, which measures the alignment of exemplar image change and query image change. In addition, we conduct (5) user study to collect human preferences on the outputs of our model and all competitors.
+
+# 4.2. Comparison with Prior Methods
+
+We compare InstaManip with previous few-shot image manipulation models including ImageBrush [62], VISII [43]
+
+Methods
+Guidance
+In Distribution
+Out of Distribution
+CLIP-Dir
+CLIP-Vis
+CLIP-T
+CLIP-I
+CLIP-Dir
+CLIP-Vis
+CLIP-T
+CLIP-I
+InstructPix2Pix [7]
+Text Only
+14.47
+23.42
+24.58
+81.28
+-
+-
+-
+-
+ImageBrush [62]
+Text + Image
+16.42
+25.03
+26.45
+71.98
+15.70
+23.89
+24.34
+70.68
+VISII [43]
+Text + Image
+15.85
+24.91
+26.10
+80.10
+14.69
+22.95
+26.14
+78.10
+PromptDiffusion [75]
+Text + Image
+17.13
+27.69
+24.07
+70.67
+15.41
+25.49
+23.85
+71.19
+InstaManip
+Text + Image
+19.81
+32.39
+27.72
+80.11
+18.27
+28.23
+26.81
+79.71
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/d22c/d22c2604-38e8-4dc8-a2a6-05c2bd43a5be.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 5. Qualitative comparison with InstructPix2Pix and previous few-shot image manipulation methods. All instruct selected keywords (highlighted in red) are excluded from the training set, so that the models are not optimized on thes operations. Our model follows the textual instruction better, and performs the transformation more aligned with exemplar
+</div>
+and PromptDiffusion [75]. The three models enable the latent diffusion model to learn from exemplar images by using grid strategy, optimizing the latent condition embedding, and using a separate controller, respectively. We also directly compare with InstructPix2Pix (IP2P) [7] trained only using textual instructions. We train the four models on our training set using the default hyperparameters described in their papers. More implementation details are elaborated in Sec. C.3 of the supplementary. We use two test settings for a thorough comparison – (1) in-distribution evaluation:
+
+exemplar images and query image share the same manipulation instructions and image contents (e.g., scenes, objects, background, etc.); (2) out-of-distribution evaluation: exemplar images and query image share the same transformation, yet different image contents (e.g., indoor scene vs. outdoor scene), which thus makes it more challenging. In this experiment, we use only one exemplar pair for both settings. Experiment results are demonstrated in Tab. 1. In indistribution setting, all few-shot image manipulation models outperform IP2P in most metrics, suggesting the impor
+
+Group SA
+Relation Reg.
+CLIP-Dir
+CLIP-Vis
+�
+�
+17.42
+28.96
+�
+�
+18.96
+31.08
+�
+�
+19.81
+32.39
+Table 2. Evaluation of the contribution of each component. � under Group SA denotes replacing group self-attention layer by vanilla self-attention layer with causal mask. The orange  row indicates the performance of the full InstaManip model.
+In Distribution Out of Distribution
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/20e4/20e45216-401e-4a34-b316-fc8a2d5dc820.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 6. Human evaluation (represented in preference rate) of our model and existing few-shot image manipulation methods.
+</div>
+tance of visual guidance in learning new instructions. In addition, our model further surpasses pervious methods by 2.68%, 4.70% and 1.27% in CLIP-Dir, CLIP-Vis and CLPT respectively. The prominent improvement in CLIP-Dir and CLIP-Vis indicates that InstaManip follows the textual instructions and visual examples more faithfully, validating the superior in-context learning capability of our model for image manipulation. Though InstaManip lags behind IP2P in CLIP-I, it still achieves the second best performance. We also want to argue that CLIP-I has intrinsic flaws as a metric. A very high CLIP-I score (close to 1) indicates the model does trivial changes to the image, while a low CLIP-I score suggests the model may edit irrelevant areas. This issue makes it hard to assess the performance based on CLIPI alone. Please refer to Sec. A in the supplementary for more analysis. In terms of out-of-distribution setting, it’s not surprising to observe an obvious performance drop compared with in-distribution counterpart. However, InstaManip still surpasses the competitors by a great margin in all metrics. The results further suggest that our model learns more transferrable embeddings of desired manipulation, and thus has better generalization capability in more challenging setting. Furthermore, we also conduct user study for a thorough evaluation. As presented in Fig. 6, our model surpasses previous methods by a remarkable margin (≥ 19%) under the two settings. The results indicate that the output of InstaManip is more aligned with human’s subjective criteria, further validating the superiority of our model.
+
+# 4.3. Visualization for Qualitative Evaluation
+
+The qualitative comparison across previous methods and our model is illustrated in Fig. 5. Without visual examples, IP2P may fail to understand instructions that are unseen dur
+
+Textual Instructions
+Visual Examples
+CLIP-Dir
+CLIP-Vis
+�
+�
+16.65
+28.02
+�
+�
+15.08
+22.96
+�
+�
+19.81
+32.39
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/16eb/16eb1579-cf81-4840-b767-59a3bfbf7148.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 7. Examples of InstaManip output. Our model learns transformation rules effectively and applies them to new query images.
+</div>
+ing training, thus making trivial modification on query images. VISII may also conduct minor transformation (e.g., row1-3), probably due to overfitting in test-time finetuning. ImageBrush and PromptDiffusion understand the instructions better than VISII and make necessary modifications to query images. However, they are still sub-optimal in following visual prompts, so that they may overly edit the images (e.g., row3), or change the images in a distinct direction than visual examples (e.g., row2, row4-5). In contrast, our model implements accurate manipulation aligned with both textual and visual guidance. See Fig. 7 for more demonstration.
+
+# 4.4. Ablation Study
+
+Ablation of Components. To begin with, we evaluate the contribution of each key component in InstaManip to the final performance. Quantitative results are shown in Tab. 2. Without using group self-attention and relation regularization, the model is degraded to a plain autoregressive architecture. Using group self-attention alone can improve CLIP-Dir and CLIP-Vis by 1.54% and 2.12% respectively.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/e90e/e90ecada-1546-47c4-84fe-1a9c9cb6fd32.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 8. Qualitative evaluation of the contribution of (a) each component, and (b) each modality in the contexts.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f4bc/f4bcb0fb-7cd1-4878-b339-f9df72b98264.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 9. The performance of our model with different numbers of exemplar image pairs. Our model achieves better performance in all the three settings by involving more visual examples.
+</div>
+The notable gains validate the effectiveness of modeling learning stage and applying stage separately. After conducting relation regularization in model training, the performance is further boosted by 0.85% in CLIP-Dir and 1.31% in CLIP-Vis. This improvement supports our hypothesis that relation regularization can prevent the model from learning irrelevant features by enforcing a structured latent space. Qualitative ablation in Fig. 8 (a) also presents the progressive improvement of adding the two components.
+Ablation of Guidance. In addition to model components, we also investigate the impact of textual instructions and visual examples on our model. As presented in Tab. 3 and Fig. 8 (b), using either textual instructions and visual examples alone results in a significant performance drop. The possible explanation is that textual instructions are more succinct and straightforwad without irrelevant disturbance, while visual examples show more local details that are difficult to describe in texts. They complement each other and thus make the model learn a more robust embedding than using them separately. Another surprising finding is that using visual examples alone leads to a better result than using textual instructions alone. We suspect the reason is that the domain gap between text tokens and image tokens still exists in MLLM feature space. Hence, the image generation tokens can learn from exemplar images more easily than from textual instructions. More analysis and ablation study of our model are shown in Sec. B of the supplementary.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f35a/f35a8b91-3749-4e7c-813f-bd02399f658b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 10. Demonstration of different manipulation on the same query image. Our model successfully edits the image conditioned on various textual and visual guidance.
+</div>
+# 4.5. Scaling Up with More Exemplar Images
+
+We implement extra experiments to study the performance of our model with regard to the number of exemplar image pairs. The results in Fig. 9 suggest that the performance of our model is further boosted in both in-distribution and out-of-distribution settings by using more exemplar images. When more than one exemplar image pairs are involved, we introduce a variant of out-of-distribution setting to test the impact of diversity of visual examples. In this setting (i.e., out of dist.(diverse) in Fig. 9, green line), different exemplar images contain distinct scenes, objects and styles, composing a highly diverse visual prompt. In contrast, the contents of exemplar images are very similar in regular out-ofdistribution setting (blue line). In Fig. 9, we observe a nontrivial improvement of using diverse visual prompts over the regular setting. It is probably because the high diversity helps the model to better recognize the desired transformation from irrelevant image contents. We also find the gain of increasing examples from 1 to 2 is smaller than from 2 to 3, which is contrary to intuition. Similar phenomenon is also observed in previous work [8, 43, 49]. The possible reason is that the addition of the third example provides more cues to learn the underlying transformation rules, exactly pushing the model to surpass a representational threshold.
+
+# 4.6. Various Manipulation on the Same Image
+
+Besides pre-defined instructions in the dataset, we further validate the generalization capability of our model to new image-instruction pairs. As illustrated in Fig. 10, we ask the model to edit the same query image using various textual instructions coupled with exemplar images. Our model effectively learns the desired transformation rule from the examples, and correctly applies it to the query image.
+
+# 5. Conclusion
+
+In this paper, we propose InstaManip, an autoregressive model consisting of novel group self-attention layers for
+
+few-shot image manipulation. Inspired by human’s learning process, the key intuition of our approach is breaking down the in-context learning paradigm into learning and applying stages, and modeling the two stages separately in the end-to-end training. We also adopt a relation regularization strategy to identify the underlying manipulation rules from undesired visual features. Detailed experiments demonstrate a notable improvement of InstaManip over prior methods, as well as the scalability of our model. Our work is an important attempt to solve few-shot image manipulation problem with novel design in autoregressive architectures, which paves the way for improving generic in-context learning capability of autoregressive models in various visual tasks.
+
+# References
+
+[1] Jinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang, Xiaodong Deng, Yang Fan, Wenbin Ge, Yu Han, Fei Huang, et al. Qwen technical report. arXiv preprint arXiv:2309.16609, 2023. 5
+[2] Yutong Bai, Xinyang Geng, Karttikeya Mangalam, Amir Bar, Alan L Yuille, Trevor Darrell, Jitendra Malik, and Alexei A Efros. Sequential modeling enables scalable learning for large vision models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 22861–22872, 2024. 2, 3, 4
+[3] Yogesh Balaji, Seungjun Nah, Xun Huang, Arash Vahdat, Jiaming Song, Qinsheng Zhang, Karsten Kreis, Miika Aittala, Timo Aila, Samuli Laine, et al. ediff-i: Text-to-image diffusion models with an ensemble of expert denoisers. arXiv preprint arXiv:2211.01324, 2022. 2
+[4] Ivana Balaˇzevi´c, David Steiner, Nikhil Parthasarathy, Relja Arandjelovi´c, and Olivier J H´enaff. Towards in-context scene understanding. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 63758–63778, 2023. 3
+[5] Amir Bar, Yossi Gandelsman, Trevor Darrell, Amir Globerson, and Alexei A Efros. Visual prompting via image inpainting. In Proceedings of the 36th International Conference on Neural Information Processing Systems, pages 25005– 25017, 2022. 3
+[6] Manuel Brack, Felix Friedrich, Katharia Kornmeier, Linoy Tsaban, Patrick Schramowski, Kristian Kersting, and Apolin´ario Passos. Ledits++: Limitless image editing using text-to-image models. In  Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 8861–8870, 2024. 2
+[7] Tim Brooks, Aleksander Holynski, and Alexei A Efros. Instructpix2pix: Learning to follow image editing instructions. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 18392–18402, 2023. 2, 3, 5, 6, 13, 17, 18
+[8] Tom B Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. In Proceedings of the
+
+34th International Conference on Neural Information Processing Systems, pages 1877–1901, 2020. 3, 8
+[9] Chaofeng Chen, Annan Wang, Haoning Wu, Liang Liao, Wenxiu Sun, Qiong Yan, and Weisi Lin. Enhancing diffusion models with text-encoder reinforcement learning. In European Conference on Computer Vision, pages 182–198. Springer, 2024. 2
+[10] Shoufa Chen, Mengmeng Xu, Jiawei Ren, Yuren Cong, Sen He, Yanping Xie, Animesh Sinha, Ping Luo, Tao Xiang, and Juan-Manuel Perez-Rua. Gentron: Diffusion transformers for image and video generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 6441–6451, 2024. 2
+[11] Hyung Won Chung, Le Hou, Shayne Longpre, Barret Zoph, Yi Tay, William Fedus, Yunxuan Li, Xuezhi Wang, Mostafa Dehghani, Siddhartha Brahma, et al. Scaling instructionfinetuned language models. Journal of Machine Learning Research, 25(70):1–53, 2024. 2
+[12] Guillaume Couairon, Jakob Verbeek, Holger Schwenk, and Matthieu Cord. Diffedit: Diffusion-based semantic image editing with mask guidance. In The Eleventh International Conference on Learning Representations, 2023. 2
+[13] Xiaoliang Dai, Ji Hou, Chih-Yao Ma, Sam Tsai, Jialiang Wang, Rui Wang, Peizhao Zhang, Simon Vandenhende, Xiaofang Wang, Abhimanyu Dubey, et al. Emu: Enhancing image generation models using photogenic needles in a haystack. arXiv preprint arXiv:2309.15807, 2023. 2
+[14] Runpei Dong, Chunrui Han, Yuang Peng, Zekun Qi, Zheng Ge, Jinrong Yang, Liang Zhao, Jianjian Sun, Hongyu Zhou, Haoran Wei, et al. Dreamllm: Synergistic multimodal comprehension and creation. In  The Twelfth International Conference on Learning Representations, 2024. 3
+[15] Dave Epstein, Allan Jabri, Ben Poole, Alexei A Efros, and Aleksander Holynski. Diffusion self-guidance for controllable image generation. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 16222–16239, 2023. 2
+[16] Lijie Fan, Tianhong Li, Siyang Qin, Yuanzhen Li, Chen Sun, Michael Rubinstein, Deqing Sun, Kaiming He, and Yonglong Tian. Fluid: Scaling autoregressive text-to-image generative models with continuous tokens. arXiv preprint arXiv:2410.13863, 2024. 3
+[17] Rongyao Fang, Chengqi Duan, Kun Wang, Hao Li, Hao Tian, Xingyu Zeng, Rui Zhao, Jifeng Dai, Hongsheng Li, and Xihui Liu. Puma: Empowering unified mllm with multi-granular visual generation. arXiv preprint arXiv:2410.13861, 2024. 2, 3
+[18] Zhongbin Fang, Xiangtai Li, Xia Li, Joachim M Buhmann, Chen Change Loy, and Mengyuan Liu. Explore in-context learning for 3d point cloud understanding. In Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 42382–42395, 2023. 3
+[19] Yuying Ge, Sijie Zhao, Ziyun Zeng, Yixiao Ge, Chen Li, Xintao Wang, and Ying Shan. Making llama see and draw with seed tokenizer. In The Twelfth International Conference on Learning Representations, 2024. 3
+[20] Yuying Ge, Sijie Zhao, Jinguo Zhu, Yixiao Ge, Kun Yi, Lin Song, Chen Li, Xiaohan Ding, and Ying Shan. Seed-x: Mul
+
+timodal models with unified multi-granularity comprehension and generation. arXiv preprint arXiv:2404.14396, 2024. 2, 3, 4
+[21] Zheng Gu, Shiyuan Yang, Jing Liao, Jing Huo, and Yang Gao. Analogist: Out-of-the-box visual in-context learning with image diffusion model. ACM Transactions on Graphics (TOG), 43(4):1–15, 2024. 3
+[22] Jefferson Hernandez, Ruben Villegas, and Vicente Ordonez. Generative visual instruction tuning. arXiv preprint arXiv:2406.11262, 2024. 2, 3
+[23] Amir Hertz, Ron Mokady, Jay Tenenbaum, Kfir Aberman, Yael Pritch, and Daniel Cohen-or. Prompt-to-prompt image editing with cross-attention control. In  The Eleventh International Conference on Learning Representations, 2023. 2
+[24] Edward J Hu, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Lowrank adaptation of large language models. In International Conference on Learning Representations, 2022. 5
+[25] Brandon Huang, Chancharik Mitra, Assaf Arbelle, Leonid Karlinsky, Trevor Darrell, and Roei Herzig. Multimodal task vectors enable many-shot multimodal in-context learning. arXiv preprint arXiv:2406.15334, 2024. 2, 3
+[26] Maxwell Jones, Sheng-Yu Wang, Nupur Kumari, David Bau, and Jun-Yan Zhu. Customizing text-to-image models with a single image pair. arXiv preprint arXiv:2405.01536, 2024. 3
+[27] Donggyun Kim, Seongwoong Cho, Semin Kim, Chong Luo, and Seunghoon Hong. Chameleon: A data-efficient generalist for dense visual prediction in the wild. In European Conference of Computer Vision, 2024. 3
+[28] Jing Yu Koh, Daniel Fried, and Ruslan Salakhutdinov. Generating images with multimodal language models. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 21487–21506, 2023. 3
+[29] Bolin Lai, Xiaoliang Dai, Lawrence Chen, Guan Pang, James M Rehg, and Miao Liu. Lego: Learning egocentric action frame generation via visual instruction tuning. In  European Conference of Computer Vision, 2024. 2
+[30] Dongxu Li, Junnan Li, and Steven CH Hoi. Blip-diffusion: pre-trained subject representation for controllable text-toimage generation and editing. In Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 30146–30166, 2023. 2
+[31] Feng Li, Qing Jiang, Hao Zhang, Tianhe Ren, Shilong Liu, Xueyan Zou, Huaizhe Xu, Hongyang Li, Jianwei Yang, Chunyuan Li, et al. Visual in-context prompting. In  Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 12861–12871, 2024. 3
+[32] Tianhong Li, Yonglong Tian, He Li, Mingyang Deng, and Kaiming He. Autoregressive image generation without vector quantization. In  Proceedings of the 38th International Conference on Neural Information Processing Systems, 2024. 3, 4
+[33] Jing Liao, Yuan Yao, Lu Yuan, Gang Hua, and Sing Bing Kang. Visual atribute transfer through deep image analogy. ACM Transactions on Graphics, 36(4):120, 2017. 2
+[34] Yuanze Lin, Yi-Wen Chen, Yi-Hsuan Tsai, Lu Jiang, and Ming-Hsuan Yang. Text-driven image editing via learnable regions. In Proceedings of the IEEE/CVF Conference
+
+on Computer Vision and Pattern Recognition, pages 7059– 7068, 2024. 2
+[35] Dongyang Liu, Shitian Zhao, Le Zhuo, Weifeng Lin, Yu Qiao, Hongsheng Li, and Peng Gao. Lumina-mgpt: Illuminate flexible photorealistic text-to-image generation with multimodal generative pretraining. arXiv preprint arXiv:2408.02657, 2024. 3
+[36] Jihao Liu, Jinliang Zheng, Yu Liu, and Hongsheng Li. Glid: Pre-training a generalist encoder-decoder vision model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 22851–22860, 2024. 3
+[37] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations, 2017. 18
+[38] Jiasen Lu, Christopher Clark, Sangho Lee, Zichen Zhang, Savya Khosla, Ryan Marten, Derek Hoiem, and Aniruddha Kembhavi. Unified-io 2: Scaling autoregressive multimodal models with vision language audio and action. In  Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 26439–26455, 2024. 2, 3
+[39] Xiaoxiao Ma, Mohan Zhou, Tao Liang, Yalong Bai, Tiejun Zhao, Huaian Chen, and Yi Jin. Star: Scale-wise text-toimage generation via auto-regressive representations. arXiv preprint arXiv:2406.10797, 2024. 3
+[40] Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and Stefano Ermon. Sdedit: Guided image synthesis and editing with stochastic differential equations. In  International Conference on Learning Representations, 2022. 2
+[41] Ashkan Mirzaei, Tristan Aumentado-Armstrong, Marcus A Brubaker, Jonathan Kelly, Alex Levinshtein, Konstantinos G Derpanis, and Igor Gilitschenski. Watch your steps: Local image and scene editing by text instructions. In European Conference on Computer Vision, pages 111–129. Springer, 2024.
+[42] Ron Mokady, Amir Hertz, Kfir Aberman, Yael Pritch, and Daniel Cohen-Or. Null-text inversion for editing real images using guided diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 6038–6047, 2023. 2
+[43] Thao Nguyen, Yuheng Li, Utkarsh Ojha, and Yong Jae Lee. Visual instruction inversion: image editing via visual prompting. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 9598–9613, 2023. 2, 3, 5, 6, 8, 18
+[44] Thuan Hoang Nguyen and Anh Tran. Swiftbrush: One-step text-to-image diffusion model with variational score distillation. In  Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 7807–7816, 2024. 2
+[45] Catherine Olsson, Nelson Elhage, Neel Nanda, Nicholas Joseph, Nova DasSarma, Tom Henighan, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, et al. Incontext learning and induction heads. arXiv preprint arXiv:2209.11895, 2022. 2
+[46] Hadas Orgad, Bahjat Kawar, and Yonatan Belinkov. Editing implicit assumptions in text-to-image diffusion models. In
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 7053–7061, 2023. 2
+[47] Zhihong Pan, Riccardo Gherardi, Xiufeng Xie, and Stephen Huang. Effective real image editing with accelerated iterative diffusion inversion. In Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 15912– 15921, 2023. 2
+[48] Rishubh Parihar, VS Sachidanand, Sabariswaran Mani, Tejan Karmali, and R Venkatesh Babu. Precisecontrol: Enhancing text-to-image diffusion models with fine-grained attribute control. In European Conference on Computer Vision, pages 469–487. Springer, 2025. 2
+[49] Ethan Perez, Douwe Kiela, and Kyunghyun Cho. True fewshot learning with language models. In Proceedings of the 35th International Conference on Neural Information Processing Systems, pages 11054–11070, 2021. 8
+[50] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann, Tim Dockhorn, Jonas M¨uller, Joe Penna, and Robin Rombach. Sdxl: Improving latent diffusion models for high-resolution image synthesis. In  The Twelfth International Conference on Learning Representations, 2024. 5
+[51] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural language supervision. In International conference on machine learning, pages 8748–8763. PMLR, 2021. 5
+[52] Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott Gray, Chelsea Voss, Alec Radford, Mark Chen, and Ilya Sutskever. Zero-shot text-to-image generation. In  International conference on machine learning, pages 8821–8831. Pmlr, 2021. 2
+[53] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, and Mark Chen. Hierarchical text-conditional image generation with clip latents. arXiv preprint arXiv:2204.06125, 1 (2):3, 2022.
+[54] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨orn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pages 10684–10695, 2022. 2
+[55] Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily L Denton, Kamyar Ghasemipour, Raphael Gontijo Lopes, Burcu Karagol Ayan, Tim Salimans, et al. Photorealistic text-to-image diffusion models with deep language understanding. Advances in neural information processing systems, 35:36479–36494, 2022. 2
+[56] Dianmo Sheng, Dongdong Chen, Zhentao Tan, Qiankun Liu, Qi Chu, Jianmin Bao, Tao Gong, Bin Liu, Shengwei Xu, and Nenghai Yu. Towards more unified in-context visual understanding. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 13362– 13372, 2024. 2, 3
+[57] Shelly Sheynin, Adam Polyak, Uriel Singer, Yuval Kirstain, Amit Zohar, Oron Ashual, Devi Parikh, and Yaniv Taigman. Emu edit: Precise image editing via recognition and generation tasks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 8871– 8879, 2024. 2, 5
+
+[58] Ad´ela ˇ Subrtov´a, Michal Luk´aˇc, Jan ˇ Cech, David Futschik, Eli Shechtman, and Daniel S`ykora. Diffusion image analogies. In ACM SIGGRAPH 2023 Conference Proceedings, pages 1–10, 2023. 2
+[59] Peize Sun, Yi Jiang, Shoufa Chen, Shilong Zhang, Bingyue Peng, Ping Luo, and Zehuan Yuan. Autoregressive model beats diffusion: Llama for scalable image generation. arXiv preprint arXiv:2406.06525, 2024. 3
+[60] Quan Sun, Qiying Yu, Yufeng Cui, Fan Zhang, Xiaosong Zhang, Yueze Wang, Hongcheng Gao, Jingjing Liu, Tiejun Huang, and Xinlong Wang. Emu: Generative pretraining in multimodality. In The Twelfth International Conference on Learning Representations, 2023. 3, 4
+[61] Quan Sun, Yufeng Cui, Xiaosong Zhang, Fan Zhang, Qiying Yu, Yueze Wang, Yongming Rao, Jingjing Liu, Tiejun Huang, and Xinlong Wang. Generative multimodal models are in-context learners. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 14398–14409, 2024. 2, 3, 14
+[62] Yasheng Sun, Yifan Yang, Houwen Peng, Yifei Shen, Yuqing Yang, Han Hu, Lili Qiu, and Hideki Koike. Imagebrush: learning visual in-context instructions for exemplar-based image manipulation. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 48723–48743, 2023. 2, 5, 6, 18
+[63] Wei Suo, Lanqing Lai, Mengyang Sun, Hanwang Zhang, Peng Wang, and Yanning Zhang. Rethinking and improving visual prompt selection for in-context learning segmentation. In European Conference on Computer Vision, pages 18–35. Springer, 2024. 3
+[64] John Sweller. Cognitive load during problem solving: Effects on learning. Cognitive science, 12(2):257–285, 1988. 2, 3
+[65] Zineng Tang, Ziyi Yang, Mahmoud Khademi, Yang Liu, Chenguang Zhu, and Mohit Bansal. Codi-2: In-context interleaved and interactive any-to-any generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 27425–27434, 2024. 2, 3
+[66] Chameleon Team. Chameleon: Mixed-modal early-fusion foundation models. arXiv preprint arXiv:2405.09818, 2024. 3
+[67] Joshua B Tenenbaum, Charles Kemp, Thomas L Griffiths, and Noah D Goodman. How to grow a mind: Statistics, structure, and abstraction. science, 331(6022):1279–1285, 2011. 2, 3
+[68] Keyu Tian, Yi Jiang, Zehuan Yuan, Bingyue Peng, and Liwei Wang. Visual autoregressive modeling: Scalable image generation via next-scale prediction. In Proceedings of the 38th International Conference on Neural Information Processing Systems, 2024. 3
+[69] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timoth´ee Lacroix, Baptiste Rozi`ere, Naman Goyal, Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971, 2023. 5
+[70] Bram Wallace, Akash Gokul, and Nikhil Naik. Edict: Exact diffusion inversion via coupled transformations. In  Proceed
+
+ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 22532–22541, 2023. 2
+[71] Chaoyang Wang, Xiangtai Li, Henghui Ding, Lu Qi, Jiangning Zhang, Yunhai Tong, Chen Change Loy, and Shuicheng Yan. Explore in-context segmentation via latent diffusion models. arXiv preprint arXiv:2403.09616, 2024. 3
+[72] Xinlong Wang, Wen Wang, Yue Cao, Chunhua Shen, and Tiejun Huang. Images speak in images: A generalist painter for in-context visual learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 6830–6839, 2023. 3
+[73] Xinlong Wang, Xiaosong Zhang, Yue Cao, Wen Wang, Chunhua Shen, and Tiejun Huang. Seggpt: Segmenting everything in context. In International Conference of Computer Vision, 2023. 3
+[74] Xinlong Wang, Xiaosong Zhang, Zhengxiong Luo, Quan Sun, Yufeng Cui, Jinsheng Wang, Fan Zhang, Yueze Wang, Zhen Li, Qiying Yu, et al. Emu3: Next-token prediction is all you need. arXiv preprint arXiv:2409.18869, 2024. 2, 3
+[75] Zhendong Wang, Yifan Jiang, Yadong Lu, Yelong Shen, Pengcheng He, Weizhu Chen, Zhangyang Wang, and Mingyuan Zhou. In-context learning unlocked for diffusion models. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 8542–8562, 2023. 2, 6, 13, 18
+[76] Noam Wies, Yoav Levine, and Amnon Shashua. The learnability of in-context learning. In Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 36637–36651, 2023. 2
+[77] Shitao Xiao, Yueze Wang, Junjie Zhou, Huaying Yuan, Xingrun Xing, Ruiran Yan, Shuting Wang, Tiejun Huang, and Zheng Liu. Omnigen: Unified image generation. arXiv preprint arXiv:2409.11340, 2024. 3
+[78] Jinheng Xie, Weijia Mao, Zechen Bai, David Junhao Zhang, Weihao Wang, Kevin Qinghong Lin, Yuchao Gu, Zhijie Chen, Zhenheng Yang, and Mike Zheng Shou. Show-o: One single transformer to unify multimodal understanding and generation. arXiv preprint arXiv:2408.12528, 2024. 3
+[79] Chengming Xu, Chen Liu, Yikai Wang, and Yanwei Fu. Towards global optimal visual in-context learning prompt selection. In Proceedings of the 38th International Conference on Neural Information Processing Systems, 2024. 3
+[80] Jiarui Xu, Yossi Gandelsman, Amir Bar, Jianwei Yang, Jianfeng Gao, Trevor Darrell, and Xiaolong Wang. Improv: Inpainting-based multimodal prompting for computer vision tasks. Transactions on Machine Learning Research, 2024. 3
+[81] Xingqian Xu, Jiayi Guo, Zhangyang Wang, Gao Huang, Irfan Essa, and Humphrey Shi. Prompt-free diffusion: Taking” text” out of text-to-image diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 8682–8692, 2024. 3
+[82] Jun Zhan, Junqi Dai, Jiasheng Ye, Yunhua Zhou, Dong Zhang, Zhigeng Liu, Xin Zhang, Ruibin Yuan, Ge Zhang, Linyang Li, et al. Anygpt: Unified multimodal llm with discrete sequence modeling. arXiv preprint arXiv:2402.12226, 2024. 2, 3
+
+[83] Kai Zhang, Lingbo Mo, Wenhu Chen, Huan Sun, and Yu Su. Magicbrush: a manually annotated dataset for instructionguided image editing. In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 31428–31449, 2023. 2
+[84] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding conditional control to text-to-image diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 3836–3847, 2023. 2, 3
+[85] Yuanhan Zhang, Kaiyang Zhou, and Ziwei Liu. What makes good examples for visual in-context learning? In  Proceedings of the 37th International Conference on Neural Information Processing Systems, pages 17773–17794, 2023. 3
+[86] Ruoyu Zhao, Qingnan Fan, Fei Kou, Shuai Qin, Hong Gu, Wei Wu, Pengcheng Xu, Mingrui Zhu, Nannan Wang, and Xinbo Gao. Instructbrush: Learning attention-based instruction optimization for image editing. arXiv preprint arXiv:2403.18660, 2024. 2, 3
+[87] Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. Calibrate before use: Improving few-shot performance of language models. In International conference on machine learning, pages 12697–12706. PMLR, 2021. 2
+[88] Chunting Zhou, Lili Yu, Arun Babu, Kushal Tirumala, Michihiro Yasunaga, Leonid Shamis, Jacob Kahn, Xuezhe Ma, Luke Zettlemoyer, and Omer Levy. Transfusion: Predict the next token and diffuse images with one multi-modal model. arXiv preprint arXiv:2408.11039, 2024. 3
+
+# Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation
+
+Supplementary Material
+
+This is the supplementary material for the submission titled “Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation”. We organize the content as follows: A– Defects of CLIP-I as a Metric B– Additional Experiment Results B.1– Analysis on the Number of Manipulation Tokens B.2– Manipulation with the Same Textual Instruction and Different Exemplar Images B.3– Comparison with the Generic Autoregressive Model B.4– Additional Visualization B.5– Failure Cases C– Implementation Details C.1– Establishment of Test Set C.2– Training Details of Our Model C.3– Implementation of Previous Methods C.4– Details of User Study D– Limitation and Future Work E– Code and Data Release
+
+This is the supplementary material for the submission titled “Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation”. We organize the content as follows: A– Defects of CLIP-I as a Metric B– Additional Experiment Results B.1– Analysis on the Number of Manipulation Tokens B.2– Manipulation with the Same Textual Instruction and Different Exemplar Images B.3– Comparison with the Generic Autoregressive Model B.4– Additional Visualization B.5– Failure Cases C– Implementation Details C.1– Establishment of Test Set C.2– Training Details of Our Model C.3– Implementation of Previous Methods C.4– Details of User Study D– Limitation and Future Work E– Code and Data Release
+
+# A. Defects of CLIP-I as a Metric
+
+In Sec. 4.2  of the main paper, we argue that CLIP-I (similarity between the query image and the manipulated image) has inherent defects when used as a metric for image manipulation. In order to further explain the reason, we calculate the four CLIP-based metrics used in our experiments (CLIP-Dir, CLIP-Vis, CLIP-T, CLIP-I) on the outputs of three models and the ground truth, which is shown in Fig. 11. Compared with InstructPix2Pix [7] and PromptDiffusion [75], our model follows the textual and visual guidance more faithfully in this instance. Nevertheless, this advantage is not correctly reflected by the CLIP-I metric. InstructPix2Pix conducts a trivial modification to the query image, thus resulting in a high similarity between the query image and the output. It’s worth noting that the CLIP-I score of InstructPix2Pix is even higher than the score of the ground truth. In contrast, PromptDiffusion overly edits the query image, leading to a CLIP-I score lower than InstaManip and ground truth. Our model (which has the best performance) and ground truth have medium CLIP-I scores between InstructPix2Pix and PromptDiffusion. This example suggests that a higher or lower CLIP-I score does not necessarily correspond to a better performance in the image manipulation task. Hence, it’s hard to accurately compare the performance of two methods based on CLIP-I alone. Fortunately, the other three metrics correctly discriminate the
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/038a/038af0ef-ea18-4357-bf8b-a4417b549a81.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 11. Comparison of the four CLIP-based metrics on the outputs of three models and the ground truth. CLIP-I is highlighted in red. Please refer to Sec. A for the explanation.
+</div>
+# Manipulation Tokens
+CLIP-Dir
+CLIP-Vis
+10
+18.24
+29.87
+20
+19.07
+31.10
+30
+19.81
+32.39
+40
+19.74
+32.21
+50
+19.66
+32.20
+Table 4. Analysis on the impact of the number of manipulation tokens. The orange row indicates our final model. Pleae refer to Sec. B.1 for the explanation.
+
+performance of the three models, so we use them as the primary metrics in our experiments.
+
+# B. Additional Experiment Results
+B.1. Analysis on the Number of Manipulation Tokens
+
+We implement experiments to validate the impact of different numbers of manipulation tokens. Tab. 4 shows that the performance is boosted by increasing the number of manipulation tokens from 10 to 30. If more than 30 tokens are
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/73ca/73ca7f7c-a0de-42d9-9ecd-ab5df1d122d2.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/211d/211dd14f-fc7e-48b7-892f-4c25a17a9526.png" style="width: 50%;"></div>
+<div style="text-align: center;">ating the query image using the same textual instruction, yet different visual examples. When orghini with different colors, our model successfully captures this local feature from the visual enerated images accordingly. Please refer to Sec. B.2 for the detailed analysis.
+</div>
+<div style="text-align: center;">Figure 12. The visualization of manipulating the query image using the same textual instruction, yet different visual ex we use exemplar target images of Lamborghini with different colors, our model successfully captures this local feature guidance, and changes the colors in the generated images accordingly. Please refer to Sec. B.2 for the detailed analysis.
+</div>
+used in our model, the performance remains comparable to that observed with 30 tokens, suggesting that the model has reached a saturation point. Consequently, we set the number of manipulation tokens as 30 in the final InstaManip model.
+
+# B.2. Manipulation with the Same Textual Instruction and Different Exemplar Images
+
+One benefit of using exemplar images in image manipulation is that the images effectively convey the desired local details to the model, which may be missing in textual instructions. To validate if the proposed model can effectively learn the visual features, we apply our model to a given image using the same textual instruction yet different visual examples. The results are illustrated in Fig. 12. In this experiment, we use different exemplar pairs following the same textual instruction. The major difference of these examples is the color of the Lamborghini in the exemplar target images. Our model learns this visual feature and successfully edits the query image using similar colors, which exactly reflects the advantage of few-shot image manipulation.
+
+# B.3. Comparison with the Generic Autoregressive Model
+
+# B.3. Comparison with the Generic Autoregressive Model
+
+# B.3. Comparison with the Generic Autoregressive
+
+In this paper, we propose an autoregressive model with enhanced in-context learning capability for few-shot image manipulation. Prior to our work, there is some work about using the autoregressive architecture as a generic in-context learner for various tasks. Emu2 [61] is one of the recent studies in this field, showing awesome performance in visual understanding and image generation problems. We compare our model with Emu2 on few-shot image manipulation. The results are reported in Tab. 5. InstaManip greatly
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3f96/3f96febc-701b-490b-a07a-e83ecf7c903f.png" style="width: 50%;"></div>
+Methods
+Guidance
+CLIP-Dir
+CLIP-Vis
+CLIP-T
+CLIP-I
+In Distribution
+Emu2 [61]
+Text + Image
+15.26
+24.64
+27.02
+76.89
+InstaManip
+Text + Image
+19.81
+32.39
+27.72
+80.11
+Out of Distribution
+Emu2 [61]
+Text + Image
+14.09
+21.65
+20.17
+65.80
+InstaManip
+Text + Image
+18.27
+28.23
+26.81
+79.71
+Table 5. Comparison with Emu2. InstaManip outperforms the generic autoregressive model by a great margin. Additional discussions are shown in Sec. B.3.
+
+surpasses Emu2 across all metrics in both evaluation settings. Despite the existence of generic in-context learners, the result suggests that few-shot image manipulation is still a challenging problem that requires specific novel model design. It also validates the necessity of investigating how to improve in-context learning performance for specific tasks like our work.
+
+# B.4. Additional Visualization
+
+To further demonstrate the performance of the proposed InstaManip, we illustrate more outputs from our model in Figs. 13 and 14. By learning an explicit manipulation embedding, InstaManip successfully captures the underlying image transformations from textual and visual guidance, and implements them to the query images faithfully.
+
+# B.5. Failure Cases
+
+Though InstaManip shows strong in-context learning capability in image manipulation, we still find it may fail in some cases, as presented in Fig. 16. To begin with, our
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/fdb0/fdb0f4db-9c15-4a21-8886-7a0dc3db6981.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 13. Additional visualization of the output from InstaManip. All instructions containing selected keywords (highlighted excluded from the training set. Our model learns unseen image manipulation operations from both textual and visual guidance, the learned transformations to the new query images. More examples are presented in Fig. 14. See Sec. B.4 for the discussions
+</div>
+<div style="text-align: center;">on of the output from InstaManip. All instructions containing selected keywords (highlighted in red) are Our model learns unseen image manipulation operations from both textual and visual guidance, and applies e new query images. More examples are presented in Fig. 14. See Sec. B.4 for the discussions.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/19dd/19dd93f2-7ed1-45c6-bb61-4fade7f23b50.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b791/b7910492-390c-4be1-a722-38afca48994c.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/783c/783c635b-f8e3-4fd4-b290-df9c1457d9b3.png" style="width: 50%;"></div>
+<div style="text-align: center;">re demonstration of the output from InstaManip (continuation of Fig. 13). All instructions containing selected keywords red) are removed from the training set. Our model edits the query image aligned with both textual instructions and exemplar
+</div>
+<div style="text-align: center;">Figure 14. More demonstration of the output from InstaManip (continuation of Fig. 13). All instructio (highlighted in red) are removed from the training set. Our model edits the query image aligned with both images. See Sec. B.4 for the discussions.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/09f8/09f81b44-3cd9-4562-b4d6-d433812a50b3.png" style="width: 50%;"></div>
+We are evaluating the performance of four generative models. They take in the description of a manipulation operation, a pair of exemplar images, and a new input image. Then the models edit the input image following the textual instruction and exemplar image pair.
+Please choose the best synthetic image based on the textual instruction and exemplar image pair. You need to consider (1) the image should align with the textual description, (2) the image should be edited in a similar way as shown in the exemplar image pair, and (3) the regions irrelevant to the editing operation should not be changed.
+
+We are evaluating the performance of four generative models. They take in the description of a manipulation operation, a pair of exemplar images, and a new input image. Then the models edit the input image following the textual instruction and exemplar image pair.
+
+Please choose the best synthetic image based on the textual instruction and exemplar image pair. You need to consider (1) the image should align with the textual description, (2) the image should be edited in a similar way as shown in the exemplar image pair, and (3) the regions irrelevant to the editing operation should not be changed.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/8889/88893b85-373b-44b7-8f55-d3f6357829b3.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 15. The interface used for human evaluation. The four manipulated images are randomly shuffled to refer to Sec. C.4 for the detailed elaboration.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1fcf/1fcf7854-d11d-4b69-99e2-ebf28c2fab01.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 16. Failure cases of InstaManip. Please refer to Sec. B.5 for the discussions.
+</div>
+model still struggles with the big domain gap between the exemplar images and the query image. In the first example of Fig. 16, the exemplar images show a view of mountains with plants, while the query image is a picture of a cook preparing meals. Our model places the fireworks in
+
+an incorrect position in the generated image. In addition, our model is very likely to fail if the exemplar images do not show the desired visual features accurately. In the second example, the exemplar target image does not show the shape, structure and texture of pterodactyl clearly, thus misleading our model into making a random transformation to the query image. In the third example, the saxophone has a complex structure and texture. Our model fails to accurately capture these subtle details in the generated image. These weaknesses can motivate future investigations into novel models with stronger in-context learning capability. Please refer to Sec. D for more discussions.
+
+# C. Implementation Details
+
+# C. Implementation Details
+C.1. Establishment of Test Set
+
+In order to test our model on unseen instructions, we establish the test set based on selected keywords. Specifically, we count the occurrence of each word in the InstructPix2Pix dataset [7], and select 30 keywrods with low occurrence. The 30 keywords include boxing, cage, carousel, catgirl, Chihuahua, clay, devil, Everest, firefighter, firework, hoodie, joker, kayak, Lamborghini, Lego, Monet, plaid, pterodactyl, rainbow, saxophone, sepia toned, solar eclipse, toddler, toucan, tower of pisa, tropical, tundra, turtleneck, Van Gogh and wildflower. We check out each instance of these keywords manually to filter out low-quality data and
+
+incorrect ground truth. The remaining data is used as the test set. We also exclude all instructions that contain any of these selected keywords from the training data, to make sure none of the models is optimized on these keywords in the experiments.
+
+# C.2. Training Details of Our Model
+
+We interpolate the images to a resolution of 448 × 448  before forwarding them to the image encoder. The coefficient α in the loss is set as 0.1. We train our model using the AdamW optimizer [37] for 20000 iterations on 8 GPUs of NVIDIA A100-SXM4-80GB for 6 days. The batch size is set as 480. We warm up the model to a learning rate of 10 − 4
+in the first 500 iterations, and reduce the learning rate by cosine annealing in the remaining steps. The weight decay, β 1 and β 2 of AdamW are set as 0.05, 0.9 and 0.98 respectively.
+
+InstaManip is compared with four models in the main paper Sec. 4.2: InstructPix2Pix [7], ImageBrush [62], VISII [43] and PromptDiffusion [75]. As a baseline of text-guided image editing model, InstructPix2Pix is trained only with textual instructions. The model weights are also used for VISII, which relies on a pre-trained InstructPix2Pix model for test-time finetuning. We freeze the weights of InstructPix2Pix and finetune a learnable instruction embedding for each test instance as described in the VISII paper. In contrast, ImageBrush and PromptDiffusion can be trained in an end-to-end way. We train the two models on our training set following the default hyperparameters specified in their work. For a fair comparison, we use both textual instructions and visual examples for VISII, ImageBrush and PromptDiffusion.
+
+# C.4. Details of User Study
+
+We implement human evaluation across our model and the three prior few-shot image manipulation models in the main paper Sec. 4.2. We sample 100 examples from the test set for evaluation. For each sample, we show the textual instruction, exemplar images, query image and the outputs from the four models to human raters. The raters are asked to select the best output image based on three criteria: (1) alignment with the textual instruction, (2) alignment with the exemplar image pair and (3) preservation of irrelevant regions. Each instance is evaluated by six raters. The human evaluation is conducted on Amazon Mechanical Turk. The interface is illustrated in Fig. 15.
+
+# D. Limitation and Future Work
+
+In this paper, we propose a novel autoregressive architecture to model the learning stage and applying stage separately in in-context learning. Despite the superiority over existing approaches, we still find there are some problems that are
+
+not solved by our model. Our model suffers from an obvious performance drop when there is a big gap between the query image and exemplar images. Learning a new object with complex textures is also challenging. Our model may fail to fully capture the subtle details in the visual examples. The failure cases and analysis are elaborated in Sec. B.5. In addition to the limitation, our work also points out several valuable research directions. • Addressing cases with significant gap between the query image and visual examples is crucial for real-world applications. Innovative approach for this problem and large datasets containing such out-of-distribution examples are required in future studies.
+• The dataset used in our work provides four instances at most for each instruction, which prevents us from exploring the saturation point of out model capability by using more than three exemplar pairs in the experiments. More efforts are demanded to build a dataset specifically for few-shot image manipulation.
+• While our model has shown strong in-context learning capability on image manipulation problem, how to exploit our method for other problems remains to be explored. We expect more future investigations of our findings for stronger generic in-context learning across various tasks.
+
+# E. Code and Data Release
+
+We will release our code, model weights and test set online to the research community to facilitate future studies.
+

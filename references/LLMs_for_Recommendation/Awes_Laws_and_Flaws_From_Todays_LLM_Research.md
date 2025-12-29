@@ -1,0 +1,818 @@
+# Awes, Laws, and Flaws From Today’s LLM Research
+Adrian de Wynter Microsoft and the University of York adewynter@microsoft.com
+Abstract
+We perform a critical examination of the scientific methodology behind contemporary large language model (LLM) research. For this we assess over 2,000 research works based on criteria typical of what is considered good research (e.g. presence of statistical tests and reproducibility) and cross-validate it with arguments that are at the centre of controversy (e.g., claims of emergent behaviour, the use of LLMs as evaluators). We find multiple trends, such as declines in claims of emergent behaviour and ethics disclaimers; the rise of LLMs as evaluators in spite of a lack of consensus from the community about their useability; and an increase of claims of LLM reasoning abilities, typically without leveraging human evaluation. This paper underscores the need for more scrutiny and rigour by and from this field to live up to the fundamentals of a responsible scientific method that is ethical, reproducible, systematic, and open to criticism.
+ 29 Aug 2024
+# 1 Introduction
+Large language models (LLMs)1 are a powerful technology. They can follow instructions and output coherent, persuasive text. This has made them the centre of attention in academia, industry, and the media. Given the potential funding associated with these technologies, it should not be a surprise that news and research works are sometimes accompanied by bold claims about their capabilities. However, it is known that some areas of AI research have issues with reproduciblity and other experimentation protocols. For example, research works do not provide sufficient details for independent verification [1, 2]; or they report aggregate performances (e.g., accuracy) without providing detailed protocols or error breakdowns [3, 1, 4, 5, 2]. This is especially common in health sciences [6], security [7], and recommender systems [8]–all areas where LLMs are increasingly being used. Even though studies and meta-reviews usually come with suggested good practices (reporting carbon footprints [9]; reproducibility checklists and experimental protocols [10, 11, 12]; self-contained artifacts [13]; and metadata for corpora [14]), these suggestions are often not heeded. Last year, Gehrmann et al. [1] recommended good practices for research, and noted that, out of 66 articles from leading conferences, only between 15% and 35% of the recommendations were partially followed. The practices themselves might not even be sufficiently impactful [7], given that other experimental protocols (e.g., sampling, initialisation, hyperparameters) may also impact reproducibility [3]. These are issues particularly relevant to LLMs, as they are intrinsically stochastic and sometimes limited to an API call. Given all this, it has been said that the focus of AI research is the approaches, rather than the results, or, rather, that less importance is allocated to issues around experimental protocols when compared to other fields [4]. We argue, however, that in LLM research there has been a shift towards result-driven experimentation: partly due to their high availability and remarkable capabilities, but also due to the aforementioned combination of capabilities and attention from stakeholders. This in turn suggests that the scientific community should allocate the same relevance to experimental protocols and good research practices as in other fields. Indeed, LLM research is no stranger to reproducibility and documentation problems. Reviews have found that the most downloaded models in Huggingface do not consistently provide the same amount of information in their documentation [15]; and a recent analysis on the experimental protocols of over 40 chat-based LLMs (e.g., availability of data, weights, licences, etc) found that, while many projects claimed some level of open-sourcing, documentation was “exceedingly rare” [5]. What makes LLM research particularly difficult, however, goes beyond self-reporting. The technology itself has challenges, such as the closed-source nature of some models, the high cost of training the larger versions,
+1We use the term “LLM” loosely to refer to generative text-to-text models with sizes above 1B parameters.
+e the term “LLM” loosely to refer to generative text-to-text models with sizes a
+and that reproducibility could be limited to an API call with adjustable parameters. To add, they are increasingly treated like software, with major and minor versions; as well as “stealth” updates to the same model. Conversely, prompting LLMs to solve a task is extremely easy. Their availability, coupled with their functionality as writing assistants, could lead to a rapidly-increasing volume of scientific articles with strong claims and lacklustre experimental practices. This is not a criticism: evaluation of these models is notoriously difficult, and researchers are under pressure to keep up. Scaling this evaluation is challenging due to the length and complexity of their output, combined with the rapid turnaround of this technology. Indeed, automated metrics like BLEU are known to not capture natural language generation well [16, 17], and not correlate well with human judgements [18, 1]–which have their own complications [19, 20]. Although there is a push to use LLMs to perform automated evaluation, there is no consensus on the viability of this approach: arguments in favour [21, 22, 23, 24, 25] are as plentiful as arguments against [26, 27, 28, 29, 24, 30]. Finally, LLMs might memorise their training data [31, 32], including evaluation benchmarks [33]. Since the models are sensitive to the prompt’s phrasing [34, 35], the benchmarks turn into an arena to test prompts, rather than a holistic bar of performance. Overall, these challenges impede the scientific community’s ability to transparently evaluate and understand LLMs, and to ultimately ensure their responsible use. They also raise questions about the validity and trustworthiness of some findings and claims related to this technology and its capabilities, and illustrate a problem endemic to computer science. The goal of this work is to systematically and critically examine the scientific methodology employed in LLM research, and to quantify the extent to which these issues occur in the literature.2 To our knowledge, ours is the first study to systematically evaluate LLM research based on the metrics the field recommends and requires. To do this, we evaluated 2,054 works that cited the peer-reviewed GPT-3 paper [36] (as opposed to the preprint) and the GPT-4 technical report [37], labelled based on criteria as shown in Table 1. Most criteria are part of the reproducibility checklist for premier conferences3 and considered good practices in the field. Some criteria are not part of the checklists: the type of evaluator used is because of the aforementioned lack of consensus around the reliability of LLMs as evaluators, added to their increasingly frequent use. Claims of super-human capabilities, reasoning abilities, or emergent behaviour relate to conclusions often drawn and reported outside of academic channels, and that could require closer examination–for example, it is known that more robust statistical tests prove that emergent abilities do not actually occur [41].
+Research Features
+Arguments Made
+∗Presence of statistical significance tests
+†Claims of SOTA results
+∗Declaration of model versions (or API)
+†Claims that the model can reason
+∗Declaration of parameters for calls made
+†Claims that the model cannot reason
+∗Accounting for stochasticity of the calls
+†Claims of emergent behaviour
+xEvaluation of non-English languages and/or dialects
+†Claims of super-human intelligence
+†Use of human, automatic, or LLM-based evaluators
+Structural Features
+Indicators
+∗Presence of a limitations section
+LLM is the subject of the research
+∗Presence of an ethics section
+Type of text (research, book, or opinion)
+xPresence of error breakdowns
+Presence of negative results
+Table 1: Criteria for our analysis. The first three (Research Features, Structural Features, Arguments Made) are the core subject of our work. Most labels are binary labels (yes or no); but Research Features also include a “not applicable” label (“na”), and evaluators is a set ({human, automatic, LLM, na}). The latter (Indicators) is meant to act as a filter, since our focus is research articles with LLMs as the centre of the work. The label “book” also includes surveys. We use (∗) for criteria typical of leading conference checklists, (†) for claims usually requiring closer examination, and (x) for those recommended–but not implemented in checklists–as good research practices. See Appendix A for definitions.
+2Code and partial, anonymised data will be released in https://github.com/adewynter/awes_laws_and_flaw 3See, e.g. AAAI [38], NeurIPS [39] and Carpuat et al. [40] for ACL.
+# 2 A Review of LLM Literature
+We split our results in four analyses: corpus composition (Section 2.1), composition over time (Section 2.2), the relationship between citations and criteria (Section 2.3), and yearly trends on relationships between citations and criteria (Section 2.4). The full breakdown of results is in Appendix C. Throughout this section, we use relevant papers to refer to these that did not score “na” in the criterion.
+# 2.1 How Many Papers Did What?
+Out of the 2,054 articles surveyed, 57%, or 1,164, claimed SOTA results. From these, 30% contained or addressed ethical considerations related to their research; 13% performed evaluations in languages other than English; and 39% did not include limitation sections about their experimentation (Figure 1). Only 25% of them included statistical tests to support their claims, a number close to the 23% found by Van der Lee et al. [12] three years ago. This number is lower on average than the papers that do not claim SOTA (23% versus 25%). In terms of criteria overlap (Table 9), from the papers claiming SOTA and emergent capabilities (22%) only 26% relied on statistical tests or had error breakdowns (14%). Articles typically included automatic metrics (LLM without: 2%; human without: 4%), and reliance on LLM evaluators alone was exceedingly rare. Claims of reasoning were often done with LLM evaluators and not human evaluators (35%); contrasting with claims that they cannot reason predominantly done with human evaluation alone (14%). The use of automated metrics is more common (+10% on average). LLM evaluators remained steady, thus showing that most of the papers claiming SOTA used this metric in some form. A full breakdown by evaluator type is in Table 9. On a positive note, a considerable amount of the relevant papers claiming SOTA did report model versioning (73%), and open-sourced their work (68%), a number slightly higher than the one found by Arvan et al. [13], indicating a positive trend.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f3f0/f3f00f42-1b58-410a-80ed-4165bc82ccb4.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+Figure 1: Breakdown of the corpus for selected criteria, narrowed down by papers claiming SOTA resul While open-sourcing, declaration of experimental protocols (e.g., parameters) and limitations are relatively hig (60%+), there is a lack of ethics sections (30%) and evaluations in languages other than English (13%).
+# 2.2 Did it Change Over Time?
+LLM research is undergoing an explosive–almost inflationary–growth. In our corpus 7% of the papers were from 2021; contrasting with 22% and 25% for 2022 and 2023, and behind the 46% for the first half of 2024. 2020 had a negligible sample size, given that the peer-reviewed GPT-3 paper was released on 6 December 2020. For our time-wise analysis (Figure 2) we only worked with relevant papers claiming SOTA from 2021 onwards. Between 2023 and 2024 we observed declines in the absolute percentage of several metrics, such as the presence of ethics disclaimers (-3%), open-sourcing (-9%), claims of emergence (-7%), and statistical
+<div style="text-align: center;"></div>
+Criterion
+Corpus
+(%)
+Stat. Tests
+Error
+Bdown.
+Randomness
+Human
+Eval.
+LLM
+Eval.
+Automatic
+Eval.
+Ethics
+30
+30
+21
+11
+39
+17
+85
+Limitations
+61
+31
+18
+11
+32
+16
+86
+Negative
+13
+40
+32
+15
+39
+7
+81
+Error Bdown.
+16
+33
+100
+16
+49
+17
+95
+Emergence
+39
+26
+14
+13
+26
+12
+83
+Can Reason
+27
+24
+14
+14
+28
+15
+87
+Cannot Reason
+6
+39
+24
+17
+37
+11
+76
+Superhuman
+5
+40
+27
+18
+45
+11
+91
+Human Eval.
+27
+34
+29
+10
+100
+16
+84
+LLM Eval.
+13
+26
+22
+13
+34
+100
+82
+Automatic Eval.
+86
+26
+18
+11
+26
+12
+100
+Mean (SOTA)
+100
+25
+16
+10
+27
+13
+86
+Table 2: Overlap for selected criteria with respect to Research Features. Highlighted are the claims that fall below the average for papers claiming SOTA. Claims that the models present emergent behaviour or that they models can reason are rarely backed by strong experimental protocols: only 14% of the papers for either criteria present error breakdowns–below the corpus average or any of the other criteria present. The use of LLM evaluators typically comes paired with error breakdowns and statistical tests. However, papers with negative results eschew their use.
+tests (-5%). Of note is a remarkable increase in the claims that these models can reason (15%); as opposed to that they cannot (-3%), as well as claims of emergence (-2%). On the other hand, limitations sections, error breakdowns, dialect evaluation, and relying on human evaluation have remained steady (±1%). Finally, the use of LLM evaluators has undergone an uptick (15%), despite the lack of consensus of the field about the reliability of this metric.
+# 2.3 Do Papers With Certain Criteria Get More Citations?
+We reviewed the relationship between the presence of criteria on SOTA papers and the number of citations they received. Given that the corpus is long-tailed, we limited our analysis to the top 1,059 relevant papers, which
+We reviewed the relationship between the presence of criteria on SOTA papers and the number of citations they received. Given that the corpus is long-tailed, we limited our analysis to the top 1,059 relevant papers, which contain 91% of all citations. We split our corpus in two (texts with and without the criterion analysed), and then used a two-sample Kolmogorov-Smirnov test to determine the probability that both samples came from the same distribution. A high probability would imply that there is no significant difference between the samples, and we could conclude that the presence of the criterion does not impact the number of citations. Concretely, the null hypothesis H0 in this test is that both samples come from the same underlying distribution. Accepting (rather, being unable to reject) H0 means that the distributions are statistically indistinguishable, and hence we are unable to conclude that likelihood of citation is impacted by the presence of the criterion. Otherwise rejecting H0 means the distributions are then distinct, and hence we may conclude that the criterion does impact the number of citations received. For our corpus we first calibrated the p-value to < 0.05 for all criteria. This means we thresholded the statistic for two samples of lengths m, n to the Kolmogorov-Smirnov test condition Dm,n = � −ln (p/2) · ( n+m 2mn ). If the test statistic (percentage citation difference) D is D > Dm,n, we reject H0; and we expect to be wrong about our conclusions 5% of the time. We rejected H0 in the presence of ethics (Figure 3) and limitations sections; the use of LLM and automatic evaluators; open-sourcing; and claims of reason capabilities. This means that the presence of these criteria on a paper had an impact on the citations it received. For other criteria (error breakdowns, evaluation of non-English languages, claims of emergence, and negative results) we were unable to reject H0 and hence the presence of the criterion did not affect the citations received. Full results are in Table 8.
+<div style="text-align: center;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b2bd/b2bd6b7d-9959-4404-bc39-7475551cfab7.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2: Change over time for selected criteria. Between 2022 and 2024 there was a large (+19%) increase in the use of LLMs as evaluators, and declines on the presence of ethics disclaimers (-12%) and statistical test (-4%). Non-English evaluation, the use of human evaluators, and limitations sections are steady.</div>
+# 2.4 Are We Getting Better or Worse?
+Finally, we analysed the relationship between citations and the presence of our criteria as a yearly trend from 2021 onwards. We measure this relationship as the gap (absolute percentage difference) between citations of papers containing the criterion and these that do not, aggregated by year. We evaluate the change in this gap: positive changes to the gap imply that papers containing the criterion are cited more often. See Table 12 for examples and the full results. We observed a positive change in the gap for ethics sections between 2022 and 2023 (+10%), but a noticeable drop between 2023 and 2024 (-50%; Figure 4). Other criteria had increases in 2022-2023 and drops in 2023-2024, such as presence of statistical tests (+41% versus -44%); limitations sections (+38% and -12%); and negative results (31% and -30%). Remark that 2024 gap drops are expected, given the recency of these papers. What was unexpected were upticks: LLMs as evaluators (+12% to +29%) and non-English evaluations (-25% to 40%) both had remarkable increases in citations.
+# 3 Discussion
+Holistically, we found that very few papers claiming SOTA addressed ethical considerations, and proportions in line with the literature in other fields for statistical tests and open-sourcing. Similarly, articles suggesting emergent behaviour were common, but coupling of these claims with statistical tests or error breakdowns were rare, also in line with arguments about the true capabilities of these models. Further analysis demonstrated an inflationary increase in research (half of 2024 is double the volume of all of 2023), and worrisome yearly trends regarding the criteria present in the papers, such as fewer ethics disclaimers and open sourcing statements. Steady criteria, such as limitations sections, may be explained by it being a hard requirement in ACL conferences [40]. Others, such as the use of LLM evaluators, increased significantly, and most papers using this technology claimed SOTA results. Claims of reasoning were evaluated with LLMs and not humans; versus claims that they could not reason, typically done with human evaluation alone. That said, papers claiming SOTA results had fewer statistical tests to back their claims when compared to papers that did not claim SOTA; but high proportions of open-sourcing and versioning reports. The use of LLM evaluators could be explained by technological developments and propagation of experimental protocols: namely, GPT-4’s technical report was released in 2023. This model and its variants have become the standard for LLM-based
+
+<div style="text-align: center;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/dd82/dd821edd-76c1-4f26-b039-7de3af527bcc.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3: Results of a Kolmogorov-Smirnov test on papers with ethics sections (blue) and without (orange) The test statistic is D = 0.12, larger than our calibrated Dm,n = 0.09 at p < 0.05. The p-value for the test s p = 0.016. This indicates that 98.4% of the samples contain a difference in citations of over 12%, which ndicates that the samples are not from the same underlying distribution. Alternatively, if both samples were sampled from the same distribution, the probability that they are as far apart as observed (D > 12%) is 1.6% Since they were sampled from the same distribution, we may conclude that the presence of ethics sections does mpact the number of citations received.</div>
+Figure 3: Results of a Kolmogorov-Smirnov test on papers with ethics sections (blue) and without (orange). The test statistic is D = 0.12, larger than our calibrated Dm,n = 0.09 at p < 0.05. The p-value for the test is p = 0.016. This indicates that 98.4% of the samples contain a difference in citations of over 12%, which indicates that the samples are not from the same underlying distribution. Alternatively, if both samples were sampled from the same distribution, the probability that they are as far apart as observed (D > 12%) is 1.6%. Since they were sampled from the same distribution, we may conclude that the presence of ethics sections does impact the number of citations received.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/fe92/fe92b9e3-0853-44e5-bb29-b20ab162c2b1.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 4: Yearly change in the citation percentage (gap) between papers with and without ethics sections. Between 2021 and 2023, papers with ethics sections were increasingly cited more often (e.g. gap was -26% n 2022 versus -16% in 2023), up to 2024. The change in the gap between 2023 and 2024 was -50%; though xplainable by the recency of the papers surveyed.</div>
+Figure 4: Yearly change in the citation percentage (gap) between papers with and without ethics sections. Between 2021 and 2023, papers with ethics sections were increasingly cited more often (e.g. gap was -26% in 2022 versus -16% in 2023), up to 2024. The change in the gap between 2023 and 2024 was -50%; though explainable by the recency of the papers surveyed.
+evaluation regardless of the community’s consensus around their effectiveness, perhaps because of their ease of access. However, other research protocols (parameter declarations, versioning, and randomness), decreased slightly that same year, which suggests rushed research when using this technology. The second half of our work focused on the relationship of citations and the presence of criteria. We observed a statistically significant difference in the citations received by a paper when presenting ethics, limitations, and LLM evaluators. The first two may be explained by papers written for, or accepted at, a specific venue, and hence perhaps a higher quality bar. The latter, given its novelty, could be simply because of stronger claims. When analysing the trends from Section 2.4, we observed decreases in citation rates between 2023 and 2024 for some criteria. This could have a simple explanation: newer papers have fewer citations. Other trends, such as the rise of the use of LLMs as evaluators and the increase on non-English evaluations, may be explained by our previous points on technological improvements, ease of access, and the previously-mentioned inflation of papers being produced.
+# 4 Conclusion
+We evaluated over 2,000 LLM-related scientific articles on criteria typical of what is considered good research (e.g., presence of statistical tests, reproducibility), and looked for arguments that have been at the centre of controversy and not present in reproducibility checklists for major conferences (e.g., claims of emergent behaviour, use of LLMs as evaluators). We found various concerning trends. Yearly evaluations showed a decline on the presence of ethics disclaimers, open-sourcing, and statistical tests. Most papers using LLMs as evaluators claimed SOTA results. However, all papers claiming SOTA results relied less in statistical tests that those that did not. Claims that the models could reason were done with LLMs and not humans; contrasting with claims that they cannot not reason, which were typically carried out with human evaluation alone. All of this is evidence of overreliance and perhaps rushed research. On the other hand, we observed a relatively steady amount of limitations sections, and an increasing number of evaluations in languages other than English. We attributed the former to hard requirements at conferences, and the latter to the advancement of this technology. In turn, this suggests that the combination of wide availability of powerful LLMs with enforcement of requirements does have a net positive effect on the literature, and on a more diverse and inclusive research community. Other findings were a decrease on citations for papers claiming emergent behaviour, but a larger number of works claiming that the models can reason. We also found that there was a statistically significant difference in the likelihood for a paper to be cited if it had an ethics section present or used an LLM as an evaluator: we were unable to conclude if it was due to a higher quality bar for the paper, or because of the claims made. Our findings underscore the need for more self-scrutiny and rigour by and from the field. This is no easy task. As shown here, LLM research is rapidly increasing in volume. Conferences are saturated with papers and scientists are encouraged to publish often. It is clear that critical reading beyond accepting prima facie the thesis behind a given work is crucial, now more than ever. Strong foundations on the field (e.g. statistics) and knowledge of the bleeding edge (e.g., findings supporting or contradicting the paper’s thesis) are a necessity to perform a judicious evaluation. To close, Cremonesi and Jannach [8] mentioned, somewhat tongue-in-cheek, that in the context of recommender systems there was no reproducibility crisis. They posed that in a crisis researchers reflect upon and revise their methodologies. However, they argued, the field lay stagnant due to overfocusing on the same subjects without any introspection. It is the hope of this paper that the findings here encourage LLM researchers to keep pushing the field forward and living up to the fundamentals of a responsible scientific method: ethical, reproducible, systematic, and open to criticism.
+# 5 Methods
+# 5.1 Corpus
+Our corpus is comprised of works that cited the peer-reviewed GPT-3 paper [36] (as opposed to the preprint) and the GPT-4 technical report [37]. We make the assumption that the majority of the LLM literature involves a
+reference to either of these papers. We retrieved the top 1,000 papers sorted by citation numbers for both articles in Google Scholar4 with Publish or Perish [42]; and the top 2,000 papers by citation number for GPT-3 in Scopus.5 The disparity is due to Google Scholar indexing peer-reviewed works and preprints, and Scopus only indexing peer-reviewed articles. At the time of writing this paper, the GPT-4 technical report has yet to be peer-reviewed. All queries were ran for papers published or released up to 10 June 2024. We then used the arXiv API6 to retrieve the full paper, and parsed either the HTML or the PDF source into text. Whenever these two operations failed we skipped the entry. In some instances, the title of the article and the results from the arXiv search query were mismatched. To mitigate this, our corpus cleanup and all experiments were done on the text, not the titles. The final, deduplicated, unlabelled corpus is 3, 914 texts.
+# 5.2 Evaluation Criteria
+We labelled our corpus based on a set of criteria (labels), categorised in four groups: Research Features, Structural Features, Arguments Made, and Indicators. They may be found in Table 1, with specific definitions–as prompts–in Appendix A. Research Features, Structural Features, and Arguments Made are the core evaluation criteria used in the rest of our paper. Indicators is a filter for our corpus: we were only interested in papers that are research articles with an LLM as the subject of research.
+# 5.3 Labelling
+We labelled the data with GPT-4 Omni (version: gpt4-o-2024-05-13). To ensure reproducibility, we set the temperature to zero. We also set the maximum tokens to 256, and left other parameters as default. To improve accuracy we split in batches our labelling calls, totalling four different prompts [30]. All our calls were done through the Azure OpenAI API and the analysis done on a consumer-grade laptop. The model was instructed to return binary labels ({y, n}) for all criteria, except for most Research Features labels, which also included a relevance label ({na}). To determine the evaluators used in a given paper we used the set {human, LLM, automatic, na}; and for the type of text, {book, article, opinion}. We measured the model’s reliability by randomly sampling 100 papers per criterion, and manually labelling these. The model’s results were reliable to within an average 91.91 ± 1.22% with a 95% confidence interval. This number varies broadly across criteria, however. A full breakdown of reliability and analysis of performance is in Appendix B. Prior to our experiments, we filtered the corpus by selecting all research articles with an LLM as the main subject of study. The final size of the data is 2, 054 papers.
+# 6 Ethical Considerations
+Open data is crucial for good research, but ethical and licencing considerations limit us from releasing the corpus with texts and personally-identifiable information. We release the code for our analysis under a permissive licence, and the annotated, anonymised data without texts. To avoid overloading the services we rate-limited our requests, and the crawling code will not be released.
+# 7 Limitations
+# 7.1 Reliability of Automated Labelling
+The community remains divided on the feasibility of using LLMs as evaluators. We argue that the reliability and conclusions drawn from using this technology vary with the problem and experimentation protocols used. We mitigate potential concerns by evaluating the performance of the model with statistical tests–and our analysis showed that GPT-4’s confidence bounds and accuracies indeed depended strongly on the criterion.
+4https://scholar.google.com/ 5https://www.scopus.com/ 6https://info.arxiv.org/help/api/index.html
+# 7.2 Corpus Representativeness
+Our analysis is limited to works available on Google Scholar and Scopus citing the GPT-3 and GPT-4 papers. This might not represent the entire body of research on LLMs. As the literature and the technology evolves, we expect this assumption to hold less weight. However, as it stands, both papers are dominant in the literature. Due to time constraints we were unable to address an increasingly problematic issue in LLM research: synthetic data and use of possibly-contaminated benchmarks. We leave that exploration for future work.
+# 7.3 Quality Assessment
+Our study focused on evaluating the presence of the criteria, as opposed to assessing the quality of the research methodologies employed or the arguments made. This suggests that, although we have observed a decrease in certain metrics, citations could still remain skewed to well-argued papers. That said, automated measure of argument quality is subjective, multi-faceted, and requires a good grasp on the pragmatic context (mostly historical trends, in this case). We leave this for future work.
+# Acknowledgements
+The author wishes to thank arXiv for use of its open access interoperability and A. Jangra and S. Visser for comments on an early version of this work.
+# References
+[1] S. Gehrmann, E. Clark, and T. Sellam, “Repairing the cracked foundation: A survey o evaluation practices for generated text,” Journal of Artificial Intelligence Research, vol. 77 2023.
+[1] S. Gehrmann, E. Clark, and T. Sellam, “Repairing the cracked foundation: A survey of obstacles  evaluation practices for generated text,” Journal of Artificial Intelligence Research, vol. 77, pp. 103–16
+[2] J. Hullman, S. Kapoor, P. Nanayakkara, A. Gelman, and A. Narayanan, “The worst of both worlds: A comparative analysis of errors in learning from data in psychology and machine learning,” in Proceedings of the 2022 AAAI/ACM Conference on AI, Ethics, and Society, ser. AIES ’22. New York, NY, USA: Association for Computing Machinery, 2022, p. 335–348. [Online]. Available: https://doi.org/10.1145/3514094.3534196 [3] X. Bouthillier, P. Delaunay, M. Bronzi, A. Trofimov, B. Nichyporuk, J. Szeto, N. Mohammadi Sepahvand, E. Raff, K. Madan, V. Voleti, S. Ebrahimi Kahou, V. Michalski, T. Arbel, C. Pal, G. Varoquaux, and P. Vincent, “Accounting for variance in machine learning benchmarks,” Proceedings of Machine Learning and Systems, vol. 3, 2021. [4] R. Burnell, W. Schellaert, J. Burden, T. D. Ullman, F. Martinez-Plumed, J. B. Tenenbaum, D. Rutar, L. G. Cheke, J. Sohl-Dickstein, M. Mitchell, D. Kiela, M. Shanahan, E. M. Voorhees, A. G. Cohn, J. Z. Leibo, and J. Hernandez-Orallo, “Rethink reporting of evaluation results in AI,” Science, vol. 380, no. 6641, pp. 136–138, 2023. [Online]. Available: https://www.science.org/doi/abs/10.1126/science.adf6369 [5] A. Liesenfeld, A. Lopez, and M. Dingemanse, “Opening up ChatGPT: Tracking openness, transparency, and accountability in instruction-tuned text generators,” in Proceedings of the 5th International Conference on Conversational User Interfaces, ser. CUI ’23. New York, NY, USA: Association for Computing Machinery, 2023. [Online]. Available: https://doi.org/10.1145/3571884.3604316 [6] M. B. A. McDermott, S. Wang, N. Marinsek, R. Ranganath, L. Foschini, and M. Ghassemi, “Reproducibility in machine learning for health research: Still a ways to go,” Science Translational Medicine, vol. 13, no. 586, p. eabb1655, 2021. [Online]. Available: https://www.science.org/doi/abs/10.1126/scitranslmed.abb1655 [7] D. Olszewski, A. Lu, C. Stillman, K. Warren, C. Kitroser, A. Pascual, D. Ukirde, K. Butler, and P. Traynor, “"Get in researchers; we’re measuring reproducibility": A reproducibility study of machine learning papers in tier 1 security conferences,” in Proceedings of the 2023 ACM SIGSAC Conference on Computer and
+Communications Security, ser. CCS ’23. New York, NY, USA: Association for Computing Machinery, 2023, p. 3433–3459. [Online]. Available: https://doi.org/10.1145/3576915.3623130 [8] P. Cremonesi and D. Jannach, “Progress in recommender systems research: Crisis? what crisis?” AI Magazine, vol. 42, no. 3, pp. 43–54, Nov. 2021. [Online]. Available: https: //ojs.aaai.org/aimagazine/index.php/aimagazine/article/view/18145 [9] P. Henderson, J. Hu, J. Romoff, E. Brunskill, D. Jurafsky, and J. Pineau, “Towards the systematic reporting of the energy and carbon footprints of machine learning,” J. Mach. Learn. Res., vol. 21, no. 1, jan 2020. [10] J. Pineau, P. Vincent-Lamarre, K. Sinha, V. Lariviere, A. Beygelzimer, F. d’Alche Buc, E. Fox, and H. Larochelle, “Improving reproducibility in machine learning research (a report from the NeurIPS 2019 reproducibility program),” Journal of Machine Learning Research, vol. 22, no. 164, pp. 1–20, 2021. [Online]. Available: http://jmlr.org/papers/v22/20-303.html [11] O. E. Gundersen and S. Kjensmo, “State of the art: Reproducibility in artificial intelligence,” Proceedings of the AAAI Conference on Artificial Intelligence, vol. 32, no. 1, Apr. 2018. [Online]. Available: https://ojs.aaai.org/index.php/AAAI/article/view/11503 [12] C. van der Lee, A. Gatt, E. van Miltenburg, and E. Krahmer, “Human evaluation of automatically generated text: Current trends and best practice guidelines,” Computer Speech & Language, vol. 67, p. 101151, 2021. [Online]. Available: https://www.sciencedirect.com/science/article/pii/S088523082030084X [13] M. Arvan, L. Pina, and N. Parde, “Reproducibility in computational linguistics: Is source code enough?” in Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing, Y. Goldberg, Z. Kozareva, and Y. Zhang, Eds. Abu Dhabi, United Arab Emirates: Association for Computational Linguistics, Dec. 2022, pp. 2350–2361. [Online]. Available: https://aclanthology.org/2022.emnlp-main.150 [14] T. Gebru, J. Morgenstern, B. Vecchione, J. Wortman Vaughan, H. Wallach, H. Daumé III, and K. Crawford, “Datasheets for datasets,” Communications of the ACM, vol. 64, no. 12, pp. 86–92, December 2021. [Online]. Available: https://www.microsoft.com/en-us/research/publication/datasheets-for-datasets/ [15] W. Liang, N. Rajani, X. Yang, E. Ozoani, E. Wu, Y. Chen, D. S. Smith, and J. Zou, “Systematic analysis of 32,111 AI model cards characterizes documentation practice in AI,” Nature Machine Intelligence, 2024. [16] C.-W. Liu, R. Lowe, I. Serban, M. Noseworthy, L. Charlin, and J. Pineau, “How NOT to evaluate your dialogue system: An empirical study of unsupervised evaluation metrics for dialogue response generation,” in Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing, J. Su, K. Duh, and X. Carreras, Eds. Austin, Texas: Association for Computational Linguistics, Nov. 2016, pp. 2122–2132. [Online]. Available: https://aclanthology.org/D16-1230 [17] J. Novikova, O. Dušek, A. Cercas Curry, and V. Rieser, “Why we need new evaluation metrics for NLG,” in Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing, M. Palmer, R. Hwa, and S. Riedel, Eds. Copenhagen, Denmark: Association for Computational Linguistics, Sep. 2017, pp. 2241–2252. [Online]. Available: https://aclanthology.org/D17-1238 [18] E. Reiter, “A structured review of the validity of BLEU,” Computational Linguistics, vol. 44, no. 3, pp. 393–401, Sep. 2018. [Online]. Available: https://aclanthology.org/J18-3002 [19] E. Clark, T. August, S. Serrano, N. Haduong, S. Gururangan, and N. A. Smith, “All that’s ‘human’ is not gold: Evaluating human evaluation of generated text,” in Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers), C. Zong, F. Xia, W. Li, and R. Navigli, Eds. Online: Association for Computational Linguistics, Aug. 2021, pp. 7282–7296. [Online]. Available: https://aclanthology.org/2021.acl-long.565 [20] C. van der Lee, A. Gatt, E. van Miltenburg, S. Wubben, and E. Krahmer, “Best practices for the human evaluation of automatically generated text,” in Proceedings of the 12th International
+Japan: Association for Computational Linguistics, Oct.–Nov. 2019, pp. 355–368. [Online]. Available: https://aclanthology.org/W19-8643 [21] W.-L. Chiang, L. Zheng, Y. Sheng, A. N. Angelopoulos, T. Li, D. Li, H. Zhang, B. Zhu, M. Jordan, J. E. Gonzalez, and I. Stoica, “Chatbot arena: An open platform for evaluating LLMs by human preference,” 2024. [Online]. Available: https://arxiv.org/abs/2403.04132 [22] C.-H. Chiang and H.-y. Lee, “Can large language models be an alternative to human evaluations?” in Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), A. Rogers, J. Boyd-Graber, and N. Okazaki, Eds. Toronto, Canada: Association for Computational Linguistics, Jul. 2023, pp. 15 607–15 631. [Online]. Available: https://aclanthology.org/2023.acl-long.870 [23] Y. Liu, D. Iter, Y. Xu, S. Wang, R. Xu, and C. Zhu, “G-eval: NLG evaluation using GPT-4 with better human alignment,” in Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, H. Bouamor, J. Pino, and K. Bali, Eds. Singapore: Association for Computational Linguistics, Dec. 2023, pp. 2511–2522. [Online]. Available: https://aclanthology.org/2023.emnlp-main.153 [24] F. Wei, X. Chen, and L. Luo, “Rethinking generative large language model evaluation for semantic comprehension,” ArXiv, vol. abs/2403.07872, 2024. [Online]. Available: https://arxiv.org/abs/2403.07872 [25] L. Zheng, W.-L. Chiang, Y. Sheng, S. Zhuang, Z. Wu, Y. Zhuang, Z. Lin, Z. Li, D. Li, E. Xing, H. Zhang, J. E. Gonzalez, and I. Stoica, “Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena,” in Advances in Neural Information Processing Systems, A. Oh, T. Neumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine, Eds., vol. 36. Curran Associates, Inc., 2023, pp. 46 595–46 623. [Online]. Available: https://proceedings.neurips.cc/paper_files/paper/2023/file/ 91f18a1287b398d378ef22505bf41832-Paper-Datasets_and_Benchmarks.pdf [26] S. Doddapaneni, M. S. U. R. Khan, S. Verma, and M. M. Khapra, “Finding blind spots in evaluator LLMs with interpretable checklists,” 2024. [Online]. Available: https://arxiv.org/abs/2406.13439 [27] R. Stureborg, D. Alikaniotis, and Y. Suhara, “Large language models are inconsistent and biased evaluators,” 2024. [Online]. Available: https://arxiv.org/abs/2405.01724 [28] C.-H. Chiang and H.-y. Lee, “A closer look into using large language models for automatic evaluation,” in Findings of the Association for Computational Linguistics: EMNLP 2023, H. Bouamor, J. Pino, and K. Bali, Eds. Singapore: Association for Computational Linguistics, Dec. 2023, pp. 8928–8942. [Online]. Available: https://aclanthology.org/2023.findings-emnlp.599 [29] A. de Wynter, I. Watts, T. Wongsangaroonsri, M. Zhang, N. Farra, N. E. Altıntoprak, L. Baur, S. Claudet, P. Gajdusek, C. Gören, Q. Gu, A. Kaminska, T. Kaminski, R. Kuo, A. Kyuba, J. Lee, K. Mathur, P. Merok, I. Milovanovi´c, N. Paananen, V.-M. Paananen, A. Pavlenko, B. P. Vidal, L. Strika, Y. Tsao, D. Turcato, O. Vakhno, J. Velcsov, A. Vickers, S. Visser, H. Widarmanto, A. Zaikin, and S.-Q. Chen, “RTP-LX: Can LLMs evaluate toxicity in multilingual scenarios?” vol. ArXiv, 2024. [Online]. Available: https://arxiv.org/abs/2404.14397 [30] R. Hada, V. Gumma, A. de Wynter, H. Diddee, M. Ahmed, M. Choudhury, K. Bali, and S. Sitaram, “Are large language model-based evaluators the solution to scaling up multilingual evaluation?” in Findings of the Association for Computational Linguistics: EACL 2024, Y. Graham and M. Purver, Eds. St. Julian’s, Malta: Association for Computational Linguistics, Mar. 2024, pp. 1051–1070. [Online]. Available: https://aclanthology.org/2024.findings-eacl.71 [31] J. Lee, T. Le, J. Chen, and D. Lee, “Do language models plagiarize?” in Proceedings of the ACM Web Conference 2023, ser. WWW ’23. New York, NY, USA: Association for Computing Machinery, 2023, p. 3637–3647. [Online]. Available: https://doi.org/10.1145/3543507.3583199
+[32] A. de Wynter, X. Wang, A. Sokolov, Q. Gu, and S.-Q. Chen, “An evaluation on large language model outputs: Discourse and memorization,” Natural Language Processing Journal, vol. 4, p. 100024, 2023. [Online]. Available: https://www.sciencedirect.com/science/article/pii/S2949719123000213 [33] O. Sainz, J. Campos, I. García-Ferrero, J. Etxaniz, O. L. de Lacalle, and E. Agirre, “NLP evaluation in trouble: On the need to measure LLM data contamination for each benchmark,” in Findings of the Association for Computational Linguistics: EMNLP 2023, H. Bouamor, J. Pino, and K. Bali, Eds. Singapore: Association for Computational Linguistics, Dec. 2023, pp. 10 776–10 787. [Online]. Available: https://aclanthology.org/2023.findings-emnlp.722 [34] Y. Lu, M. Bartolo, A. Moore, S. Riedel, and P. Stenetorp, “Fantastically ordered prompts and where to find them: Overcoming few-shot prompt order sensitivity,” in Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers). Dublin, Ireland: Association for Computational Linguistics, May 2022, pp. 8086–8098. [Online]. Available: https://aclanthology.org/2022.acl-long.556 [35] R. Hida, M. Kaneko, and N. Okazaki, “Social bias evaluation for large language models requires prompt variations,” 2024. [Online]. Available: https://arxiv.org/abs/2407.03129 [36] T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Kaplan, P. Dhariwal, A. Neelakantan, P. Shyam, G. Sastry, A. Askell, S. Agarwal, A. Herbert-Voss, G. Krueger, T. Henighan, R. Child, A. Ramesh, D. M. Ziegler, J. Wu, C. Winter, C. Hesse, M. Chen, E. Sigler, M. Litwin, S. Gray, B. Chess, J. Clark, C. Berner, S. McCandlish, A. Radford, I. Sutskever, and D. Amodei, “Language models are few-shot learners,” in Proceedings of the 34th International Conference on Neural Information Processing Systems, ser. NeurIPS’20. Red Hook, NY, USA: Curran Associates Inc., 2020. [37] Open AI, “GPT-4 technical report,” Open AI, Tech. Rep., 2023. [Online]. Available: https: //arxiv.org/abs/2303.08774v2 [38] AAAI. (2024) Reproducibility checklist. [Online]. Available: https://aaai.org/conference/aaai/aaai-25/ aaai-25-reproducibility-checklist/ [39] NeurIPS. (2024) Neurips paper checklist guidelines. [Online]. Available: https://neurips.cc/public/guides/ PaperChecklist [40] M. Carpuat, M.-C. de Marneffe, I. V. M. Ruiz, J. Dodge, M. Mieskes, and A. Rogers. (2024) Responsible nlp research. [Online]. Available: https://aclrollingreview.org/responsibleNLPresearch/ [41] R. Schaeffer, B. Miranda, and S. Koyejo, “Are emergent abilities of large language models a mirage?” in Thirty-seventh Conference on Neural Information Processing Systems, 2023. [Online]. Available: https://openreview.net/forum?id=ITw9edRDlD [42] A.-W. Harzing, “Publish or perish.” [Online]. Available: https://harzing.com/resources/publish-or-perish/ [43] F. Brahman, V. Shwartz, R. Rudinger, and Y. Choi, “Learning to rationalize for nonmonotonic reasoning with distant supervision,” Proceedings of the AAAI Conference on Artificial Intelligence, vol. 35, no. 14, pp. 12 592–12 601, May 2021. [Online]. Available: https://ojs.aaai.org/index.php/AAAI/article/view/17492
+# Appendix
+# A Prompts
+We split the labelling process in four to simplify the calls and because new criteria were added as the experimentation progressed. They can be found in Prompts 4, 3, 5 and 6. We used a single exemplar for each prompt. They were hand-picked from a paper that was not present in the corpus, and manually tuned for accuracy on a subset of the data (n = 10) before labelling the full corpus. We requested the model to output a string during labelling. This string would be the rationale (for “na” labels), and the verbatim matching line of the paper otherwise. This technique has been shown to improve the model’s performance to out-of-distribution entries [43], and was helpful on analysing the performance of the model, which may be found in Appendix B.
+# B Labeller Reliability
+The reliability (accuracy within a confidence interval) of each of the criteria is in Table 7. Our core assumption is that the distribution of labels is normal. We then calculated the accuracy of our annotator (technically, the prompt) to within a 95% confidence interval (CI) with a Student’s t-Test. sampling i.i.d. n ≈100 papers and manually labelling them. Note that for the choice of n amounts to approximately 5% of the relevant data. Some papers did not contain the criteria we evaluated (e.g., the LLM-as-an-evaluator metric is rare in papers prior to 2023), or were too skewed (dialect evaluations are very scarce); so we sampled extra and only evaluated the relevant criterion. Overall, the model performs well as a labeller, although certain criteria were certainly better-performing than others (e.g. open-sourcing versus SOTA claims). We partially attribute this to prompting. However, a closer inspection of the papers and the model’s rationale noted that the model tended to overlook content, sometimes verbatim, matching the criteria. The model had a tendency to make a liberal interpretation of the prompt: for example, for open sourcing, the model sometimes indicated that no open sourcing was performed because no LLMs were tested (which was not specified in the instructions; see Prompt 5). It also tended to frequently inject content about downloading the film “The Nun II” from Reddit.
+# C Extended Results
+In this section we present the full results of our analysis, separated the same way as in Section 2: corpus composition results (Figures 5 and 6), composition over time (Figure 6), the relationship between citations and criteria (Table 8), and yearly trends on relationships between citations and criteria (Table 12). We also present selected plots for specific criteria.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9ba0/9ba0fdf0-a272-4e13-848b-99bda3701f2b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 5: Arguments Made (left) and Structural Features (right) for the papers claiming SOTA results. Overall we found a low prevalence of papers containing ethics disclaimers, error breakdowns, and negative results Some of the arguments made (especially emergent behaviour) typically showed a much lower prevalence of the structural features considered to be good research.</div>
+Figure 5: Arguments Made (left) and Structural Features (right) for the papers claiming SOTA results. Overall we found a low prevalence of papers containing ethics disclaimers, error breakdowns, and negative results Some of the arguments made (especially emergent behaviour) typically showed a much lower prevalence of the structural features considered to be good research.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/223f/223f9269-b7fb-41f5-97a0-4c80ad8bca16.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 6: Research quality for relevant papers claiming SOTA results. Although certain research features, such as non-English and dialect evaluations are very low, several standard research protocols, such as open-sourcing, versioning, and paper declarations are common in these papers.</div>
+I am going to link a scientific paper. Tell me if the paper contains: - Claims of emergence - A LLM (GPT-4, Gemini, etc) or SLM (Llama, Phi, etc) as the main subject of study Answer everything with "y" or "n", and add an explanation separated by a pipe. If you pick "y", return the verbatim first line matching. Additionally, tell me the type of paper it is. It can only be one of {research, book, opinion}. research papers contain experiments; opinion pieces are subjective; and books collect and survey results. For example, <EXEMPLAR GOES HERE> |begin paper| <TEXT GOES HERE> |end paper| - emergence:
+Table 3: Labelling prompt for the Indicators and parts of Arguments Made. Indicators had 99% accuracy. LLM-as-a-subject and emergent behaviour had lower accuracy and looser confidence intervals (89.0 ± 6.8 and 83.0 ± 8.1, respectively). Inspecting the output showed that the main cause of failure was GPT-4o returning (leaking) the exemplar for that criterion and ignored the input.
+I am going to link a scientific paper. Tell me if the paper contains:
+- Statistical significance tests (Pearson correlation, Welch’s t-test, etcetera): NOTE: they must be clearly
+indicated.
+- Claims of new state-of-the-art (SOTA) results
+- Claims that the model can reason
+- Claims that the model CANNOT reason
+- Claims of super-human intelligence
+- Limitations section
+- Ethics section
+- Negative results
+Answer everything with "y" or "n", and add an explanation separated by a pipe. If you pick "y", return the
+verbatim first line matching.
+For example,
+<EXEMPLAR GOES HERE>
+|begin paper|
+<TEXT GOES HERE>
+|end paper|
+- stat sig:
+I am going to link a scientific paper. Tell me if the paper contains: - Statistical significance tests (Pearson correlation, Welch’s t-test, etcetera): NOTE: they must be clearly indicated. - Claims of new state-of-the-art (SOTA) results - Claims that the model can reason - Claims that the model CANNOT reason - Claims of super-human intelligence - Limitations section - Ethics section - Negative results Answer everything with "y" or "n", and add an explanation separated by a pipe. If you pick "y", return the verbatim first line matching. For example, <EXEMPLAR GOES HERE> |begin paper| <TEXT GOES HERE> |end paper| - stat sig:
+Table 4: Labelling prompt for part of Arguments Made and Structural Features. This prompt had good accuracy (between 93 −100%) for all criteria with tight confidence intervals (±0.0 −5.5).
+I am going to link a scientific paper. Tell me if the paper contains: - Versions of the LLM tested - Parameters of any calls done to the LLM - Accounting for randomness of the LLM - Open sourcing of the data Answer everything with "y", "n", or "na", and add an explanation separated by a pipe. If you pick "y", return the verbatim first line matching. You should only use "na" if the criterion is not relevant (for example, if the paper does not produce a dataset, opensourcing should be "na"; or if there are no calls to LLMs all criteria should be "na"). For example, <EXEMPLAR GOES HERE> |begin paper| <TEXT GOES HERE> |end paper| - versions:
+Table 5: Labelling prompt for Research Features. The model had low performance on open-sourcing (74%), and acceptable (though low) accuracy in the other criteria. Examining GPT-4o’s reasoning for open-sourcing showed hat it sometimes interpreted this label as only applicable if related to an LLM.
+Table 5: Labelling prompt for Research Features. The model had low performance on open-sourcing (74%), and acceptable (though low) accuracy in the other criteria. Examining GPT-4o’s reasoning for open-sourcing showed that it sometimes interpreted this label as only applicable if related to an LLM.
+I am going to link a scientific paper. Tell me if the paper contains: - Error breakdown analysis (breakdown per-classes for its performance) - Evaluation of languages other than English - Evaluation of dialects, and not just the main language Answer everything with "y" or "n", and add an explanation separated by a pipe. If you pick "y", return the verbatim first line matching. Additionally, tell me what type of evaluation metrics the paper uses: automatic, human, LLM, na. Give your response as an array (e.g., [LLM, automatic]) and provide lines verbatim with a pipe for all. Use automatic for BLEU, ROUGE, BERTScore, etc. LLM if they use an LLM (GPT-4, e.g.) or SLM (Llama) for labelling. Only return "na" if there is no evaluation performed. For example, <EXEMPLAR GOES HERE> |begin paper| <TEXT GOES HERE> |end paper| - stat sig:
+I am going to link a scientific paper. Tell me if the paper contains: - Error breakdown analysis (breakdown per-classes for its performance) - Evaluation of languages other than English - Evaluation of dialects, and not just the main language Answer everything with "y" or "n", and add an explanation separated by a pipe. If you pick "y", return the verbatim first line matching. Additionally, tell me what type of evaluation metrics the paper uses: automatic, human, LLM, na. Give your response as an array (e.g., [LLM, automatic]) and provide lines verbatim with a pipe for all. Use automatic for BLEU, ROUGE, BERTScore, etc. LLM if they use an LLM (GPT-4, e.g.) or SLM (Llama) for labelling. Only return "na" if there is no evaluation performed. For example, <EXEMPLAR GOES HERE> |begin paper| <TEXT GOES HERE> |end paper| - stat sig:
+Table 6: Labelling prompt for the remaining Research Features. Non-English and dialects had good accuracy (98 and 100%). The type of evaluator had varying performances even though it was the same label: failures in human and LLM evaluators were mostly related to missing, rather than mislabelled, entries. Note that our analysis with human annotators has a smaller volume than LLM or automatic annotators.
+Criterion
+Accuracy
+n
+SOTA
+93.0 ± 5.50
+100
+Can reason
+96.0 ± 4.22
+100
+Cannot reason
+100.0± 0.00
+100
+Emergent behaviour
+83.0 ± 8.10
+100
+Superhuman capabilities
+97.0 ±3.68
+100
+Limitations section
+93.0 ±5.50
+100
+Ethics section
+97.0 ± 3.68
+100
+Negative results section
+95.0 ± 4.70
+100
+Error breakdown
+88.0 ± 7.01
+100
+Versions
+82.0 ± 8.28
+100
+Call Parameters
+86.0 ± 7.48
+100
+Account for Randomness
+90.0 ± 6.47
+100
+Open-Sourcing
+74.0 ± 9.46
+100
+Statistical tests
+89.0 ± 6.75
+100
+Non-English eval.
+98.0 ± 3.02
+100
+Dialect eval.
+100.0 ± 0.00
+100
+Human evaluators
+89.83 ± 8.51
+59
+LLM evaluators
+88.54 ± 7.01
+96
+Automatic evaluators
+99.51 ± 1.05
+204
+Type of text
+99.0 ± 2.14
+100
+LLM-as-subject
+89.0 ± 6.75
+100
+Total
+91.91 ± 1.22
+Table 7: Accuracy for the model for a 95% interval with sample size (n). To obtain this interval we sampled i.i.d. about 100 papers and manually labelled them. Given that certain papers did not contain the criteria we evaluated (e.g., the LLM-as-an-evaluator metric is rare in papers prior to 2023), or were too skewed (dialects stands out on this), we sampled extra for these–hence the overcounting in automatic evaluations. Overall, the model performs well as a labeller, although certain criteria were certainly better-performing than others (e.g. open-sourcing versus SOTA claims). We partially attribute this to prompting; but close inspection of the papers noted that the model tended to overlook content, sometimes verbatim, matching the criteria.
+Criterion
+Dm,n
+D
+H0
+Statistical Tests
+12
+10
+Accept
+Version Declaration
+7
+8
+Reject
+Parameter Declaration
+8
+7
+Accept
+Account for Randomness
+18
+16
+Accept
+Non-English Evaluation
+17
+11
+Accept
+Dialect Evaluation
+61
+50
+Accept
+Open Sourcing
+8
+19
+Reject
+LLM Evaluators
+16
+26
+Reject
+Human Evaluators
+11
+5
+Accept
+Automatic Evaluators
+6
+9
+Reject
+Limitations Sections
+8
+10
+Reject
+Ethics Sections
+11
+12
+Reject
+Negative Results
+17
+10
+Accept
+Error Breakdowns
+14
+8
+Accept
+Emergence Claims
+10
+8
+Accept
+Can Reason Claims
+12
+15
+Reject
+Cannot Reason Claims
+25
+18
+Accept
+Super-Human Capability Claims
+27
+25
+Accept
+Table 8: Impact of the presence of a given criterion on its citation number. To determine this we split the distribution into samples containing and not containing the criterion. Then we used a Kolmogorov-Smirnov test: the null hypothesis H0 decides whether the samples belong to the same distribution. Rejecting H0 (when Dm,n < D) implies that the presence of the criterion does not impact the citation number. Above, rejections occurred for claims of reasoning, automatic and LLM evaluators, declaring the version of the model/API used, as well as the presence of ethics and limitations sections.
+Criterion
+Corpus
+(%)
+Subset
+(%)
+Stat Sig.
+Error
+Break-
+down
+Random.
+Can Rea-
+son
+Cannot
+Reason
+Emergence
+Human w/o Au-
+tomatic
+4
+16
+31
+18
+12
+27
+12
+35
+Human
+w/o
+LLM
+23
+84
+35
+31
+11
+29
+8
+38
+Human
+w/o
+LLM,
+Auto-
+matic
+2
+9
+29
+25
+7
+36
+14
+43
+LLM w/o Auto-
+matic
+2
+18
+35
+8
+19
+19
+8
+23
+LLM w/o Hu-
+man
+8
+66
+22
+23
+15
+35
+4
+39
+LLM w/o Hu-
+man, Automatic
+0
+2
+33
+0
+33
+33
+0
+0
+Automatic w/o
+Human
+63
+74
+22
+13
+11
+27
+5
+38
+Automatic w/o
+LLM
+75
+88
+26
+17
+11
+27
+5
+37
+Automatic w/o
+Human, LLM
+55
+64
+22
+12
+11
+26
+5
+38
+Mean (SOTA)
+100
+100
+25
+16
+10
+27
+6
+39
+Table 9: Percentage breakdown of Research Features (experimental protocols) for various subsets of evaluators, for papers claiming SOTA. Highlighted are the metrics that are lower than in the general corpus by < 2%. Overall, papers claiming SOTA and relying solely in LLM evaluators were exceedingly rare. A considerable amount of papers relied on either only automatic evaluations (55%) or human evaluations without LLMs (23%). Relying on one type of evaluator was rare for humans (2%) and LLMs (statistically insignificant). Of note, a large portion of the papers relying on LLM evaluators without humans (8%) presented error breakdown analyses (23%; compare with automatic evaluation subsets at 13-17%). Claims of reasoning were often done with LLM evaluators and not human evaluators (35%); contrasting with claims that they cannot reason predominantly done with human evaluation alone (14%). When comparing with the entire corpus (Table 10) we note that SOTA papers use fewer measures of statistical significance across the board. It is also predominant the use of automated metrics (+10% on average) and fewer Human-only and Human and Automatic only metrics (from 6% to 2% and 8% to 4%). On the other hand, LLM evaluators remained steady, showing that most of the papers claiming SOTA used this metric in some form.
+Criterion
+Corpus
+(%)
+Subset
+(%)
+Stat Sig.
+Error
+Break-
+down
+Random.
+Can Rea-
+son
+Cannot
+Reason
+Emergence
+Human w/o Au-
+tomatic
+8
+28
+42
+16
+14
+21
+9
+35
+Human
+w/o
+LLM
+24
+86
+38
+27
+13
+22
+9
+38
+Human
+w/o
+LLM,
+Auto-
+matic
+6
+20
+38
+17
+15
+20
+11
+38
+LLM w/o Auto-
+matic
+2
+21
+49
+11
+17
+26
+4
+26
+LLM w/o Hu-
+man
+7
+66
+27
+21
+11
+30
+5
+41
+LLM w/o Hu-
+man, Automatic
+0
+2
+40
+0
+40
+20
+0
+0
+Automatic w/o
+Human
+54
+72
+29
+14
+12
+23
+7
+40
+Automatic w/o
+LLM
+65
+88
+31
+18
+12
+22
+8
+39
+Automatic w/o
+Human, LLM
+46
+63
+29
+13
+12
+22
+7
+39
+Mean
+100
+100
+28
+15
+11
+22
+8
+41
+Table 10: Percentage breakdown of Research Features (experimental protocols) for various subsets of evaluators for the entire corpus. This table is meant to serve as a comparison for the subset of papers claiming SOTA (Table 9).
+Criterion
+2021-2022 (%)
+2022-2023 (%)
+2023-2024 (%)
+ˆβ
+R2
+Statistical Tests
+12
+2
+-5
+3
+0.34
+Declaration of Versions
+-3
+9
+0
+3
+0.63
+Declaration of Parameters
+5
+3
+-2
+2
+0.59
+Account for Randomness
+6
+7
+-4
+3
+0.59
+Non-English Evaluation
+-3
+2
+-3
+-1
+0.57
+Dialect Evaluation
+-2
+1
+-1
+0
+0.51
+Open Sourcing
+-5
+-8
+-9
+-8
+0.99
+LLM Evaluator
+3
+5
+15
+7
+0.87
+Human Evaluator
+0
+0
+1
+0
+0.74
+Automatic Evaluator
+5
+-12
+10
+0
+0.0
+Limitations Section
+22
+1
+-1
+7
+0.6
+Ethics Section
+11
+-10
+-3
+-2
+0.14
+Negative Results
+4
+0
+-2
+1
+0.17
+Error Breakdowns
+3
+5
+0
+3
+0.89
+Can Reason
+9
+19
+-4
+9
+0.8
+Cannot Reason
+3
+-1
+-2
+0
+0.0
+Emergence
+10
+4
+-7
+3
+0.31
+Super-Human Intelligence Claims
+5
+1
+-2
+1
+0.52
+Table 11: Yearly percentual change (gap) in volume of papers claiming SOTA and presenting the given criterion as an absolute percent. An absolute percent is more interpretable in this scenario: for example, the volume of papers claiming reasoning capabilities in 2023 was 103 out of 294 papers, or 35%. In 2024 this number was 165 out of 535, or 31%. The gap is then -4%. Unlike in Table 12, the percentages for 2024 are not dependent on their recency: 2024 amounts for 46% of the papers evaluated. Overall we observed decreases in all trends, except versioning and the use of all evaluators. We also report the estimated growth rate ˆβ from an ordinary least squares regression (OLS), which may be interpreted as the average change over years; and the coefficient of determination R2. When this value is close to 1, the OLS model is highly confident of the modelled values.
+Criterion
+2021-22 (%)
+2022-23 (%)
+2023-24 (%)
+Statistical Tests
+24
+41
+-44
+Declaration of Versions
+59
+38
+-29
+Declaration of Parameters
+52
+32
+-27
+Account for Randomness
+16
+4
+17
+Evaluation of Non-English Languages
+17
+25
+-40
+Dialect Evaluations
+-1
+10
+-10
+Open Sourcing
+102
+-35
+28
+LLMs Evaluators
+2
+12
+29
+Humans Evaluators
+29
+16
+13
+Automatic Evaluators
+2
+-37
+31
+Limitations Sections
+56
+38
+-12
+Ethics Sections
+56
+10
+-50
+Negative Results
+10
+31
+-29
+Error Breakdowns
+19
+10
+-4
+Emergence Claims
+96
+4
+-40
+Can Reason Claims
+-74
+74
+-41
+Cannot Reason Claims
+-3
+7
+-5
+Super-Human Intelligence Claims
+-7
+10
+-3
+Table 12: Yearly absolute percentage changes for citation ratios (gap) for all our criteria across the years. Highlighted are negative changes. We selected the subset of papers claiming SOTA results, and highlight the papers with gap drops larger than 5%. For example, papers with human evaluators had 7,793 citations in 2022, versus 26,653 without. In 2023, this number was 12,592 (with) and 28,243 (without). The gap is then -54% in 2022 and -38% in 2023, and the change in the gap is +16%. Note that 2024 accounts for most of the papers in our corpus (46%) but has the lowest number of citations (7%): hence, most of the gap drops are expected.

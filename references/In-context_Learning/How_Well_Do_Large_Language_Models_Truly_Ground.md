@@ -1,0 +1,628 @@
+# w Well Do Large Language Models Truly Gro
+# Hyunji Lee1∗ Se June Joo1∗ Chaeeun Kim1† Joel Jang2 Doyoung Kim1 Kyoung-Woon On3 Minjoon Seo1
+1KAIST AI 2University of Washington 3Kakao Brain {hyunji.amy.lee, sejune, minjoon}@kaist.ac.kr
+# Abstract
+To reduce issues like hallucinations and lack of control in Large Language Models (LLMs), a common method is to generate responses by grounding on external contexts given as input, known as knowledge-augmented models. However, previous research often narrowly defines “grounding” as just having the correct answer, which does not ensure the reliability of the entire response. To overcome this, we propose a stricter definition of grounding: a model is truly grounded if it (1) fully utilizes the necessary knowledge from the provided context, and (2) stays within the limits of that knowledge. We introduce a new dataset and a grounding metric to evaluate model capability under the definition. We perform experiments across 25 LLMs of different sizes and training methods and provide insights into factors that influence grounding performance. Our findings contribute to a better understanding of how to improve grounding capabilities and suggest an area of improvement toward more reliable and controllable LLM applications1.
+ 29 Jun 2024
+arXiv:2311.09069v2 
+# 1 Introduction
+Large Language Models (LLMs) have shown superior performance on various tasks by leveraging the extensive world knowledge embedded in their parameters. However, these models often produce hallucinations (Bender et al., 2021; Du et al., 2023), lack controllability (Dathathri et al., 2019; Zhang et al., 2022), and have trouble integrating knowledge that changes over time (Lin et al., 2021; Wang et al., 2021). Additionally, they may not contain specialized knowledge unique to certain entities, such as company-specific terminology, or private information not contained in the training data. Although it is technically possible to inject
+*Denotes equal contribution †Work done during internship at KAIST AI 1Our code and data are available at https://github.com/kaistAI/How-Well-Do-LLMs-TrulyGround
+new knowledge by further training LLMs on a specific corpus, this approach is generally inefficient and not practical in many scenarios (Mallen et al., 2022; Panda et al., 2023; Tang et al., 2023). To address these issues, various systems 2 and work (Gao et al., 2023; He et al., 2022; Xu et al., 2023; Yao et al., 2022) have explored methods where such dynamic, specialized, or private contexts provided by users or general world knowledge contexts retrieved from a large corpus (retrieval-augmented models) are provided to LLMs as additional inputs. While previous work has shown enhanced performance by allowing LLMs to ground their outputs on external contexts compared to solely relying on the LLM’s inherent knowledge (Andrew and Gao, 2007; BehnamGhader et al., 2022; Mallen et al., 2022), whether the model well-grounds to the contexts is usually measured by simply checking whether the generated response contains the answer (Liu et al., 2023a; Mallen et al., 2022; Lewis et al., 2020) or evaluating over NLI model to see whether the knowledge from given context correlates with generated response (Gao et al., 2023; Asai et al., 2023). However, in some cases, this may not be sufficient and it may be more important to ensure that the entire generated response is truly grounded on the given external contexts. For example, let’s consider the scenario in Figure 1, where a company’s HR team is utilizing an LLM to question the qualifications of candidates by providing their resumes as external contexts and prompting the LLM to provide an answer to questions about the candidates based on their resumes. Response 1 omits essential information about the candidate and Response 2 contains misinformation about the candidate due to generating knowledge contained in its parameters; both cases do not truly represent the candidate’s qualifications.
+2https://www.bing.com/new, https://www. perplexity.ai/, https://openai.com/blog/ chatgpt-plugins
+2https://www.bing.com/new, https://www. perplexity.ai/, https://openai.com/blog/ chatgpt-plugins
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/b7f2/b7f28190-29c4-45db-a25c-f366da047849.png" style="width: 50%;"></div>
+Figure 1: An example scenario of a company’s HR team using LLM to question upon candidate’s resume which is given as input context. The previous definition of grounding would consider responses 1 and 2 as well grounded due to their high relevancy with the question and input context. However, as our definition considers all knowledge in a fine-grained manner, we consider only response 3 as well-grounded. Response 1 misses key resume detail (2) which makes the candidate underrated. Response 2 introduces knowledge (a) that is not from the given context but from the model’s parametric knowledge, inaccurately overrates the candidate, and unfairly influences comparison with others.
+It either harms the applicant by missing important information or makes the applicant overly qualified, disadvantaging other applicants. In this study, we introduce a strict definition of grounding: a model is truly grounding on given contexts when it (1) uses all essential knowledge from the contexts and (2) strictly adheres to their scope in response generation without hallucinated information3. To quantify this definition, we introduce an automatic grounding metric that extends upon Min et al. (2023) for fine-grained evaluation. Furthermore, we curate a new dataset incorporating crucial factors influencing LLMs’ response (i.e., entity popularity, context length), to understand their impact on LLM responses. Lastly, we present a revised version of the dataset that modifies factual knowledge in external contexts to identify the knowledge sources in responses. We conduct experiments across 25 LLMs of different sizes and training methods to explore which model attributes significantly contribute to grounding ability and identify some important factors.
+• Training methods like Instruction Tuning or RLHF have a more pronounced impact on grounding performance than model size. • High answer accuracy, commonly used to assess how well a model incorporates context in previous works, does not ensure high grounding performance.
+3In this paper, the term grounding refers to what is defined here as truly grounding.
+• Instruction-tuned models show high degradation when additional relevant contexts are added as input. • When given multiple contexts, performance degradation is more influenced by how distracting these contexts are, rather than by their length.
+# 2 Related Works
+Question Answering Machine Reading Comprehension and Open Domain Question Answering provide a question and context to a model, which then answers the question using the given context. The answers are usually short phrases or entities. LongformQA shares similarities, as it also uses contextual information to answer questions, but its answers are longer and focus on how well the model refers to the input context and generates factual responses. Such datasets, while encompassing questions and contexts, are inadequate to measure the model’s grounding ability under our definition; they lack annotation of which knowledge from the external context is necessary (gold) to answer the query and are hard to verify the source of knowledge in generated response (whether it is from a given context or model parameter). Furthermore, since most datasets were created before the emergence of modern LLMs, they’re unsuitable for understanding the diverse characteristics of these models. Therefore, to evaluate a model’s grounding ability under our defined criteria, we created a
+Generating Response with External Knowledge Recent research efforts have focused on incorporating external knowledge during the generation process to overcome issues such as hallucination, increase controllability, and incorporate dynamic knowledge. It incorporates either by inputting it directly (Lewis et al., 2020; Liu et al., 2023b; Shi et al., 2023), using APIs in a multi-step manner (Yao et al., 2022; Xu et al., 2023), or by employing various tools (Schick et al., 2023; Yang et al., 2023). Although the objective of adding external knowledge is for the model’s response to be intrinsically tied to the given knowledge, previous work naively evaluates and analyzes the ability. With such a naive definition, users find it difficult to ensure that the entire generated response is truly grounded in the given context; the model may hallucinate or miss important knowledge even though the overall response corresponds well to the external context. Thereby, in this work, we introduce a strict definition of grounding and share the importance of checking the entire response in a finegrained manner.
+Definition of Grounding The concept of "grounding" pervades several areas that interface with natural language. In robotics, grounding bridges the chasm between abstract directives and actionable robot commands, as highlighted by numerous studies (Ahn et al., 2022; Huang et al., 2023; Kollar et al., 2010b,a; Tellex et al., 2011; Mees et al., 2022; Faille et al.; Moon et al.; Brabant et al., 2023; Clark and Brennan; Traum, 1991). In the domain of vision and video, grounding predominantly involves associating image regions with their pertinent linguistic descriptors (Zhu et al., 2022; Deng et al., 2021; Li et al., 2022; Liu et al., 2022a). In NLP, grounding frequently denotes finding the relevant textual knowledge to a given input from knowledge sources such as a set of documents, knowledge graphs, or input context (Chandu et al., 2021; Weller et al., 2023; Mallen et al., 2022); information retrieval task. In this work, we focus on bridging the definition with when input context is the knowledge source.
+# 3 Grounding
+In this paper, we define that the model grounds well more strictly and share a dataset and metric to measure performance under the definition. In
+Section 3.1, we define the grounding ability and share its importance with various use cases. In Section 3.2, we share details of how we construct the dataset, and in Section 3.3, we formulate an automatic metric to measure the grounding ability.
+# 3.1 Definition & Usage
+Prior research (Liu et al., 2023a; He et al., 2022; Mallen et al., 2022; Weller et al., 2023) defines that a model is well-grounded when it generates responses relevant to the query while utilizing the given contexts. When given a set of external contexts C, a set of answers A, and generated response P, the previous definition often defines it well-grounded if ∀a ∈A, a ∈P or ∃c ∈C : NLI(P, c) = 1. The former calculates whether the generated response contains all answers and the latter measures whether any context entails the generated response. However, as in Figure 1, we can see that such a definition of grounding poses limitations in that it cannot capture whether the generated response misses relevant knowledge from a given context or whether it hallucinates. In this work, to overcome the limitation, we formally define a stricter definition of a model’s grounding performance, which evaluates the entire generated response in a fine-grained manner. We define that a model truly grounds on provided external context when (1) it utilizes all necessary knowledge in the context, and (2) it does not incorporate other knowledge apart from the contexts, such as that stored in the model parameters. Here, we see the “atomic facts” (short sentences conveying one piece of information) as the knowledge unit. As a sentence contains multiple knowledge, we disassemble4 a single sentence into multiple atomic facts for a fine-grained evaluation (Min et al., 2023; Liu et al., 2022b; Kamoi et al., 2023). For instance, “Napoleon is a French general” decomposes into two atomic facts (“Napoleon is French.” and “Napoleon is a general.”). In other words, when given a set of necessary atomic facts (gold atomic facts) CG from the set of external contexts C and a set of atomic facts PA from the generated response P, we define that the model is truly grounded when:
+# 1. ∀k ∈CG, k ∈P
+4Following Min et al. (2023), we use InstructGPT (textdavinci-002) on decomposing context into atomic facts, where it has shown a high correlation with humans. Examples of atomic facts are in Appendix A.3.
+Models that demonstrate strong grounding capabilities as per our definition are highly valued in various use cases. It can be used in developing personalized chatbot services. By grounding contexts with personal information, it adeptly uses it to generate responses. When new information is provided by the user, it can be seamlessly integrated into the input context for future interactions. Also, when a company wants to add advertisement by promoting a certain product; by providing the model with the necessary context, it can be guided to generate responses that favorably mention the product. Moreover, models with a strong grounding ability allow users to trust the responses generated without the need to verify for inaccuracies or omissions, effectively addressing the issue of hallucinations.
+# 3.2 Dataset Construction
+We construct a new evaluation dataset specifically designed to measure a model’s grounding ability due to limitations of existing datasets; they lack annotation of which knowledge from the provided context is necessary, hard to verify the source of knowledge (whether the knowledge is from a given context or its parameter), and most do not consider key variables known to influence LLM performance as they were constructed before the advent of modern LLM. As in Figure 2, our dataset comprises four versions: Original-Gold, Original-Dist, Conflict-Gold, and Conflict-Dist. The differentiation lies in two main aspects: (1) The nature of the input context, which is either an unaltered Wikipedia content (Original-*) or a modified, conflicting version (Conflict-*) to determine whether the model’s response is from its internal knowledge or by grounding on external knowledge. (2) The inclusion of distractor contexts: * -Gold versions contain only “gold contexts” that directly answer the query, whereas *-Dist versions also include distractor contexts, which are relevant but not gold. Furthermore, we integrate three key factors (left of Figure 2) known to bring qualitative differences in model responses for a more comprehensive analysis: [F1] Popularity of context topics (Mallen et al., 2022; Kandpal et al., 2022), [F2] Number of required documents to answer the query (BehnamGhader et al., 2022; Press et al., 2022; Cífka and Liutkus, 2022), and [F3] Required
+response format (definite answer or free-form answer) (McCoy et al., 2021; Tuckute et al., 2022). Our dataset construction is mainly divided into five steps. Details of data construction including human annotators, inter-labeler agreement, data distribution of the factors, data examples, and more are in Appendix A. Step 1: Context Selection In our first step, we select sets of input contexts (C) considering F1 and F2. Wikipedia documents were used for context, considering their comprehensive metainformation pertinent to these aspects. For F1, following Mallen et al. (2022), we utilize document pageviews, and for F2, we construct a document set sampled from the intersection between the popularity list and the hyperlinked document. Step 2: Instance Generation & Classification Based on the document sets from Step 1, we use GPT-3.55 to generate 10 candidate pairs of question and answer. We classify the candidate pairs by F2 and F3, and select a single query with the highest quality from each class. Note that the generated answer was replaced by the annotators. Step 3: Gold Atomic Fact Selection To evaluate grounding performance, we decompose context sets C ∈C into atomic facts {CA1, · · · , CAk}. From multiple atomic facts, we annotate gold atomic facts, CGi. Gold atomic facts are the atomic facts within the provided context that are essential to answer the given question ({CG1, · · · , CGm} ⊆ {CA1, · · · , CAk}). We now get 480 complete instances that we call Original-Gold (Q, A, C, CG). Step 4: Modify Context Given an instance from Original-Gold, annotators are instructed to revise well-known and key knowledge to answer the question in the input context. This step results in Conflict-Gold (Q, A′, C′, C′ G), a modified, conflicting version. Step 5: Add Distractor Contexts To analyze the impact when additional knowledge apart from the gold ones is added to the input context, we sample distractor contexts, contexts with high similarity but not directly related to an answer, with contriever (Izacard et al., 2022), a dense retriever pretrained through contrastive learning, and include them in the input context (Original-Dist when added to original gold contexts and Revised-Dist when added to revised gold contexts). 5gpt-3.5-turbo-0301
+response format (definite answer or free-form answer) (McCoy et al., 2021; Tuckute et al., 2022). Our dataset construction is mainly divided into five steps. Details of data construction including human annotators, inter-labeler agreement, data distribution of the factors, data examples, and more are in Appendix A.
+Step 2: Instance Generation & Classification Based on the document sets from Step 1, we use GPT-3.55 to generate 10 candidate pairs of question and answer. We classify the candidate pairs by F2 and F3, and select a single query with the highest quality from each class. Note that the generated answer was replaced by the annotators.
+Step 5: Add Distractor Contexts To analyze the impact when additional knowledge apart from the gold ones is added to the input context, we sample distractor contexts, contexts with high similarity but not directly related to an answer, with contriever (Izacard et al., 2022), a dense retriever pretrained through contrastive learning, and include them in the input context (Original-Dist when added to original gold contexts and Revised-Dist when added to revised gold contexts).
+5gpt-3.5-turbo-0301
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/009a/009ab2eb-3db8-40cf-acc9-930baecd94c1.png" style="width: 50%;"></div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/80f2/80f254d7-0d18-4dc4-a89b-938367bacfd5.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 2: Four versions of our dataset: Original-Gold, Original-Dist, Conflict-Gold, and Conflict-Dist. Conflict-* contains modified gold contexts (conflict context) by human annotators. *-Dist differs from *-Gold in that it contains distractor contexts. The left part of the figure shows three key factors we considered when constructing our dataset.</div>
+# 3.3 Metric
+We evaluate model performance in two aspects: grounding performance and answer accuracy.
+Grounding Performance We present an automatic metric to measure whether the model grounds well under the definition in Section 3.1. We evaluate the presence of knowledge (whether an atomic fact exists in context) by using an evaluation model Meval, as the same facts can be conveyed in different ways. On selecting Meval we use the one with the highest correlation with humans. We test over five models: GPT-4 (OpenAI, 2023), Llama2-70b-chat (Touvron et al., 2023), TRUE (T5-11B finetuned on various NLI datasets) (Honovich et al., 2022), bi-encoder model (MiniLM finetuned on 1B training pairs), and cross-encoder model (MiniLM finetuned on MSMARCO) (Wang et al., 2020). Surprisingly, the cross-encoder model6 shows the highest correlation with human (84.1), outperforming GPT-4 (78.7). It also closely matches the correlation between humans (88.6) Thereby, we utilize the cross-encoder model as Meval. We define grounding performance as the F1 score of precision and recall calculated as: precision = �k i=1 Meval(PAi, C) and recall = �m i=1 Meval(CGi, P) where Meval(a, B) returns 1 when knowledge of a exists in B and 0 elsewise. Details of models, performance, and the process of human evaluation are in Appendix B.
+Answer Accuracy This is a widely used metric to naively measure the model’s grounding ability in previous works (Mallen et al., 2022; Borgeaud et al., 2021); it measures if the answer is present
+6cross-encoder/ms-marco-MiniLM-L-12-v2 from Sentence Transformers (Reimers and Gurevych, 2019)
+within the generated response7.
+# 4 Experiments
+We experiment with 25 LLMs of various sizes and training methods (Instruction-tuning, RLHF, DPO). From the results, we share interesting findings of how different factors of LLMs and different characteristics of input context lead to their grounding ability. Section 4.1 shows brief details of the models we evaluate. Section 4.2 shows how different factors of LLMs lead to their grounding ability and interesting findings. Details of the input format, generation configurations, and others are in Appendix C.
+# 4.1 Models
+We experiment with two proprietary LLMs: GPT3.5 (GPT) and GPT-3.5-instruct (GPT-I)8. The latter, GPT-instruct9, is a further finetuned version of GPT, primarily for following instructions. Table 2 shows details of open-sourced LLMs we experiment over: Llama2 (Touvron et al., 2023), Llama2-chat (Llama2-C), Vicuna, TÜLU1 (Wang et al., 2023), TÜLU2 (Ivison et al., 2023), TÜLU2 with DPO (TÜLU2-D), Mistral-Instruct (MistralI) (Jiang et al., 2023), Zephyr (Tunstall et al., 2023), Falcon (Penedo et al., 2023), and Falcon-Instruct (Falcon-I). All checkpoints are provided from huggingface (Wolf et al., 2019).
+7We only measure the metric to queries with definite answers. 8Specific model names for each model were gpt-3.5-turbo0301 and gpt-3.5-turbo-instruct. Further detail can be found at https://platform.openai.com/docs/models 9After this point, we shorten GPT-3.5 to ”GPT”
+Size
+7B
+13B
+40B
+70B
+UNK
+Mpred
+Llama2-C
+Vicuna
+TÜLU2
+Mistral-I
+Zephyr
+Llama2-C
+Vicuna
+TÜLU2
+Falcon-I
+Llama2-C
+TÜLU2
+GPT
+GPT-I
+Original-Gold
+51.6
+50.0
+58.6
+60.3
+54.7
+55.9
+61.4
+61.9
+42.4
+56.9
+61.9
+61.0
+65.7
+Original-Dist
+45.1
+45.0
+54.9
+54.9
+53.7
+35.8
+56.5
+55.3
+36.3
+55.8
+56.7
+56.8
+56.9
+Conflict-Gold
+46.0
+48.0
+54.9
+59.8
+52.4
+53.4
+57.5
+57.7
+40.1
+56.3
+62.4
+59.0
+60.3
+Conflict-Dist
+40.4
+39.8
+47.9
+54.3
+52.4
+46.5
+55.0
+50.4
+32.6
+54.4
+54.9
+56.1
+54.5
+Table 1: Grounding performance of twelve different models. For each setting, the best of all in bold and the best of open-sourced models in underline.
+Base
+DPO
+RLHF
+Inst.
+Size
+Llama2
+Llama2
+x
+x
+x
+[13]
+Llama2-C
+Llama2
+x
+o
+o
+[7, 13, 70]
+Vicuna
+Llama2
+x
+x
+o
+[7, 13, 33]
+TÜLU1
+Llama1
+x
+x
+o
+[7, 13, 30, 65]
+TÜLU2
+Llama2
+x
+x
+o
+[7, 13, 70]
+TÜLU2-D
+Llama2
+o
+x
+o
+[7, 13, 70]
+Falcon
+Falcon
+x
+x
+x
+[40, 180]
+Falcon-I
+Falcon
+x
+x
+o
+[40, 180]
+Mistral-I
+Mistral
+x
+x
+o
+[7]
+Zephyr
+Mistral
+o
+x
+o
+[7]
+Table 2: Abstract of open-sourced LLMs we experiment over. The size column shows various sizes of the model we experimented over. The base column shows the pretrained model each model is finetuned on. The rest of the columns show different training methods; Inst. is instruction-tuned, DPO is Direct Preference Optimization, and RLHF is Reinforcement Learning from Human Feedback.
+# 4.2 Results
+Overall performance Table 1 shows the overall grounding performance of various models over four different dataset versions10. Due to limited space, the results of all models in four dataset versions are in Appendix D.2. GPT-I shows the highest performance for original datasets (Original-Gold and Original-Dist), and TÜLU2-70B shows the highest performance among open-sourced models, similar performance with GPT. Performance of ConflictGold consistently shows lower performance than Original-Gold (average of 4.7 drops), which we hypothesize is due to conflict between parametric space and external knowledge. The performance also consistently degrades with distractor contexts added: an average of 10.7 drops for Original-Dist from Original-Gold and an average of 10.0 drops for Conflict-Dist from Conflict-Gold. The drop is higher than when given conflicting knowledge, which highlights the LLM’s tendency to deviate from the primary context when presented with extraneous information and the importance of providing only the gold contexts for high grounding performance. When comparing the different model
+# Overall performance
+10Details of each dataset scenarios in Section 3.2
+sizes of the same model (i.e., TÜLU2 and LlamaC), the grounding performance of all four dataset versions tends to steadily increase. The improvement rate by a larger model tends to be stronger as the dataset is difficult; Conflict-Dist is considered more difficult over Original-Gold as it contains more knowledge in input context and contains conflict knowledge with its parametric space. When comparing the performance of precision and recall, a common trend across all models is a superior performance in precision over recall (Appendix D.3). This suggests a challenge in utilizing all necessary knowledge when generating a response and it tends to utilize only a partial of them.
+# Training method shows stronger effect than model size in grounding performance Figure 3
+(a) shows that model size tends to show a small effect on the grounding performance of OriginalGold, but how the model was tuned tends to show a stronger effect; for high grounding performance, instruction tuning seems to be the most important factor. To determine if grounding performance is strongly dependent on instruction-following ability, we see the correlation between grounding performance with performance on RULES benchmark (Mu et al., 2023), a benchmark to determine how well it follows the given rule. Figure 3 (b) shows that there is weak correlation between the two scores. This suggests that grounding performance does not appear to be strongly reliant on the capacity to adhere to instructions. We could see a similar trend with MMLU benchmark (Hendrycks et al., 2020) in Appendix D.1.
+# Grounding performance by different query and
+context characteristics Figure 3 (c) displays the detailed analysis of each model’s grounding performance of Original-Gold, over the three factors described in Section 3.2. A consistent trend emerges across all models. For F1, the model generally outperforms when provided with less common contexts (low), compared to when provided
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5a56/5a562eb2-cd5d-4f83-8b2a-5247b3982b2b.png" style="width: 50%;"></div>
+Figure 3: (a) shows grounding performance for each model size in Original-Gold. The performance tends to depend more heavily on how the model was tuned rather than the model size. (b) shows RULES performance and grounding performance There is a weak correlation between instruction-following ability and grounding performance. (c) shows details of grounding performance by the characteristics of queries and contexts in Original-Gold. Llama2 and Vicuna are 13B, Falcon is 40B model
+with more prevalent contexts (high). This resonates with Mallen et al. (2022), underlining a model’s propensity to lean on provided data when faced with less familiar content. For F2, queries demanding reasoning across multiple contexts (multi) show lower grounding performance than those confined to a single context (single). The grounding challenges likely arise from the extended context length in multiple scenarios and the added reasoning complexity to extract all relevant atomic facts. Lastly, for F3, questions with predetermined answers (definite) tend to achieve better grounding than openended answers (free-form). This divergence largely stems from recall metrics as free-form instances contain more necessary knowledge (gold atomic facts) compared to definite instances, it is more difficult to find all. We could see that the trend holds for all four dataset settings in Appendix D.2.
+High answer accuracy does not ensure high grounding performance Answer accuracy is a common metric used for measuring the grounding ability of a model. However, though there is a correlation between grounding performance (Table 1) and answer accuracy (Table 13), high answer accuracy does not ensure high grounding performance
+as grounding performance in the same range of answer accuracy highly diverges. For example, the answer accuracy of Llama2-13b-chat (84.79) and Llama2-13b (81.56) only show a marginal difference of 3.23 compared to the difference of 29.82 (55.91, 26.09) in grounding performance. This discrepancy is attributed to Llama2-13b’s tendency to generate lengthy responses with relevant information drawn not only from the provided context but also its internal parameters, leading to lower grounding scores despite high answer accuracy.
+TÜLU2
++ DPO
+deg.rate (%)
+TÜLU2
++ DPO
+deg.rate (%)
+Original-Gold
+Revised-Gold
+7B
+56.2
+51.5
+8.5
+54.9
+51.4
+6.4
+13B
+62.3
+60.1
+3.5
+61.9
+58.0
+6.3
+70B
+59.6
+58.0
+2.7
+59.9
+58.1
+3.1
+Original-Dist
+Revised-Dist
+7B
+54.9
+45.3
+17.6
+47.9
+41.4
+13.5
+13B
+55.3
+54.0
+2.3
+50.4
+54.2
+-7.5
+70B
+53.4
+55.4
+-3.7
+52.4
+55.1
+-5.1
+Table 3: Grounding performance of TÜLU and those trained with DPO (+DPO). deg.rate column shows the degradation rate from TÜLU to those trained with DPO.
+Table 3: Grounding performance of TÜLU and those trained with DPO (+DPO). deg.rate column shows the degradation rate from TÜLU to those trained with DPO.
+Smaller models tend to show a higher reduction rate by DPO training Table 3 shows the degradation rate from TÜLU2 to those trained with DPO. Smaller models tend to show a higher degradation rate in grounding performance by DPO training. The degradation rate tends to come from its verbosity, aligning with the findings from Ivison et al. (2023). Moreover, the results of Zephyr, a 7B size model further trained with DPO on top of Mistral, in Table 1 show similar results; high degradation rate by DPO training.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/61e8/61e8bea3-7914-4fa7-9508-8e2cc80fd2c6.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 4: Grounding performance of Vicuna-13B-16k as length of input contexts increases.</div>
+Performance degradation is more influenced by the distraction level of the contexts rather than the length of distractor contexts Figure 4 illustrates that as the input context length increases, the grounding performance of Vicuna-13b-16k, capable of handling extensive inputs, varies significantly. Please note that the input contexts differ by the length of distractor contexts as the length of gold contexts is the same. Notably, grounding performance deteriorates more rapidly at the initial points (5.86 at the initial point and 1.97 at the end point of the plot). This is because we add distractor contexts in the order of those in high rank by contriever (Izacard et al., 2022), which indicates that contexts with high distraction levels are added at the initial points, causing stronger distractions. Such a result indicates that the performance decline is more influenced by the relevance and distraction level of the contexts, rather than the sheer number of distractors. The drop rate is mostly from the model’s recall ability, highlighting its struggle to accurately identify all essential facts from the given contexts. This tendency shows a high correlation with a common challenge in retrieval models; performance decreases as they deal with larger data sets and encounter numerous query-relevant contexts within those sets (Zhong et al., 2023).
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/9223/9223fe1e-f8ce-4306-90ae-c81aef08ad14.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 5: Reduction rate in Original-Dist performance from Original-Gold. Models with the same base model are in the same color. Models that are instruction tuned (falcon_I, GPT_I, Vicuna) or underwent RLHF (Llama2_C) show higher degradation when distractor contexts are added. Vicuna and Llama2 are 13B and Falcon is 40B model.</div>
+Impact of gold contexts position on grounding performance: optimal position at the end We could see that the position of gold contexts within multi-document settings significantly influences grounding performance, aligning with the findings from Liu et al. (2023a). Experiment with Vicuna-13b-16k, input context length of 4096 over Original-dist show the highest performance when gold contexts are positioned at the end and the lowest when positioned in the middle (end-43.37, beginning-39.32, random-39.45, middle-39.32). The trend also holds for Conflictdist: end-43.53, beginning-41.28, random-39.10, middle-38.30. Such results emphasize the importance of where you put the gold contexts in a multidocument setting for high grounding performance. Instruction-tuned models show higher degradation with distractor contexts Figure 5 demonstrates while models fine-tuned with instruction show higher absolute grounding performance, they show a notably greater decrease in performance when faced with distractor contexts. This trend is even more evident in models that underwent RLHF. We hypothesize that this decline in performance is likely a consequence of their tuning methods. During instruction tuning and RLHF, the models are trained to consider all input texts as relevant to their output generation. Consequently, they tend to incorporate distracting inputs when encountered. A closer examination of the metrics reveals a more pronounced drop in precision rather than recall. This suggests that in the presence of distractor contexts, these models are more inclined to use knowledge beyond the gold contexts, supporting our hypothesis. Thus, for instruction-tuned models,
+providing only the gold contexts without distractor contexts is crucial to maintain their high grounding performance.
+Performance of answer accuracy Table 13 in Appendix D.6 shows the answer accuracy of models across five settings. A key notable finding is that large-parameter models, like Falcon-40b, excel without contexts due to their inherent knowledge but see reduced gains with external contexts added as input. Also, without external contexts, highpopularity questions achieve a 32.6% accuracy, outpacing low-popularity ones at 26.8%. However, when with gold contexts: low-popularity questions slightly edge out at 83.4% over the 83.2% for high-popularity ones. We further analyze the generated response, we measure the fluency using G-EVAL (Liu et al., 2023c) in Appendix D.7.
+# 5 Conclusion
+In this paper, we introduce a strict definition of “grounding” to external contexts when given as input. To evaluate and analyze grounding performance under the definition, we propose a new dataset and grounding metric. In our extensive evaluation of 25 LLMs across four dataset scenarios, we observed various insights. Rather than model size, various training techniques and base models tend to affect more on grounding performance. Models find it challenging to utilize all necessary knowledge when generating a response. By presenting the performance of various models on different dataset settings, we provide valuable perspectives to the ongoing discourse on enhancing LLM grounding abilities and practical guidance for choosing suitable models for applications that require generating response by truly grounding on a given context.
+# 6 Limitations
+To construct a dataset with the specific requirements, all the contexts we utilize are sourced from Wikipedia, which is likely to be used as a source during pretraining LLMs. Therefore, to follow cases where private contexts (contexts that the model is likely to not have seen during training) we collect a modified version of the dataset, which also allows us to clearly differentiate between knowledge derived from the provided context and that inherent in the model’s parameters. We leave collecting datasets with private contexts and evaluating the dataset as future work. As we modified
+the existing dataset, the contexts we provide may distract people. While we have observed a high correlation with human judgments in our assessments, it’s important to note that since our evaluation metric involves a model-based approach, the performance of the prediction model (Mpred) could be influenced by the performance of the evaluation model (Meval). Therefore, the accuracy and reliability of Meval are critical, as any limitations or biases within it could potentially affect the outcome of our performance evaluations for Mpred. Additionally, while decomposing context into atomic facts also aligns well with human judgment, we note several failure cases attributable to model involvement, which further impacts grounding performance.
+# Acknowledgements
+This work was partly supported by Kakao Brain grant (2023, Aligning Language Model with Knowledge Module, 80%) and Institute of Information & communications Technology Planning & Evaluation (IITP) grant funded by the Korea government (MSIT) (No.2022-0-00113, Developing a Sustainable Collaborative Multi-modal Lifelong Learning Framework, 20%). We thank Seonghyeon Ye, Sewon Min, Yoonjoo Lee, Hanseok Oh, and Seungone Kim for helpful discussions and constructive feedback. We also thank Jonghyeon Kim, Daeyang Oh, Jungeun Lee, and Hyungyu Chae for annotating the data.
+# References
+Michael Ahn, Anthony Brohan, Noah Brown, Yevgen Chebotar, Omar Cortes, Byron David, Chelsea Finn, Keerthana Gopalakrishnan, Karol Hausman, Alexander Herzog, Daniel Ho, Jasmine Hsu, Julian Ibarz, Brian Ichter, Alex Irpan, Eric Jang, Rosario Jauregui Ruano, Kyle Jeffrey, Sally Jesmonth, Nikhil Jayant Joshi, Ryan C. Julian, Dmitry Kalashnikov, Yuheng Kuang, Kuang-Huei Lee, Sergey Levine, Yao Lu, Linda Luu, Carolina Parada, Peter Pastor, Jornell Quiambao, Kanishka Rao, Jarek Rettinghouse, Diego M Reyes, Pierre Sermanet, Nicolas Sievers, Clayton Tan, Alexander Toshev, Vincent Vanhoucke, F. Xia, Ted Xiao, Peng Xu, Sichun Xu, and Mengyuan Yan. 2022. Do as i can, not as i say: Grounding language in robotic affordances. In Conference on Robot Learning.
+Galen Andrew and Jianfeng Gao. 2007. Scalable training of L1-regularized log-linear models. In Proceedings of the 24th International Conference on Machine Learning, pages 33–40.
+Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. 2023. Self-rag: Learning to retrieve, generate, and critique through self-reflection. ArXiv, abs/2310.11511.
+Parishad BehnamGhader, Santiago Miret, and Siva Reddy. 2022. Can retriever-augmented language models reason? the blame game between the retriever and the language model. ArXiv, abs/2212.09146.
+Emily M. Bender, Timnit Gebru, Angelina McMillanMajor, and Shmargaret Shmitchell. 2021. On the dangers of stochastic parrots: Can language models be too big? Proceedings of the 2021 ACM Conference on Fairness, Accountability, and Transparency.
+ebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor Cai, Eliza Rutherford, Katie Millican, George van den Driessche, Jean-Baptiste Lespiau, Bogdan Damoc, Aidan Clark, Diego de Las Casas, Aurelia Guy, Jacob Menick, Roman Ring, T. W. Hennigan, Saffron Huang, Lorenzo Maggiore, Chris Jones, Albin Cassirer, Andy Brock, Michela Paganini, Geoffrey Irving, Oriol Vinyals, Simon Osindero, Karen Simonyan, Jack W. Rae, Erich Elsen, and L. Sifre. 2021. Improving language models by retrieving from trillions of tokens. In International Conference on Machine Learning.
+Yilun Du, Shuang Li, Antonio Torralba, Joshua B. Tenenbaum, and Igor Mordatch. 2023. Improving factuality and reasoning in language models through multiagent debate. ArXiv, abs/2305.14325.
+Juliette Faille, Albert Gatt, and Claire Gardent. Entitybased semantic adequacy for data-to-text generation. In Findings of the Association for Computational Linguistics: EMNLP 2021, Punta Cana, Dominican Republic. Association for Computational Linguistics. Tianyu Gao, Ho-Ching Yen, Jiatong Yu, and Danqi Chen. 2023. Enabling large language models to generate text with citations. Mor Geva, Daniel Khashabi, Elad Segal, Tushar Khot, Dan Roth, and Jonathan Berant. 2021. Did aristotle use a laptop? a question answering benchmark with implicit reasoning strategies. Transactions of the Association for Computational Linguistics, 9:346– 361. Hangfeng He, Hongming Zhang, and Dan Roth. 2022. Rethinking with retrieval: Faithful large language model inference. ArXiv, abs/2301.00303. Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Xiaodong Song, and Jacob Steinhardt. 2020. Measuring massive multitask language understanding. ArXiv, abs/2009.03300. Or Honovich, Roee Aharoni, Jonathan Herzig, Hagai Taitelbaum, Doron Kukliansy, Vered Cohen, Thomas Scialom, Idan Szpektor, Avinatan Hassidim, and Y. Matias. 2022. True: Re-evaluating factual consistency evaluation. In Workshop on Documentgrounded Dialogue and Conversational Question Answering. Wenlong Huang, F. Xia, Dhruv Shah, Danny Driess, Andy Zeng, Yao Lu, Peter R. Florence, Igor Mordatch, Sergey Levine, Karol Hausman, and Brian Ichter. 2023. Grounded decoding: Guiding text generation with grounded models for robot control. ArXiv, abs/2303.00855. Hamish Ivison, Yizhong Wang, Valentina Pyatkin, Nathan Lambert, Matthew Peters, Pradeep Dasigi, Joel Jang, David Wadden, Noah A. Smith, Iz Beltagy, and Hanna Hajishirzi. 2023. Camels in a changing climate: Enhancing lm adaptation with tulu 2. ArXiv, abs/2311.10702. Gautier Izacard, Mathilde Caron, Lucas Hosseini, Sebastian Riedel, Piotr Bojanowski, Armand Joulin, and Edouard Grave. 2022. Unsupervised dense information retrieval with contrastive learning. Albert Qiaochu Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh Chaplot, Diego de Las Casas, Florian Bressand, Gianna Lengyel, Guillaume Lample, Lucile Saulnier, L’elio Renard Lavaud, Marie-Anne Lachaux, Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2023. Mistral 7b. ArXiv, abs/2310.06825. Ryo Kamoi, Tanya Goyal, Juan Diego Rodriguez, and Greg Durrett. 2023. Wice: Real-world entailment for claims in wikipedia. ArXiv, abs/2303.01432.
+Ryo Kamoi, Tanya Goyal, Juan Diego Rodriguez, and Greg Durrett. 2023. Wice: Real-world entailment for claims in wikipedia. ArXiv, abs/2303.01432.
+Nikhil Kandpal, H. Deng, Adam Roberts, Eric Wallace, and Colin Raffel. 2022. Large language models struggle to learn long-tail knowledge. ArXiv, abs/2211.08411. Thomas Kollar, Stefanie Tellex, Deb K. Roy, and Nicholas Roy. 2010a. Grounding verbs of motion in natural language commands to robots. In International Symposium on Experimental Robotics. Thomas Kollar, Stefanie Tellex, Deb K. Roy, and Nicholas Roy. 2010b. Toward understanding natural language directions. 2010 5th ACM/IEEE International Conference on Human-Robot Interaction (HRI), pages 259–266. Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redfield, Michael Collins, Ankur Parikh, Chris Alberti, Danielle Epstein, Illia Polosukhin, Jacob Devlin, Kenton Lee, Kristina Toutanova, Llion Jones, Matthew Kelcey, Ming-Wei Chang, Andrew M. Dai, Jakob Uszkoreit, Quoc Le, and Slav Petrov. 2019. Natural questions: A benchmark for question answering research. Transactions of the Association for Computational Linguistics. Patrick Lewis, Ethan Perez, Aleksandara Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Kuttler, Mike Lewis, Wen tau Yih, Tim Rocktäschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-augmented generation for knowledgeintensive nlp tasks. ArXiv, abs/2005.11401. Yicong Li, Xiang Wang, Junbin Xiao, Wei Ji, and TatSeng Chua. 2022. Invariant grounding for video question answering. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pages 2918–2927. Stephanie C. Lin, Jacob Hilton, and Owain Evans. 2021. Truthfulqa: Measuring how models mimic human falsehoods. In Annual Meeting of the Association for Computational Linguistics. Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua, Fabio Petroni, and Percy Liang. 2023a. Lost in the middle: How language models use long contexts. ArXiv, abs/2307.03172. Nelson F Liu, Tianyi Zhang, and Percy Liang. 2023b. Evaluating verifiability in generative search engines. arXiv preprint arXiv:2304.09848. Xuejing Liu, Liang Li, Shuhui Wang, Zhengjun Zha, Dechao Meng, and Qingming Huang. 2022a. Entityenhanced adaptive reconstruction network for weakly supervised referring expression grounding. IEEE Transactions on Pattern Analysis and Machine Intelligence, 45:3003–3018. Yang Liu, Dan Iter, Yichong Xu, Shuo Wang, Ruochen Xu, and Chenguang Zhu. 2023c. G-eval: Nlg evaluation using gpt-4 with better human alignment. ArXiv, abs/2303.16634.
+Yang Liu, Dan Iter, Yichong Xu, Shuo Wang, Ruochen Xu, and Chenguang Zhu. 2023c. G-eval: Nlg evaluation using gpt-4 with better human alignment. ArXiv, abs/2303.16634.
+Yixin Liu, Alexander R. Fabbri, Pengfei Liu, Yilun Zhao, Linyong Nan, Ruilin Han, Simeng Han, Shafiq R. Joty, Chien-Sheng Wu, Caiming Xiong, and Dragomir R. Radev. 2022b. Revisiting the gold standard: Grounding summarization evaluation with robust human evaluation. ArXiv, abs/2212.07981. Alex Mallen, Akari Asai, Victor Zhong, Rajarshi Das, Hannaneh Hajishirzi, and Daniel Khashabi. 2022. When not to trust language models: Investigating effectiveness and limitations of parametric and nonparametric memories. ArXiv, abs/2212.10511. R. Thomas McCoy, Paul Smolensky, Tal Linzen, Jianfeng Gao, and Asli Celikyilmaz. 2021. How much do language models copy from their training data? evaluating linguistic novelty in text generation using raven. Transactions of the Association for Computational Linguistics, 11:652–670. Oier Mees, Jessica Borja-Diaz, and Wolfram Burgard. 2022. Grounding language with visual affordances over unstructured data. 2023 IEEE International Conference on Robotics and Automation (ICRA), pages 11576–11582. Sewon Min, Kalpesh Krishna, Xinxi Lyu, Mike Lewis, Wen tau Yih, Pang Wei Koh, Mohit Iyyer, Luke Zettlemoyer, and Hanna Hajishirzi. 2023. Factscore: Fine-grained atomic evaluation of factual precision in long form text generation. ArXiv, abs/2305.14251. Seungwhan Moon, Pararth Shah, Anuj Kumar, and Rajen Subba. OpenDialKG: Explainable conversational reasoning with attention-based walks over knowledge graphs. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics. Association for Computational Linguistics. Norman Mu, Sarah Chen, Zifan Wang, Sizhe Chen, David Karamardian, Lulwa Aljeraisy, Dan Hendrycks, and David Wagner. 2023. Can llms follow simple rules? ArXiv, abs/2311.04235. OpenAI. 2023. Gpt-4 technical report. ArXiv, abs/2303.08774. Ashwinee Panda, Tong Wu, Jiachen T. Wang, and Prateek Mittal. 2023. Differentially private in-context learning. ArXiv, abs/2305.01639. Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra-Aimée Cojocaru, Alessandro Cappelli, Hamza Alobeidli, Baptiste Pannier, Ebtesam Almazrouei, and Julien Launay. 2023. The refinedweb dataset for falcon llm: Outperforming curated corpora with web data, and web data only. ArXiv, abs/2306.01116. Ofir Press, Muru Zhang, Sewon Min, Ludwig Schmidt, Noah A. Smith, and Mike Lewis. 2022. Measuring and narrowing the compositionality gap in language models. ArXiv, abs/2210.03350.
+OpenAI. 2023. Gpt-4 technical report. ArXiv, abs/2303.08774.
+Ashwinee Panda, Tong Wu, Jiachen T. Wang, and Prateek Mittal. 2023. Differentially private in-context learning. ArXiv, abs/2305.01639.
+Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra-Aimée Cojocaru, Alessandro Cappelli, Hamza Alobeidli, Baptiste Pannier, Ebtesam Almazrouei, and Julien Launay. 2023. The refinedweb dataset for falcon llm: Outperforming curated corpora with web data, and web data only. ArXiv, abs/2306.01116.
+Ofir Press, Muru Zhang, Sewon Min, Ludwig Schmidt, Noah A. Smith, and Mike Lewis. 2022. Measuring and narrowing the compositionality gap in language models. ArXiv, abs/2210.03350.
+Nils Reimers and Iryna Gurevych. 2019. Sentence-bert: Sentence embeddings using siamese bert-networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing. Association for Computational Linguistics. Timo Schick, Jane Dwivedi-Yu, Roberto Dessì, Roberta Raileanu, Maria Lomeli, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. 2023. Toolformer: Language models can teach themselves to use tools. ArXiv, abs/2302.04761. Weijia Shi, Sewon Min, Michihiro Yasunaga, Minjoon Seo, Rich James, Mike Lewis, Luke Zettlemoyer, and Wen tau Yih. 2023. Replug: Retrieval-augmented black-box language models. ArXiv, abs/2301.12652. Jiu Sun, Chantal Shaib, and Byron Wallace. 2023. Evaluating the zero-shot robustness of instruction-tuned language models. ArXiv, abs/2306.11270. Xinyu Tang, Richard Shin, Huseyin A. Inan, Andre Manoel, FatemehSadat Mireshghallah, Zinan Lin, Sivakanth Gopi, Janardhan Kulkarni, and Robert Sim. 2023. Privacy-preserving in-context learning with differentially private few-shot generation. ArXiv, abs/2309.11765. Stefanie Tellex, Thomas Kollar, Steven Dickerson, Matthew R. Walter, Ashis Gopal Banerjee, Seth J. Teller, and Nicholas Roy. 2011. Understanding natural language commands for robotic navigation and mobile manipulation. Proceedings of the AAAI Conference on Artificial Intelligence. Hugo Touvron, Louis Martin, Kevin R. Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, Daniel M. Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao, Vedanuj Goswami, Naman Goyal, Anthony S. Hartshorn, Saghar Hosseini, Rui Hou, Hakan Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel M. Kloumann, A. V. Korenev, Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich, Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi, Alan Schelten, Ruan Silva, Eric Michael Smith, R. Subramanian, Xia Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zhengxu Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. 2023. Llama 2: Open foundation and fine-tuned chat models. ArXiv, abs/2307.09288. David Traum. 1991. A computational theory of grounding in natural language conversation. Greta Tuckute, Aalok Sathe, Mingye Wang, Harley Yoder, Cory Shain, and Evelina Fedorenko. 2022. Sentspace: Large-scale benchmarking and evaluation
+Nils Reimers and Iryna Gurevych. 2019. Sentence-bert: Sentence embeddings using siamese bert-networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing. Association for Computational Linguistics. Timo Schick, Jane Dwivedi-Yu, Roberto Dessì, Roberta Raileanu, Maria Lomeli, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. 2023. Toolformer: Language models can teach themselves to use tools. ArXiv, abs/2302.04761. Weijia Shi, Sewon Min, Michihiro Yasunaga, Minjoon Seo, Rich James, Mike Lewis, Luke Zettlemoyer, and Wen tau Yih. 2023. Replug: Retrieval-augmented black-box language models. ArXiv, abs/2301.12652. Jiu Sun, Chantal Shaib, and Byron Wallace. 2023. Evaluating the zero-shot robustness of instruction-tuned language models. ArXiv, abs/2306.11270. Xinyu Tang, Richard Shin, Huseyin A. Inan, Andre Manoel, FatemehSadat Mireshghallah, Zinan Lin, Sivakanth Gopi, Janardhan Kulkarni, and Robert Sim. 2023. Privacy-preserving in-context learning with differentially private few-shot generation. ArXiv, abs/2309.11765. Stefanie Tellex, Thomas Kollar, Steven Dickerson, Matthew R. Walter, Ashis Gopal Banerjee, Seth J. Teller, and Nicholas Roy. 2011. Understanding natural language commands for robotic navigation and mobile manipulation. Proceedings of the AAAI Conference on Artificial Intelligence. Hugo Touvron, Louis Martin, Kevin R. Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, Daniel M. Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao, Vedanuj Goswami, Naman Goyal, Anthony S. Hartshorn, Saghar Hosseini, Rui Hou, Hakan Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel M. Kloumann, A. V. Korenev, Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich, Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi, Alan Schelten, Ruan Silva, Eric Michael Smith, R. Subramanian, Xia Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zhengxu Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. 2023. Llama 2: Open foundation and fine-tuned chat models. ArXiv, abs/2307.09288. David Traum. 1991. A computational theory of grounding in natural language conversation.
+David Traum. 1991. A computational theory of grounding in natural language conversation.
+Greta Tuckute, Aalok Sathe, Mingye Wang, Harley Yoder, Cory Shain, and Evelina Fedorenko. 2022. Sentspace: Large-scale benchmarking and evaluation
+Greta Tuckute, Aalok Sathe, Mingye Wang, Harley Yoder, Cory Shain, and Evelina Fedorenko. 2022. Sentspace: Large-scale benchmarking and evaluation
+of text using cognitively motivated lexical, syntactic, and semantic features. Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies: System Demonstrations.
+tic, and semantic features. Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies: System Demonstrations. Lewis Tunstall, Edward Beeching, Nathan Lambert, Nazneen Rajani, Kashif Rasul, Younes Belkada, Shengyi Huang, Leandro von Werra, Clémentine Fourrier, Nathan Habib, Nathan Sarrazin, Omar Sanseviero, Alexander M. Rush, and Thomas Wolf. 2023. Zephyr: Direct distillation of lm alignment. ArXiv, abs/2310.16944. Cunxiang Wang, Pai Liu, and Yue Zhang. 2021. Can generative pre-trained language models serve as knowledge bases for closed-book qa? ArXiv, abs/2106.01561. Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and Ming Zhou. 2020. Minilm: Deep selfattention distillation for task-agnostic compression of pre-trained transformers. ArXiv, abs/2002.10957. Yizhong Wang, Hamish Ivison, Pradeep Dasigi, Jack Hessel, Tushar Khot, Khyathi Raghavi Chandu, David Wadden, Kelsey MacMillan, Noah A. Smith, Iz Beltagy, and Hanna Hajishirzi. 2023. How far can camels go? exploring the state of instruction tuning on open resources. ArXiv, abs/2306.04751. Orion Weller, Marc Marone, Nathaniel Weir, Dawn J Lawrie, Daniel Khashabi, and Benjamin Van Durme. 2023. "according to ..." prompting language models improves quoting from pre-training data. ArXiv, abs/2305.13252. Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Rémi Louf, Morgan Funtowicz, and Jamie Brew. 2019. Huggingface’s transformers: State-of-the-art natural language processing. ArXiv, abs/1910.03771. Shicheng Xu, Liang Pang, Huawei Shen, Xueqi Cheng, and Tat-Seng Chua. 2023. Search-in-the-chain: Towards accurate, credible and traceable large language models for knowledge-intensive tasks. Rui Yang, Lin Song, Yanwei Li, Sijie Zhao, Yixiao Ge, Xiu Li, and Ying Shan. 2023. Gpt4tools: Teaching large language model to use tools via self-instruction. ArXiv, abs/2305.18752. Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William W Cohen, Ruslan Salakhutdinov, and Christopher D Manning. 2018. Hotpotqa: A dataset for diverse, explainable multi-hop question answering. arXiv preprint arXiv:1809.09600. Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2022. React: Synergizing reasoning and acting in language models. arXiv preprint arXiv:2210.03629.
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2022. React: Synergizing reasoning and acting in language models. arXiv preprint arXiv:2210.03629.
+Hanqing Zhang, Haolin Song, Shaoyu Li, Ming Zhou, and Dawei Song. 2022. A survey of controllable text generation using transformer-based pre-trained language models. ACM Computing Surveys, 56:1 – 37.
+Zexuan Zhong, Ziqing Huang, Alexander Wettig, and Danqi Chen. 2023. Poisoning retrieval corpora by injecting adversarial passages. ArXiv, abs/2310.19156.
+Chaoyang Zhu, Yiyi Zhou, Yunhang Shen, Gen Luo, Xingjia Pan, Mingbao Lin, Chao Chen, Liujuan Cao, Xiaoshuai Sun, and Rongrong Ji. 2022. Seqtr: A simple yet universal network for visual grounding. In European Conference on Computer Vision.
+# A Dataset Construction
+As shown in Figure 6, our dataset construction is mainly divided into four steps. Details of data construction including human annotators, inter-labeler agreement, data distribution of the factors, data examples, and more are in Appendix A.
+# A.1 [Step 1] Context Selection
+In the process of context selection, we focus on constructing a setup that reflects the popularity of the context topic and the required number of documents to answer the query. Wikipedia documents11 were used for context, considering their comprehensive meta-information pertinent to these aspects. For Factor 1, we first start by quantifying the popularity of documents following Mallen et al. (2022). We calculate the sum of monthly pageviews12 for every six months from 2021 to 2023. From this, we derive a high and a low popularity list for the documents from the top and bottom 30% range in consideration of Factor 1. Next, for Factor 2, each document within the popularity lists was grouped with additional documents retrieved through hyperlinks to make a document set. More specifically, an additional document was sampled from the intersection between the popularity list and hyperlinked document13. Such a process was done to construct a document set interconnected with each other, thus forming a comprehensive basis for generating queries requiring the integration of multiple sources as required for Factor 2.
+11Text in Wikipedia is co-licensed under the CC BY-SA and GFDL and is widely used in research. 12https://dumps.wikimedia.org/other/pageview_ complete/monthly/2023/ 13It was observed that relevance between documents tends to diminish beyond three hyperlink hops; hence, we limited the document range from one to three hops.
+# A.2 [Step 2] Detail of Instance Generation & Classification
+Based on the document set from Step 1, we use ChatGPT to generate 10 candidate pairs of question and answer. Taking into account Factor 2 and Factor 3, we classify the generated queries on two criteria; whether they require consideration of multiple contexts or single context (Factor 2) and whether they require a definite answer or free-form answer (Factor 3). During this classification process, pairs with low quality (e.g. meaningless conjunction of query from each document) or those requiring facts that don’t exist in the given context are removed. Annotators label the minimal set out of the provided context to answer the question along with the span of context they used to generate an answer. During this process, annotators label the minimal set out of the provided context to answer the question. Annotators are asked to write all forms of answers The interface used for instance filtering is in Figure 7.
+# A.3 [Step 3] Example of Atomic Facts
+For fine-grained evaluation, we decompose context sets into atomic facts. Atomic facts are short sentences conveying one piece of information. Following Min et al. (2023), we use InstructGPT to decompose. Example results of atomic facts decomposed when given a sentence is in Table 4.
+# A.4 [Step 3] Gold Atomic Annotation Interface
+From the atomic facts, we further annotate the gold ones, which we call gold atomic facts. Figure 8 is the interface used to annotate gold atomic facts. We get a high correlation between annotators; 0.82 when calculated with Cohen’s Kappa.
+# A.5 [Step 4] Modify Context Interface
+Human annotators are told to revise the instance in a way that they would be wrong if they had answered the question based on background knowledge, not based on the input context. Revision to any part of the instance was applied across the whole instance. For instance, if a fact negation was done on an atomic fact, any related parts of the question, context, and answer were also negated. The purpose of such instructions was to generate an instance with gold atomic facts that are unlikely to be found in the pretrained dataset, thereby distinguishing information from its parametric space.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/dc6f/dc6fcf37-30da-4efb-b55c-3ff4d95ae4b7.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 6: Data Construction Pipeline. Step 1-3 shows how we construct Original-Gold, and Step 4 shows how w modified the dataset, thereby constructing Conflict-Gold.</div>
+<div style="text-align: center;">Table 4: Examples of Atomic Facts for each sentence.</div>
+<div style="text-align: center;">Table 4: Examples of Atomic Facts for each sentence.</div>
+Sentence
+Atomic Facts
+The Indian Premier League (IPL) (also known as the
+TATA IPL for sponsorship reasons) is a men’s Twenty20
+(T20) cricket league that is annually held in India and
+contested by ten city-based franchise teams.
+Fact 1: The Indian Premier League is a men’s Twenty20 cricket league.
+Fact 2: The Indian Premier League is annually held in India.
+Fact 3: The Indian Premier League is contested by ten city-based franchise teams.
+Fact 4: The Indian Premier League is also known as the TATA IPL.
+Fact 5: The Indian Premier League is known as the TATA IPL for sponsorship reasons.
+The league’s format was similar to that of the English
+Premier League and the National Basketball Association
+in the United States.
+Fact 1: The league had a format.
+Fact 2: The league’s format was similar to the English Premier League.
+Fact 3: The league’s format was similar to the National Basketball Association in the
+United States.
+The Indian Cricket League (ICL) was founded in 2007
+with funding provided by Zee Entertainment Enterprises.
+Fact 1: The Indian Cricket League (ICL) was founded.
+Fact 2: The Indian Cricket League (ICL) was founded in 2007.
+Fact 3: Funding was provided for the founding of the Indian Cricket League (ICL).
+Fact 4: Zee Entertainment Enterprises provided funding for the founding of the Indian
+Cricket League (ICL).
+The first season was due to start in April 2008 in a
+’high-profile ceremony’ in New Delhi.
+Fact 1: The first season was due to start.
+Fact 2: The first season was due to start in April 2008.
+Fact 2: The first season was due to start in a high-profile ceremony.
+Fact 2: The high-profile ceremony was in New Delhi.
+Figure 9 is the interface used to construct a modified version of the dataset.
+# A.6 Human Annotators
+We recruit 4 Korean college students proficient in English and pay $15 USD per hour for step 4. The annotation was done in a two-phase process. Initially, the annotators dedicated 1.5 hours to the task, after which they received guidance on any errors made before completing the remaining annotations. For the rest of the steps, the authors took part in the
+annotation process.
+# A.7 Data Distribution
+After following the dataset construction step, we have 480 datasets (question, answer, context, gold atomic facts) along with 480 modified context pairs. In terms of distribution characteristics, we aimed to balance the various factors. Specifically, for Factor 1 and Factor 3, we achieve an approximate 50% distribution for both high (53.3%) and low (46.7%) popularity levels and for definite (54.1%) and free-
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ee9b/ee9bd4a9-18ba-4965-bd84-03ccf3111942.png" style="width: 50%;"></div>
+form (45.9%) answer types. However, concerning Factor 2, which revolves around the source multiplicity of our queries, it was challenging to generate high-quality queries from multiple sources in Step 2, thereby only 16.7% of the queries derived from multiple sources, with a predominant 83.3% stemming from a single source.
+# A.8 Dataset Examples
+Table 5 shows examples of instances within the new dataset we propose.
+# A.9 Adding Distractor Context
+We employ contriever (Izacard et al., 2022), a dense retriever pretrained through contrastive learning, to retrieve the top 40 contexts with high similarity to each question from the corpus used in our benchmark. Please note that for each question, we exclude contexts from Wikipedia documents that contain gold atomic facts due to the concern about potential changes or additions to these gold atomic facts. Examples of distractor contexts are in Table 7.
+Question
+Context
+Gold Atomic
+Answer
+Provide the claimed
+number of Viet Cong
+killed during Opera-
+tion Sunset Beach.
+Operation Sunset Beach :: On 20 September the 1st Battalion, 5th In-
+fantry Regiment (Mechanized) conducted a sweep of the Boi Loi Woods,
+meeting sporadic resistance and destroying bunkers and supplies.
+== Aftermath ==
+Operation Sunset Beach officially concluded on 11 October, with US
+reports claiming that Viet Cong losses were 80 killed (body count) and
+a further 135 estimated killed, U.S. losses were 29 killed.
+== References ==
+This article incorporates public domain material from websites or docu-
+ments of the United States Army Center of Military History.
+•
+US reports claim Viet Cong
+losses
+were
+80
+killed
+(body
+count).
+•
+US reports estimate Viet Cong
+losses were 135 killed.
+215
+What
+manufacturer
+provided the v8 engine
+that
+went
+into
+the
+Holden
+designed
+model which ceased
+production
+on
+20
+October 2017.
+Holden :: On 29 November 2016, engine production at the Fishermans
+Bend plant was shut down. On 20 October 2017, production of the last
+Holden designed Commodore ceased and the vehicle assembly plant at
+Elizabeth was shut down. Holden produced nearly 7.7 million vehicles.
+•
+On 20 October 2017, produc-
+tion of the last Holden designed
+Commodore ceased.
+Chevrolet
+Holden Commodore (VX) :: The optional Supercharged Ecotec V6
+extended its service to the Executive and Acclaim variants, with the
+171-kilowatt (229 hp) output figure remaining unchanged from the VT.
+As well as the supercharged six-cylinder, an even more powerful 5.7-litre
+Chevrolet-sourced Gen III V8 engine was offered. The powerplant re-
+ceived power increases from 220 to 225 kilowatts (295 to 302 hp). A
+modified front suspension setup received lower control arm pivot points.
+The Series II update featured the addition of a new rear cross member, re-
+vised rear control arm assemblies with new style bushing and toe-control
+links to the semi-trailing arm rear suspension to better maintain the toe
+settings during suspension movements, resulting in more predictable car
+handling, noticeably over uneven surfaces, and improved tyre wear.
+•
+The
+5.7-litre
+engine
+was
+Chevrolet-sourced.
+•
+The 5.7-litre engine was a Gen
+III V8.
+Explain what a "dump"
+refers to in volleyball.
+Volleyball jargon :: Arms can be in a platform position or in a overhead
+position like a set. The player digs the ball when it is coming at a down-
+ward trajectory
+Double contact or Double touch: A fault in which a player contacts the
+ball with two body parts consecutively
+D.S. : The abbreviation for "defensive specialist", a position player simi-
+lar to the libero who is skilled at back row defense
+Dump: A surprise attack usually executed by a front row setter to
+catch the defense off guard; many times executed with the left hand,
+sometimes with the right, aimed at the donut or area 4 on the court.
+Five-One: Six-player offensive system where a single designated setter
+sets regardless of court position.
+•
+A dump is a surprise attack.
+•
+A dump is usually executed by
+a front row setter.
+•
+A dump is executed to catch
+the defense off guard.
+•
+A dump is sometimes executed
+with the left hand.
+•
+A dump is sometimes executed
+with the right hand.
+•
+A dump is aimed at the donut
+or area 4 on the court.
+Question
+Context
+Gold Atomic
+Answer
+Provide the claimed
+number of Viet Cong
+killed during Opera-
+tion Sunset Beach.
+Operation Sunset Beach :: On 20 September the 1st Battalion, 5th In-
+fantry Regiment (Mechanized) conducted a sweep of the Boi Loi Woods,
+meeting sporadic resistance and destroying bunkers and supplies.
+== Aftermath ==
+Operation Sunset Beach officially concluded on 11 October, with US
+reports claiming that Viet Cong losses were 180 killed (body count) and
+a further 235 estimated killed, U.S. losses were 29 killed.
+== References ==
+This article incorporates public domain material from websites or docu-
+ments of the United States Army Center of Military History.
+•
+US reports claim Viet Cong
+losses were 180 killed (body
+count).
+•
+US reports estimate Viet Cong
+losses were 235 killed.
+415
+What
+manufacturer
+provided the v8 engine
+that
+went
+into
+the
+Holden
+designed
+model which ceased
+production
+on
+20
+October 2017.
+Holden :: On 29 November 2016, engine production at the Fishermans
+Bend plant was shut down. On 20 October 2017, production of the last
+Holden designed Commodore ceased and the vehicle assembly plant at
+Elizabeth was shut down. Holden produced nearly 7.7 million vehicles.
+•
+On 20 October 2017, produc-
+tion of the last Holden designed
+Commodore ceased.
+Audi
+Holden Commodore (VX) :: The optional Supercharged Ecotec V6
+extended its service to the Executive and Acclaim variants, with the
+171-kilowatt (229 hp) output figure remaining unchanged from the VT.
+As well as the supercharged six-cylinder, an even more powerful 5.7-litre
+Audi-sourced Gen III V8 engine was offered. The powerplant received
+power increases from 220 to 225 kilowatts (295 to 302 hp). A modified
+front suspension setup received lower control arm pivot points. The
+Series II update featured the addition of a new rear cross member, revised
+rear control arm assemblies with new style bushing and toe-control links
+to the semi-trailing arm rear suspension to better maintain the toe settings
+during suspension movements, resulting in more predictable car handling,
+noticeably over uneven surfaces, and improved tyre wear.
+•
+The 5.7-litre engine was Audi-
+sourced.
+•
+The 5.7-litre engine was a Gen
+III V8.
+Explain what a "dump"
+refers to in volleyball.
+Volleyball jargon :: Arms can be in a platform position or in a overhead
+position like a set. The player digs the ball when it is coming at a
+downward trajectory
+Double contact or Double touch: A fault in which a player contacts the
+ball with two body parts consecutively
+D.S. : The abbreviation for "defensive specialist", a position player
+similar to the libero who is skilled at back row defense
+Dump: A final blow usually executed by a front row setter to catch the
+defense off guard; many times executed with the left hand, sometimes
+with the right, aimed at the donut or area 4 on the court.
+Five-One: Six-player offensive system where a single designated setter
+sets regardless of court position.
+•
+A dump is a final blow.
+•
+A dump is usually executed by
+a front row setter.
+•
+A dump is executed to catch
+the defense off guard.
+•
+A dump is sometimes executed
+with the left hand.
+•
+A dump is sometimes executed
+with the right hand.
+•
+A dump is aimed at the donut
+or area 4 on the court.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/01f3/01f39b9f-dca2-44c6-b92f-b3e2c2f3077b.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 8: User interface used for gold atomic annotation</div>
+# A.10 Difference from existing datasets
+Our dataset differs from previous knowledge retrieval datasets in three key aspects. First is the existence of gold atomic facts annotation. Gold
+atomic facts are necessary to calculate recall performance; as previous works focused on calculating only precision, there is no dataset with gold atomic facts annotation. The second is conflict QA pair
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/076c/076ce427-26ae-49bc-85f5-fdfa1cac2a3f.png" style="width: 50%;"></div>
+<div style="text-align: center;">Title: Double-breasted [https://en.wikipedia.org/wiki/Double-breasted]</div>
+Title: Hoodie [https://en.wikipedia.org/wiki/Hoodie]
+A hoodie (in some cases spelled hoody and alternatively known as a hooded sweatshirt) is a sweatshirt with a hood.Hoodies’ history can be traced back to the era of Medieval Europe when monks used to wear robes with a hood called a cowl, and outdoor workers wore hooded capes.Hoodies with zippers usually include two pockets on the lower front, one on either side of the zipper, while "pullover" hoodies (without zippers) often include a single large muff or pocket in the same location. Both styles (usually) include a drawstring to adjust the hood opening. When worn up, the hood covers most of the head and neck and sometimes the face.
+A hoodie (in some cases spelled hoody and alternatively known as a hooded sweatshirt) is a sweatshirt with a hood.Hoodies’ history can be traced back to the era of Medieval Europe when monks used to wear robes with a hood called a cowl, and outdoor workers wore hooded capes.Hoodies with zippers usually include two pockets on the lower front, one on either side of the zipper, while "pullover" hoodies (without zippers) often include a single large muff or pocket in the same location. Both styles (usually) include a drawstring to adjust the hood opening. When worn up, the hood covers most of the head and neck and sometimes the face.
+3 Write how many number of atomic facts you revised in number nt in the c esses the  he Billboa ents of Op Figure 9: An illustration of the interface to modify context. The question, answer, input context, and corresponding gold atomics are given to the annotators and annotators should modify well-known information by revising gold atomic facts and input contexts. Annotators are also asked to check which type of modification they did.
+Atomic Fact is not in Paragraph![z] The title of paragraph is same as the answer[x] Write the error in detail please purpose lack Thu e strateg ployed d World W inclusion. Our dataset contains conflict QA pairs to differentiate between knowledge derived from external sources and memorized knowledge; to see
+A hoodie (in some cases spelled hoody and alternatively known as a hooded
+sweatshirt) is a sweatshirt with a hood.Hoodies’ history can be traced back to the
+era of Medieval Europe when monks used to wear robes with a hood called a cowl,
+and outdoor workers wore hooded capes.Hoodies with zippers usually include two
+pockets on the lower front, one on either side of the zipper, while "pullover" hoodies
+(without zippers) often include a single large muff or pocket in the same location.
+Q86_L_DOC623_0_0
+q
+A hoodie is a sweatshirt with a hood.
+Q86_L_DOC623_0_4
+w
+Hoodies with zippers usually include two pockets on the lower
+front.
+Q86_L_DOC623_0_5
+e
+Hoodies without zippers usually include a single large muff or
+pocket in the same location.
+Both styles (usually) include a drawstring to adjust the hood opening.
+Q86_L_DOC623_1_1
+t
+The drawstring is used to adjust the hood opening.
+When worn up, the hood covers most of the head and neck and sometimes the
+face.
+Q86_L_DOC623_2_0
+a
+The hood covers most of the head and neck when worn up.
+Q86_L_DOC623_2_1
+s
+The hood sometimes covers part of the face when worn up.
+whether the model generates a response by truly grounding on external context rather than generating a memorized one. Last is the consideration
+Title: Sepsis Context: Sepsis (septicaemia in British English), or blood poisoning, is a life-threatening condition that arises when the body’s response to infection causes injury to its own tissues and organs.This initial stage of sepsis is followed by suppression of the immune system. Common signs and symptoms include fever, increased heart rate, increased breathing rate, and confusion. There may also be symptoms related to a specific infection, such as a cough with pneumonia, or painful urination with a kidney infection.
+Title: Hypotension Context: Hypotension is low blood pressure. Blood pressure is the force of blood pushing against the walls of the arteries as the heart pumps out blood. Blood pressure is indicated by two numbers, the systolic blood pressure (the top number) and the diastolic blood pressure (the bottom number), which are the maximum and minimum blood pressures, respectively.
+Title: Hypotension Context: Hypotension is low blood pressure. Blood pressure is the force of blood pushing against the walls of the arteries as the heart pumps out blood. Blood pressure is indicated by two numbers, the systolic blood pressure (the top number) and the diastolic blood pressure (the bottom number), which are the maximum and minimum blood pressures, respectively.
+What is a common factor of Sepsis and Hypotension?
+Title: .223 Remington Context: This cartridge is loaded with DuPont IMR4475 powder.During parallel testing of the T44E4 (future M14) and the ArmaLite AR-15 in 1958, the T44E4 experienced 16 failures per 1,000 rounds fired compared to 6.1 for the ArmaLite AR-15. Because of several different .222 caliber cartridges that were being developed for the SCHV project, the .222 Special was renamed .223 Remington. In May 1959, a report was produced stating that five- to seven-man squads armed with ArmaLite AR-15 rifles have a higher hit probability than 11-man squads armed with the M-14 rifle.
+What was the initial name of .223 Remington?
+Title: Gunshot wound Context: Long-term complications can include bowel obstruction, failure to thrive, neurogenic bladder and paralysis, recurrent cardiorespiratory distress and pneumothorax, hypoxic brain injury leading to early dementia, amputations, chronic pain and pain with light touch (hyperalgesia), deep venous thrombosis with pulmonary embolus, limb swelling and debility, lead poisoning, and posttraumatic stress disorder (PTSD). Factors that determine rates of gun violence vary by country. These factors may include the illegal drug trade, easy access to firearms, substance misuse including alcohol, mental health problems, firearm laws, social attitudes, economic differences and occupations such as being a police officer. Where guns are more common, altercations more often end in death. Before management begins it should be verified the area is safe.
+# #Top2
+Title: Medical glove Context: Medical gloves are recommended to be worn for two main reasons: To reduce the risk of contamination of health-care workers hands with blood and other body fluids. To reduce the risk of germ dissemination to the environment and of transmission from the health-care worker to the patient and vice versa, as well as from one patient to another. == History == Caroline Hampton became the chief nurse of the operating room when Johns Hopkins Hospital opened in 1889.
+# #Top1
+#Top1 Title: .35 Remington Context: The .35 Remington (9.1 x 49 mm) is the only remaining cartridge from Remington’s lineup of mediumpower rimless cartridges still in commercial production. Introduced in 1906, it was originally chambered for the Remington Model 8 semi-automatic rifle in 1908.It is also known as 9 x 49 mm Browning and 9 mm Don Gonzalo. == History == Over the years, the .35 Remington has been chambered in a variety of rifles by most firearms manufacturers, and continues in popularity today in the Marlin Model 336 lever-action and Henry Side Gate Lever Action.
+# #Top2
+Title: Squad automatic weapon Context: During its long service in the US military, it was pivotal in the evolution of U.S. fireteam tactics and doctrine that continues to the present day. Modern squad automatic weapons (such as the RPK and L86) are modified assault rifles or battle rifles (e.g. FN FAL 50.41 and M14A1) that may have increased ammunition capacity and heavier barrels to withstand continued fire and will almost always have a bipod. In the case of some assault rifles, such as the H&K G36 or Steyr AUG, the SAW is simply the standard rifle with a few parts replaced.
+of multiple axes. We take into account various axes (F1, F2, F3in Figure 2) widely recognized to impact knowledge augmented LM performance together. Table 8 shows the clear distinctions between our dataset and others for a comprehensive understanding.
+# B Evaluate Human Correlation for Meval
+As the same knowledge could be represented in various ways, we utilize a prediction model Meval, which predicts whether knowledge of each atomic fact is in a generated response or input context. We evaluate five different Meval and choose the one with the highest correlation with humans. In section B.1, we show the interface we used by human evaluators. In section B.2, we share the details on the models we used and how we used them. We assess the presence of the knowledge by evaluation model (Me

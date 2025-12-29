@@ -1,0 +1,529 @@
+# r.ICL: Demonstration-Retrieved In-context Le
+Man Luo1 Xin Xu2 Zhuyun Dai2 Panupong Pasupat2 Mehran Kazemi2 Chitta Baral1 Vaiva Imbrasaite2 Vincent Y Zhao2 1 Arizona State University 2 Google Research
+# Abstract
+In-context learning (ICL), teaching a large language model (LLM) to perform a task with few-shot demonstrations rather than adjusting the model parameters, has emerged as a strong paradigm for using LLMs. While early studies primarily used a fixed or random set of demonstrations for all test queries, recent research suggests that retrieving semantically similar demonstrations to the input from a pool of available demonstrations results in better performance. This work expands the applicability of retrieval-based ICL approaches by demonstrating that even simple word-overlap similarity measures such as BM25 outperform randomly selected demonstrations. Furthermore, we extend the success of retrieval-based ICL to instruction-finetuned LLMs as well as Chainof-Thought (CoT) prompting. For instructionfinetuned LLMs, we find that although a model has already seen the training data at training time, retrieving demonstrations from the training data at test time yields better results compared to using no demonstrations or random demonstrations. Last but not least, we train a task-specific demonstration retriever that outperforms off-the-shelf retrievers.
+# 1 Introduction
+Language models are now the foundation models for many natural language processing tasks across a wide range of domains (Bommasani et al., 2021). One of the most exciting emergent abilities (Wei et al., 2022a) of large language models (LLMs) is in-context learning (ICL) (Brown et al., 2020; Mishra et al., 2022). With ICL, instructions and a few demonstrative examples are augmented to the inputs to LLMs, allowing them to perform well on new tasks without the need for fine-tuning. Typically, ICL approaches utilize random or hand-crafted demonstrations that are applied across various queries. This may, however, not always be optimal. Recent research has revealed that us-
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/40ed/40edd0b0-9845-485f-8947-26bde837e808.png" style="width: 50%;"></div>
+ing demonstrations semantically similar to the input query can enhance performance (Liu et al., 2022). In this work, we investigate two off-theshelf retrievers, BM25 (Robertson et al., 2009) and GTR (Ni et al., 2021), where BM25 is a sparse retriever that finds demonstrations with the highest (weighted) word overlap with the query, while GTR is a dense retriever that seeks demonstrations semantically closest to the query. Then, we utilize them to obtain query-specific demonstrations, and study demonstration-retrieved ICL (Dr. ICL) with a general and an instruction-finetuned LLM. Beyond previous work, several interesting findings are discovered through our experiments as shown in Figure 1. Firstly, we establish that both BM25 and GTR can find more effective demonstrations than random demonstrations in both oneshot and few-shot ICL settings. Such off-the-shelf retrievers make Dr. ICL an appealing paradigm for real-world applications. Secondly, our results with an instruction-finetuned LLM, i.e., FlanPaLM (Chung et al., 2022), indicate that training data can be useful not only for training models but for accompanying a retriever for testing, suggesting a more efficient way to utilizing training data which are expensive to collect. Lastly, by combining with an advanced prompting technique, Chain-of-
+Thought (CoT) (Wang et al., 2022), demonstrationretrieved proves to be more effective than relying solely on CoT. This suggests that Dr. ICL can boost the performance of powerful prompt engineering techniques. Next, we aim to go beyond off-the-shelf retrievers which are often geared towards question answering or information retrieval tasks thus the retrieved demonstrations might capture queryspecific knowledge required to answer the query. However, the retrieved demonstrations given by the off-the-shelf retrievers might not represent the nature of the task and how the task should be solved in general. Consider, for example, the query “In a barn are chickens and rabbits with 35 heads and 94 legs total. How many chickens and rabbits are there?”. Off-the-shelf retrievers may mostly provide information about the animals in the question and their properties such as number of heads and legs (i.e. query-specific knowledge), but may not provide enough similar linear algebra questions (i.e. information about the nature of the task). Therefore, we develop a demonstration retriever that is tailored to retrieving representative demonstrations. Figure 2 showcases the process of training the demonstration retriever: we first create a demonstration retrieval training set using signals from a language model. Concretely, we use an off-the-shelf retriever to find demonstration candidates for a given input question, prepend them to the question, and then obtain probabilities from the language model to re-rank the candidates. We then use the top-n and bottom-n candidates as positive and hard-negative examples, respectively, to construct a training set and train the retriever to identify the best demonstration example for a given query. Experimental results show that the demonstration retriever outperforms off-the-shelf retrievers, with more noticeable improvement in one-shot ICL. This encouraging result indicates that the trained retriever could offer an effective substitute for off-the-shelf models.
+# 2 Related Work
+# 2.1 Few-shot In-context Learning
+Few-shot in-context learning (ICL) is a technique that allows language models, such as GPT3 (Brown et al., 2020) and PaLM (Chowdhery et al., 2022), to generalize to new tasks based on a small number of examples. ICL offers several advantages over the traditional training ap-
+proach of language models, which involves pretraining followed by fine-tuning. One key benefit is that fine-tuning may not always be feasible due to restricted access to the LLM or inadequate computational resources (Brown et al., 2020). Additionally, ICL avoids the issues commonly associated with fine-tuning, such as overfitting or shocks (Ying, 2019; Kazemi et al., 2023), as it does not modify the model’s parameters, allowing it to remain general. However, the effectiveness of ICL varies depending on various factors, such as the order of the demonstrations (Kumar and Talukdar, 2021), the distribution of the demonstrations (Min et al., 2022), and the complexity and quality of the prompts themselves (Zhao et al., 2021; Arora et al., 2022). Some research has shown that lower perplexity prompts (Gonen et al., 2022) and open-ended question-answer formats (Arora et al., 2022) tend to lead to better performance, while others have found that intermediate reasoning steps (Wei et al., 2022b) and higher complexity prompts (Fu et al., 2022) can also improve results on certain tasks (Suzgun et al., 2022; Wang et al., 2022). In an effort to understand how ICT works, studies have suggested that ICL may involve implicit Bayesian inference (Xie et al., 2021) and a symbiotic relationship between text and patterns (Madaan and Yazdanbakhsh, 2022), and can behave similarly to explicit fine-tuning (Dai et al., 2022). Our work focus on the effect of demonstrations for ICL with large language models.
+# 2.2 Retrieval Augmented Demonstrations
+As summarized in Table 1, several previous works have explored retrieval techniques for identifying more informative demonstrations to boost incontext learning. KATE (Liu et al., 2022) discovers that semantically closer demonstrations outperform random ones for GPT-3 in-context learning. They employ language models trained on tasks like natural language inference and sentence textual similarity as semantic representations and utilize the kNN algorithm to search for demonstrations. EPR (Rubin et al., 2022) develops a retriever based on language model signals to find superior demonstrations compared to off-the-shelf retrievers. Instead of using a separate retriever for each task, UPRISE Cheng et al. (2023) merges multiple training datasets into a retrieval corpus and trains a universal retriever for cross-domain tasks. PARC (Nie et al., 2022) employs a multilin-
+Paper
+LLMs
+Retrieval Method
+Retrieval Corpus
+Evaluation Tasks
+# of Shots in Prompts
+CoT
+KATE 2022
+GPT-3
+RoBERTa+kNN
+In-Domain TD
+SA, T2T
+Few-shots
+No
+EPR 2022
+GPT-J,
+GPT-Neo,
+CODEX,
+GTP-3
+SBERT, BM25, FT Re-
+triever
+In-Domain TD
+SRM
+Few-shots
+No
+CEIL 2023
+GPT-Neo,
+GPT2-XL,
+CodeX
+BM25, BERT, DPR, FT
+Retriever
+In-Domain TD
+SA, PD, NLI, CSR, QA,
+codeG, and SP
+Few shots
+No
+UPRISE 2023 GPT-Neo,
+BLOOM,
+OPT, GPT-3
+FT Retriever
+Cross Tasks TD
+RC, QA, NLI, SA, CSR,
+CR, PD
+Few shots
+No
+Ours
+PaLM, Flan-
+PaLM
+BM25,
+GTR, FT Re-
+triever
+In-Domain TD
+QA, NLI, MathR, BC
+One-shot, Few-shots
+Yes
+Table 1: Comparison with Related Work. TD: training data, QA: question answering, RC: reading comprehension NLI: natural language inference, SA: sentiment analysis, CSR: commonsense reasoning, CR: Coreference Reso lution, MathR: mathmatical reasoning, PD: paraphrase detection, SP:semantic parsing, CodeG: code generation SRM: Sentence representation mapping, T2T: Table to Text generation, Question Answering,
+gual retrieval strategy to find demonstrations from high-resource tasks, thereby enhancing the performance of low-resource domain tasks. CEIL (Ye et al., 2023), instead of retrieving few-shot demonstrations independently, introduces an iterative retrieval method to identify both diverse and similar few-shot examples. While the aforementioned methods retrieve demonstrations from training data, Madaan et al. (2022); Dalvi et al. (2022) incorporate human feedback to create demonstrations and maintain a dynamic retrieval corpus. Z-ICL (Lyu et al., 2022) generates pseudo demonstrations to enhance zero-shot in-context performance. In contrast to the methods that retrieve explicit demonstrations, RETROPROMPT (Chen et al., 2022) transforms explicit demonstrations into implicit neural demonstrations represented by vectors. Rather than using a retriever, Ram et al. (2023) applies a crossattention reranker to re-rank documents retrieved by BM25.
+# 3 Demonstration-Retrieved In-Context Learning (Dr. ICL)
+We start by describing ICL for general tasks (including classification or generation tasks). For a task T, given an input text xq, an LLM is used to predict the answer yq conditioned on a set of demonstrations of the task, Demo = {d1, d2, · · · , dn}, where di = (xi, yi) is a pair of input and ground truth answer. Typically, di is linearized as a string (e.g., “question: xi \n answer: yi”) and then provided to the LM. Recently, the Chain-ofthoughts prompting technique (Wei et al., 2022b) has demonstrated its effectiveness in handling complex reasoning tasks. The primary concept involves including intermediate reasoning steps for each
+demonstration, so it consists of not only the input and ground truth answer but also the step-by-step reasoning process. There are multiple strategies for choosing the set of demonstrations. For instance, one could randomly or manually select a fixed set Demo to be applied to all queries of task T. Alternatively, a retriever can be used to find query-specific demonstrations from the training set Dtrain:
+Demoxq = Retriever(xq, Dtrain, n),
+(1)
+where Demoxq are the top-n demonstrations that the retriever considers most suitable for the input xq. In this work, we consider two off-the-shelf retrievers, BM25 and GTR (Section 3.1), and then propose a method to train a retriever tailored to the target task T (Section 3.2).
+# 3.1 Off-the-shelf Retrievers
+BM25 (Robertson et al., 2009) is a bag-of-words model that calculates relevance scores using term frequency, inverse document frequency, and document length normalization. It has proven effective and efficient, making it easily deployable in largescale, real-world applications. However, BM25 heavily relies on keyword matching and lacks context understanding, which may result in less accurate outcomes. In contrast, GTR (Ni et al., 2021) is a dual-encoder neural retriever (based on T5) trained on the MS Marco dataset (Nguyen et al., 2016). GTR excels in semantic and context comprehension and is easily transferable to downstream tasks or specific domains. However, it has lower memory and computational efficiency, and lacks interpretability.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cc58/cc58a002-943c-409b-b473-42df083fdc70.png" style="width: 50%;"></div>
+<div style="text-align: center;">Obtain the positive and negative demonstrations  to train R</div>
+Figure 2: Pipeline for training demonstration retriever and inference (R for a neural retriever). Figure on the left shows the procedure of obtaining data to train a demonstration retriever: an off-the-shelf retriever takes an input query xq and retrieves top-k (e.g., 100) demonstrations candidates from the training corpus. Then an LLM is used to output the score of the ground truth of yq with each retrieved demonstration and xq. Figure on the right shows the inference pipeline for in-context learning with the trained demonstration retriever.
+# 3.2 Demonstration Retriever Training
+Demonstration retrieval aims to find the most representative demonstrations for each input query. Ideally, the demonstrations should capture both (a) the query-specific knowledge required to answer the query, and (b) the nature of the task and how the task should be solved in general. Off-the-shelf retrievers such as BM25 and GTR were designed for information retrieval and question answering. As such, they mostly retrieve demonstrations of type (a) but not (b). To fill this gap, we propose to train a demonstration retriever by leveraging the feedback from a language model. As demonstrated in Figure 2, the process involves two steps: obtaining the training data and training a retriever on the data.
+Off-the-shelf retrievers such as BM25 and GTR were designed for information retrieval and question answering. As such, they mostly retrieve demonstrations of type (a) but not (b). To fill this gap, we propose to train a demonstration retriever by leveraging the feedback from a language model. As demonstrated in Figure 2, the process involves two steps: obtaining the training data and training a retriever on the data.
+Obtain the Training data We want to teach the retriever model to locate examples that lead to the most accurate predictions. We propose to mine a set of demonstrations for each input query xq in the training data as follows. First, given a questionanswer pair (xq, yq) ∈Dtrain, we use an off-theshelf retriever to find a demonstration candidate set D for xq, where xq is exclusive from D. Second, we test each demonstration d ∈D on how much it helps on the target task. The LM probability pLM(yq | d, xq) of the gold answer yq is used as the score for the demonstration. Finally, we keep the top-n demonstration as the positive demonstrations, and the bottom-n as the hard negative demonstrations.
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/1fa9/1fa9edfd-da96-4edd-b1bf-6acbd77f747d.png" style="width: 50%;"></div>
+<div style="text-align: center;">LLM Inference with R</div>
+Training Procedure Our retriever is a dual encoder, which defines the score of any querydocument pair (q, d) as s(q, d) = v⊤ q vd, where vq and vd are the embeddings of q and d. We initialize our retriever with GTR, and then fine-tune it on the training data via contrastive loss with both in-batch and hard negatives:
+(2)
+ � where d+ and d− j are the positive and negative demonstrations. The negative demonstrations include the positive demonstrations for the other input queries in the same batch and 1 randomlychosen hard negative demonstration.
+# 4 Experiments
+Datasets and Evaluation Metrics We study various tasks across 5 datasets: free-form question answering (NQ), natural language inference (ANLIr3), mathematical reasoning (GSM8k and AQuA) and boolean question answering (StrategyQA). For the last three datasets, we apply CoT. All the tasks are evaluated by exact matching accuracy.
+Language Models PaLM-540B (Chowdhery et al., 2022) and Flan-PaLM (540B) (Chung et al., 2022) are used as the primary LLMs. Both models have the same architecture, but Flan-PaLM has been further trained on thousands of tasks for instruction learning (including all the five datasets we studied in this paper) and shows superior generalization performance compared to PaLM. At
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/4dad/4dada7d2-01e8-42fd-bdba-a1d7b375d6cb.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 3: PaLM: One-shot and few-shot inference with three types of demonstrations, random, BM25, and GTR.</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/f581/f581ba03-5231-4e06-a675-81166f2378e6.png" style="width: 50%;"></div>
+inference time, we use the temperature of 0.0 and maximum decoding length 10 for tasks without CoT and 256 for tasks involving CoT.
+Retrievers As explained in §3, we explore using BM25 and GTR as off-the-shelf retrievers, as well as training our own retriever for each task. For BM25, we use uncased BERT wordpiece tokenization and parameters (k1, b) = (1.5, 0.75). For GTR, we use the pretrained GTR-Base model. When mining data for training our retriever, we use the pretrained GTR to retrieve 100 demonstrations candidates, and then use PaLM-62B to score each candidate. (We used the smaller PaLM-62B instead of 540B for efficiency.) Then we select the top-5 reranked demonstrations as the positive candidates to fine-tune GTR.
+Retrieval Corpus We create a separate retrieval corpus for each task using the associated training data. For tasks with CoT, each entry in the corpus is composed of the question, the CoT, and the answer, while for other tasks are without the CoT.
+# 4.1 Results
+Off-the-shelf-retriever performance Figures 3 and 4 show the performance of PaLM and FlanPaLM under one-shot and few-shot ICL settings, with and without retrievers. We make the following observations.
+Observation 1: Off-the-shelf retrievers are capable of finding more effective demonstrations than random ones. Figure 3 shows that the demonstrations retrieved by BM25 or GTR are better than random ones under both one-shot and few-shot scenarios for the PaLM model. It is worth mentioning that BM25 is more efficient in terms of indexing memory and retrieval latency compared to semantic retrievers like GTR or other sentence encoders (Liu et al., 2022), which makes it easier to deploy. Observation 2: Dr. ICL improves instructionfinetuned LLM. Previous research has primarily focused on investigating demonstration retrieved ICL with general LLMs (such as GPT-3) rather than instruction-finetuned LLMs, possibly because they did not consider reusing the training data. In our study, we examine Dr. ICL with Flan-PaLM, an instruction-finetuned LLM, and present the results in Figure 4. Overall, the retrieved demonstrations outperform no demonstrations or random demonstrations. This implies that the training data should be reused during inference as they can be retrieved and enhance the performance, even if the model has already seen such data. We conjecture that the retrieved demonstrations may enhance knowledge localization for ICL, which could explain the observed improvement. Observation 3: Dr. ICL can further improve advanced prompting technique, Chain-of-Thought.
+Task
+Method
+One Shot
+Few Shots
+NQ
+GTR
+37.8
+43.9
+Demo-GTR(our)
+39.2(+1.4)
+43.9
+ANLI (r3)
+GTR
+54.0
+59.0
+Demo-GTR(our)
+54.8(+0.8)
+59.0
+GSM8k
+GTR
+57.7
+61.0
+Demo-GTR(our)
+59.3(+1.6)
+61.5(+0.5)
+Avg.
+GTR
+49.8
+54.6
+Demo-GTR(our)
+51.1(+1.3)
+54.8(+0.2)
+Table 2: Performance of PaLM using GTR and DemoGTR retrieved demonstrations. Demo-GTR consistently achieves better performance than GTR in one-shot case. In our experiments on GSM8k, StrategyQA, and AQuA, using Dr. ICL in conjunction with CoT results in improved performance under both one-shot and few-shot ICL scenarios. This finding suggests that Dr. ICL has the potential to enhance the performance of powerful prompting techniques. The observations above hold significant values for real-world applications. Incorporating ICL with a simple BM25 demonstration retriever, which is highly scalable in terms of latency and indexing memory, is proven to improve the performance of the LLM, including when instruction finetuning or Chain-of-Thought were used. Examples of retrieved demonstrations given by the off-the-shelf retrievers are given in the Table 4 in Appendix.
+# Trained Demonstration Retriever Performance
+We experiment our trained demonstration retriever with PaLM. Table 2 displays both one-shot and fewshot performance and show that the demonstration retriever is better than off-the-shelf GTR in almost all cases, leading to a better overall performance. Notably, the improvements were most significant in the one-shot ICL scenario, which requires less inference latency and computing resources than few-shot ICL. These promising results suggest that the trained retriever could provide an effective alternative to off-the-shelf models.
+# 5 Analysis
+To rule out the chance that retrieved demonstrations are more advantageous than random ones simply because in the benchmark datasets the former’s answers are identical to the correct ones, we assess the overlap percentage between the demonstration responses and the target. In the few-shot scenario, we aggregate the answers from the demonstrations via majority voting. From Table 3, it is evident
+that for the first forth datasets, the overlap ratio is roughly equal to or less than the uniform distribution, suggesting that the benefits of the retrieved demonstrations are not due to label identification. In the case of the NQ, we notice a considerable overlap between demonstration answers and the ground truth. We then randomly select 100 instances out of the 433 overlapped cases from GTRretrieved demonstrations (one-shot) and manually examine them. We find that, indeed, for the majority of the 100 instances, the input questions are semantically equal to the demonstration questions.
+Task
+Random
+Retriever
+One-shot
+Few-shot
+ANLI3
+33.33
+BM25
+33.33
+31.42
+GTR
+34.75
+32.25
+StrategyQA
+50.0
+BM25
+48.79
+47.34
+GTR
+47.83
+48.31
+AQUA
+20.0
+BM25
+22.83
+25.98
+GTR
+24.02
+22.05
+GSM8K
+0.0
+BM25
+1.36
+1.82
+GTR
+0.99
+1.14
+NQ
+0.0
+BM25
+8.95
+8.70
+GTR
+11.99
+11.08
+Table 3: Overlapped Ratio of Demonstrations Answers with Targets: Random represents the probability of selecting the correct label if we select randomly from the space of possible labels.
+# 6 Discussion and Conclusion
+In this work, we first leverage two off-the-shelf retrievers to enhance ICL by searching queryoriented demonstrations. Our experiments demonstrated that off-the-shelf retrievers are more effective than random demonstrations, with GTR generally retrieving more representative demonstrations than BM25. More importantly, our results with Flan-PaLM indicated that training data can be useful not only for training a model but also for improving the performance of fine-tuned LLM during testing via ICL. Our experiments with CoT also suggests that integrating Dr. ICL with advanced prompting techniques can further improve model’s performance. Additionally, we trained a demonstration retriever that further improved the overall performance of off-the-shelf retrievers, with the most significant improvements observed in the oneshot scenario. One interesting future research challenge is retrieving demonstrations across tasks in situations where training data is not available.
+Stephen Robertson, Hugo Zaragoza, et al. 2009. The probabilistic relevance framework: Bm25 and beyond. Foundations and Trends® in Information Retrieval, 3(4):333–389. Ohad Rubin, Jonathan Herzig, and Jonathan Berant. 2022. Learning to retrieve prompts for in-context learning. In Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, pages 2655–2671. Mirac Suzgun, Nathan Scales, Nathanael Schärli, Sebastian Gehrmann, Yi Tay, Hyung Won Chung, Aakanksha Chowdhery, Quoc V Le, Ed H Chi, Denny Zhou, et al. 2022. Challenging big-bench tasks and whether chain-of-thought can solve them. arXiv preprint arXiv:2210.09261. Boshi Wang, Sewon Min, Xiang Deng, Jiaming Shen, You Wu, Luke Zettlemoyer, and Huan Sun. 2022. Towards understanding chain-of-thought prompting: An empirical study of what matters. arXiv preprint arXiv:2212.10001. Jason Wei, Yi Tay, Rishi Bommasani, Colin Raffel, Barret Zoph, Sebastian Borgeaud, Dani Yogatama, Maarten Bosma, Denny Zhou, Donald Metzler, et al. 2022a. Emergent abilities of large language models. Transactions on Machine Learning Research. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Ed Chi, Quoc Le, and Denny Zhou. 2022b. Chain of thought prompting elicits reasoning in large language models. arXiv preprint arXiv:2201.11903. Sang Michael Xie, Aditi Raghunathan, Percy Liang, and Tengyu Ma. 2021. An explanation of in-context learning as implicit bayesian inference. In International Conference on Learning Representations. Jiacheng Ye, Zhiyong Wu, Jiangtao Feng, Tao Yu, and Lingpeng Kong. 2023. Compositional exemplars for in-context learning. arXiv preprint arXiv:2302.05698. Xue Ying. 2019. An overview of overfitting and its solutions. In Journal of physics: Conference series, volume 1168, page 022022. IOP Publishing. Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. 2021. Calibrate before use: Improving few-shot performance of language models. In International Conference on Machine Learning, pages 12697–12706. PMLR. A Examples of Retrieved Demonstrations
+Question
+BM25 Demo
+GTR Demo
+Q: when does the new episodes of super-
+natural start?
+A: October 12, 2017
+Q: when does the new episodes of ghost
+adventures start?
+A: June 16, 2018
+Q: when does the next episode of super-
+natural come out?
+A: April 5, 2018
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith would have
+been a ripe old age of 128 if he were still
+alive today. Is it true, false, or neither?
+answer: false
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith was on the
+Thule expedition. Is it true, false, or nei-
+ther?
+answer: true
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith was a very
+educated man about many different cul-
+tures and expressed love in his field of
+expertise. Is it true, false, or neither?
+answer: neither
+Question
+BM25 Demo
+GTR Demo
+Q: when does the new episodes of super-
+natural start?
+A: October 12, 2017
+Q: when does the new episodes of ghost
+adventures start?
+A: June 16, 2018
+Q: when does the next episode of super-
+natural come out?
+A: April 5, 2018
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith would have
+been a ripe old age of 128 if he were still
+alive today. Is it true, false, or neither?
+answer: false
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith was on the
+Thule expedition. Is it true, false, or nei-
+ther?
+answer: true
+Kaj Birket-Smith (20 January 1893 – 28
+October 1977) was a Danish philologist
+and anthropologist. He specialized in
+studying the habits and language of the
+Inuit and Eyak. He was a member of
+Knud Rasmussen’s 1921 Thule expedi-
+tion. In 1940, he became director of the
+Ethnographic Department of the National
+Museum of Denmark.
+question: Kaj Birket-Smith was a very
+educated man about many different cul-
+tures and expressed love in his field of
+expertise. Is it true, false, or neither?
+answer: neither
+Q: The original retail price of an appli-
+ance was 60 percent more than its whole-
+sale cost. If the appliance was actually
+sold for 20 percent less than the original
+retail price, then it was sold for what per-
+cent more than its wholesale cost?
+Options: (A) 20(B) 28(C) 36(D) 40(E)
+42Step-by-step reasoning process: whole-
+sale cost = 100; original price = 100*1.6
+= 160; actual price = 160*0.8 = 128.
+A: (B)
+Q: A retail appliance store priced a video
+recorder at 20 percent above the whole-
+sale cost of $200. If a store employee
+applied the 20 percent employee discount
+to the retail price to buy the recorder,
+how much did the employee pay for the
+recorder?
+Options: (A) $198 (B) $216 (C) $192 (D)
+$230 (E) $240
+Step-by-step reasoning process: Whole-
+sale cost of video recorder = 200 $ Video
+recorder was priced at 20 percent above
+200 = 240 $ % discount given by store
+Q: A retailer bought a machine at a whole-
+sale price of $108 and later on sold it after
+a 10% discount of the retail price. If the
+retailer made a profit equivalent to 20%
+of the whole price, what is the retail price
+of the machine?
+Options: (A) 81 (B) 100 (C) 120 (D) 135
+(E) 144
+Step-by-step reasoning process: My solu-
+tion: Wholesale Price= 108 Retail Price,
+be = x He provides 10 % discount on Re-
+tail price= x-10 x/100 This Retail price
+= 20 % profit on Wholesale price x-10
+<div style="text-align: center;">BM25 Demo</div>
+Q: The original retail price of an appli-
+ance was 60 percent more than its whole-
+sale cost. If the appliance was actually
+sold for 20 percent less than the original
+retail price, then it was sold for what per-
+cent more than its wholesale cost?
+Options: (A) 20(B) 28(C) 36(D) 40(E)
+42Step-by-step reasoning process: whole-
+sale cost = 100; original price = 100*1.6
+= 160; actual price = 160*0.8 = 128.
+A: (B)
+Q: A retail appliance store priced a video
+recorder at 20 percent above the whole-
+sale cost of $200. If a store employee
+applied the 20 percent employee discount
+to the retail price to buy the recorder,
+how much did the employee pay for the
+recorder?
+Options: (A) $198 (B) $216 (C) $192 (D)
+$230 (E) $240
+Step-by-step reasoning process: Whole-
+sale cost of video recorder = 200 $ Video
+recorder was priced at 20 percent above
+200 = 240 $ % discount given by store
+employee = 20 Emlpoyee paid = .8 * 240
+= 192 $
+A: (C)
+Q: A retailer bought a machine at a whole-
+sale price of $108 and later on sold it after
+a 10% discount of the retail price. If the
+retailer made a profit equivalent to 20%
+of the whole price, what is the retail price
+of the machine?
+Options: (A) 81 (B) 100 (C) 120 (D) 135
+(E) 144
+Step-by-step reasoning process: My solu-
+tion: Wholesale Price= 108 Retail Price,
+be = x He provides 10 % discount on Re-
+tail price= x-10 x/100 This Retail price
+= 20 % profit on Wholesale price x-10
+x/100 = 108+ 1/5(108) x=144;
+A: (E)
+Q: Lori wants to buy a $320.00 pair of shoes and a matching belt that is $32.00. Her part-time job pays her $8.00 an hour. How many hours will she have to work before she can make her purchase? Step-by-step reasoning process: b"She wants to buy a pair of shoes for $320.00 and a belt for $32.00 for a total of 320+32 = $«320+32=352.00»352.00 Her purchase will total $352.00 and she makes $8.00 at her part-time job so she’ll have to work 352/8 = «352/8=44»44 hours A: 44
+Q: Lori wants to buy a $320.00 pair of
+shoes and a matching belt that is $32.00.
+Her part-time job pays her $8.00 an hour.
+How many hours will she have to work
+before she can make her purchase?
+Step-by-step reasoning process: b"She
+wants to buy a pair of shoes for $320.00
+and a belt for $32.00 for a total of 320+32
+= $«320+32=352.00»352.00 Her pur-
+chase will total $352.00 and she makes
+$8.00 at her part-time job so she’ll have
+to work 352/8 = «352/8=44»44 hours
+A: 44
+Q: Joanne makes $16.00 working at her
+main job for 8 hours a day. She has a
+part-time job, working an extra 2 hours
+a day where she makes $13.50 an hour.
+How much money does she make if she
+works this schedule 5 days a week?
+Step-by-step reasoning process:
+She
+works 8 hours a day at $16.00 an hour
+so she makes 8 * 16 = $128.00 a day.
+She works this job 5 days a week so she
+makes 128 * 5 = $640.00 in 5 days. She
+works 2 hours a day at $13.50 an hour
+so she makes 2 * 13.50 = $27.00 a day.
+She works this job 5 days a week so she
+makes 27 * 5 = $135.00. She makes $640
+at her main job and $135 at her part - time
+job so all total she makes 640 + 135 =
+$775.00 in 5 days.
+A: 775
+Q: Janice has been working part-time at
+a convenience store 5 days a week. She
+can earn $30 per day and can earn $15
+more when she works a 2 hour overtime
+shift. If she works three overtime shifts
+this week, how much will she earn this
+week?
+Step-by-step reasoning process: Janice
+can earn $30 x 5 = $150 per week. She
+will earn $15 x 3 = $45 more if she works
+three overtime shifts. Therefore, Janice
+will earn $150 + $45 = $195 this week.
+A: 195
+Q: If it socially acceptable to wear an
+icon depicting crucifixion?
+Step-by-step reasoning process: The cru-
+cifixion of Jesus is a common sign used
+by Catholics and Christian denomina-
+tions.Many jewelry stores offer necklaces
+with the Crucifixion of Jesus Christ.
+A: yes
+Q: Was the Donatello crucifix identified
+in 2020 life size?
+Step-by-step reasoning process:
+The
+crucifix discovered in the church of
+Sant’Angelo depicts an adult man. The
+crucifix discovered in the church of
+Sant’Angelo is 89 cm high. The crucifix
+discovered in the church of Sant’Angelo
+was identified as being a work of Do-
+natello. The average height of an adult
+man has been at least 150 cm in historical
+times.
+A: no
+Q: Did any cultures associate celery with
+death?
+Step-by-step reasoning process: Ancient
+Greeks used garlands of celery leafs to
+bury their dead. Ancient Greece was con-
+sidered a culture.
+A: yes
+chase will total $352.00 and she makes
+$8.00 at her part-time job so she’ll have
+to work 352/8 = «352/8=44»44 hours
+A: 44
+She works this job 5 days a week so she
+makes 128 * 5 = $640.00 in 5 days. She
+works 2 hours a day at $13.50 an hour
+so she makes 2 * 13.50 = $27.00 a day.
+She works this job 5 days a week so she
+makes 27 * 5 = $135.00. She makes $640
+at her main job and $135 at her part - time
+job so all total she makes 640 + 135 =
+$775.00 in 5 days.
+A: 775
+will earn $15 x 3 = $45 more if she works
+three overtime shifts. Therefore, Janice
+will earn $150 + $45 = $195 this week.
+A: 195
+Q: If it socially acceptable to wear an
+icon depicting crucifixion?
+Step-by-step reasoning process: The cru-
+cifixion of Jesus is a common sign used
+by Catholics and Christian denomina-
+tions.Many jewelry stores offer necklaces
+with the Crucifixion of Jesus Christ.
+A: yes
+Q: Was the Donatello crucifix identified
+in 2020 life size?
+Step-by-step reasoning process:
+The
+crucifix discovered in the church of
+Sant’Angelo depicts an adult man. The
+crucifix discovered in the church of
+Sant’Angelo is 89 cm high. The crucifix
+discovered in the church of Sant’Angelo
+was identified as being a work of Do-
+natello. The average height of an adult
+man has been at least 150 cm in historical
+times.
+A: no
+Q: Did any cultures associate celery with
+death?
+Step-by-step reasoning process: Ancient
+Greeks used garlands of celery leafs to
+bury their dead. Ancient Greece was con-
+sidered a culture.
+A: yes
+A: 775
+Q: If it socially acceptable to wear an
+icon depicting crucifixion?
+Step-by-step reasoning process: The cru-
+cifixion of Jesus is a common sign used
+by Catholics and Christian denomina-
+tions.Many jewelry stores offer necklaces
+with the Crucifixion of Jesus Christ.
+A: yes
+Q: Was the Donatello crucifix identified
+in 2020 life size?
+Step-by-step reasoning process:
+The
+crucifix discovered in the church of
+Sant’Angelo depicts an adult man. The
+crucifix discovered in the church of
+Sant’Angelo is 89 cm high. The crucifix
+discovered in the church of Sant’Angelo
+was identified as being a work of Do-
+natello. The average height of an adult
+man has been at least 150 cm in historical
+times.
+A: no
+Q: Did any cultures associate celery with
+death?
+Step-by-step reasoning process: Ancient
+Greeks used garlands of celery leafs to
+bury their dead. Ancient Greece was con-
+sidered a culture.
+A: yes
+Q: Janice has been working part-time at a convenience store 5 days a week. She can earn $30 per day and can earn $15 more when she works a 2 hour overtime shift. If she works three overtime shifts this week, how much will she earn this week? Step-by-step reasoning process: Janice can earn $30 x 5 = $150 per week. She will earn $15 x 3 = $45 more if she works three overtime shifts. Therefore, Janice will earn $150 + $45 = $195 this week. A: 195

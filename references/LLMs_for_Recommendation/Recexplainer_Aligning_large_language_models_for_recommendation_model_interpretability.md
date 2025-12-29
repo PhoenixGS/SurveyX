@@ -1,0 +1,653 @@
+# cExplainer: Aligning Large Language Models for Explaining Recommendation Models
+
+Jianxun Lian ∗
+Microsoft Research Asia Beijing, China jianxun.lian@outlook.com
+Yuxuan Lei University of Science and Technology of China Hefei, China leiyuxuan@mail.ustc.edu.cn
+
+Defu Lian ∗
+Xing Xie Microsoft Research Asia Beijing, China xing.xie@microsoft.com
+Xu Huang University of Science and Technology of China Hefei, China xuhuangcs@mail.ustc.edu.cn
+University of Science and Technology of China Hefei, China liandefu@ustc.edu.cn
+
+Defu Lian ∗
+Xu Huang University of Science and Technology of China Hefei, China xuhuangcs@mail.ustc.edu.cn
+University of Science and Technology of China Hefei, China liandefu@ustc.edu.cn
+
+# Abstract
+
+Recommender systems are widely used in online services, with embedding-based models being particularly popular due to their expressiveness in representing complex signals. However, these models often function as a black box, making them less transparent and reliable for both users and developers. Recently, large language models (LLMs) have demonstrated remarkable intelligence in understanding, reasoning, and instruction following. This paper presents the initial exploration of using LLMs as surrogate models to explaining black-box recommender models. The primary concept involves training LLMs to comprehend and emulate the behavior of target recommender models. By leveraging LLMs’ own extensive world knowledge and multi-step reasoning abilities, these aligned LLMs can serve as advanced surrogates, capable of reasoning about observations. Moreover, employing natural language as an interface allows for the creation of customizable explanations that can be adapted to individual user preferences. To facilitate an effective alignment, we introduce three methods: behavior alignment, intention alignment, and hybrid alignment. Behavior alignment operates in the language space, representing user preferences and item information as text to mimic the target model’s behavior; intention alignment works in the latent space of the recommendation model, using user and item representations to understand the model’s behavior; hybrid alignment combines both language and latent spaces. Comprehensive experiments conducted on three public datasets show that our approach yields promising results in understanding and mimicking target models, producing high-quality, high-fidelity, and distinct explanations. Our code is available at https://github.com/microsoft/RecAI.
+
+# • Information systems → Recommender systems; •  Computing methodologies → Natural language generation.
+
+∗ Corresponding authors.
+
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. KDD ’24, August 25–29, 2024, Barcelona, Spain © 2024 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 979-8-4007-0490-1/24/08 https://doi.org/10.1145/3637528.3671802
+
+CCS Concepts
+• Information systems → Recommender systems; •  Computing methodologies → Natural language generation.
+
+# CCS Concepts
+• Information systems → Recommender systems; •  Computing methodologies → Natural language generation.
+
+Keywords
+Large Language Models, Recommender Systems, Model Explainability
+
+ACM Reference Format: Yuxuan Lei, Jianxun Lian, Jing Yao, Xu Huang, Defu Lian, and Xing Xie. 2024. RecExplainer: Aligning Large Language Models for Explaining Recommendation Models. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD ’24), August 25–29, 2024, Barcelona, Spain. ACM, New York, NY, USA, 12 pages. https://doi.org/10. 1145/3637528.3671802
+
+# 1 Introduction
+
+Recommender systems provide the appropriate information to the right individual based on comprehending users’ preferences and intentions [19, 20, 25]. These systems have become an essential component in various online services, including e-commerce, news, and television & movies. Embedding-based recommender models, such as collaborative filtering based on latent factors [20, 26] and sequential recommenders [16, 22], showcase their remarkable expressiveness in representing complex signals, and have thus been extensively utilized in recommender systems. However, embeddingbased models typically function in a black-box manner, resulting in a lack of explainability. Model explainability is a crucial aspect of building reliable and trustworthy recommender systems. It offers multiple advantages, including insights into the underlying logic of systems, identification of bugs, detection of biases, and providing clues for model improvement. One mainstream category of techniques for model explanation involves training a surrogate model to align with original black-box model [21, 36, 37, 54]. This surrogate model must be both human-interpretable and maintain (local) fidelity to the original model. Once trained, it serves as an effective explainer for the original model. However, existing surrogate models typically employed, such as sparse linear models and decision trees, are inherently explainable but usually compromise fidelity due to their simplicity. Furthermore, the explanations generated are often
+
+limited to basic styles, such as additive weights or multiple decision rules, and lack semantic interpretation from human-readable perspective.
+
+limited to basic styles, such as additive weights or multiple decision rules, and lack semantic interpretation from human-readable perspective. Recently, large language models (LLMs) have exhibited exceptional versatility and proficiency in handling complex tasks such as question answering, code comprehension, reasoning, and instruction following [2, 8, 17, 33, 34]. The remarkable capabilities of LLMs present new opportunities to revolutionize various research fields within machine learning, including explainable AI. With an extensive repository of world knowledge embedded in their memory and powerful multi-step reasoning skills, LLMs are renowned for generating high-quality, human-readable explanations. As a result, the traditional paradox that self-explainable surrogate models must be simple and low-complexity may no longer hold true. In this paper, we investigate the potential of utilizing an LLM as a surrogate model for explaining recommender systems. We begin with the traditional training approach, which primarily involves aligning an LLM with a target recommendation model. The recommendation model is pre-trained and remains unaltered during this process. The LLM is then trained to emulate the recommendation model’s predictive patterns—given a user’s profile as input, the LLM is fine-tuned to predict the items that the recommendation model would suggest to the user. We refer to this approach as behavior alignment. However, similar to traditional surrogate model-based approach, behavior alignment merely mimics predictive observations from outside the model, attempting to deduce what is happening within the black-box. We argue that a more profound way to explain the execution logic of models involves enabling the LLM to directly comprehend the neural layers of the recommender model. Therefore, we propose an alternative approach called intention alignment, wherein the embeddings (i.e., activations of neural layers) of the recommender model are incorporated into the LLM’s prompts to represent user and item information, and the LLM is fine-tuned to understand these embeddings. This approach can be considered as a multimodal model, with textual words and recommendation model embeddings representing two distinct data modalities. Take [15] from the series of vision-language multimodal models [23, 31, 43, 44] as an example. The image pixels are transformed into embeddings by a pre-trained vision model. The language model is then trained to comprehend the contents of the original image by incorporating these embeddings into the input context. Eventually, the language model aligns itself with the vision model’s space, acquiring the ability to understand and respond to questions about the image. Merging the advantages of both approaches, we introduce a novel method called hybrid alignment. This strategy effectively counteracts the hallucination issues associated with the intention alignment approach by incorporating both explicit titles and implicit embeddings in the prompt during training and inference stages. Thus, hybrid alignment facilitates a more robust and comprehensive understanding of the recommender model, ultimately enhancing the LLM to generate highly credible explanations. To validate the effectiveness of our proposed approaches, we conduct extensive experiments on three public datasets, examining their alignment effect and explanation generation ability. Empirical evidence demonstrates that LLMs can be successfully aligned to
+
+accurately reflect and comprehend the behavior of recommender models, highlighting their potential as a new type of surrogate model for explaining complex systems. Our contributions can be summarized as follows:
+
+•  We propose to align LLMs for explaining recommender models, presenting a significant potential to advance explainable AI research by overcoming the traditional dilemma of requiring surrogate models to be simple for self-explainability.
+• To enable efficient model alignment, we introduce two distinct approaches: behavior alignment and intention alignment, each providing unique benefits. Additionally, we present hybrid alignment, a method that combines the advantages of both approaches.
+• We rigorously evaluate these alignment approaches on three publicly available datasets, demonstrating their effectiveness in both comprehension and explanation, highlighting the potential of LLMs as a new type of surrogate model for explaining recommender models.
+
+# 2 Methodologies 2.1 Problem Formulation
+
+In recommender systems, users are represented by their behavioral sequences: x 𝑢 = ⟨ 𝑎 1,𝑎 2, ...,𝑎 | x 𝑢 | ⟩, where 𝑎 ∗ represents an item that user 𝑢 has interacted with in the past, and items are listed in chronological order. A recommender model 𝑓 () learns to assign a higher score to items that users favor over those they don’t: 𝑓 (x 𝑢,𝑎 𝑖)> 𝑓 (x 𝑢,𝑎 𝑗), where 𝑎 𝑖 denotes a positive item and 𝑎 𝑗 denotes a negative item for the user. To scale large systems, the twotower model paradigm has been extensively employed in industrial recommender systems, particularly in initial steps such as item recall. In this paradigm, users and items are separately encoded into embeddings: e 𝑢 = 𝑒𝑛𝑐𝑜𝑑𝑒𝑟 𝑢𝑠𝑒𝑟 (x 𝑢), e 𝑖 = 𝑒𝑛𝑐𝑜𝑑𝑒𝑟 𝑖𝑡𝑒𝑚 (a 𝑖), and the preference score is determined by the similarity between e 𝑢 and e 𝑖. This paper focuses on the two-tower model paradigm and leaves other paradigms such as the single-tower paradigm for future work. Given a trained recommender model 𝑓 (), our objective is to tune an LLM 𝑔 () to explain the decision-making process within 𝑓 (). In next sections, we detail our methodologies for tuning LLMs into recommendation model explainer (RecExplainer), covering three styles: behavior alignment, intention alignment, and hybrid alignment, which are denoted as RecExplainer-B, RecExplainer-I, and RecExplainer-H, respectively.
+
+# 2.2 Behavior Alignment
+
+In this approach, we fine-tune an LLM 𝑔 () such that its predictive behavior aligns with the recommender model 𝑓 (). The hypothesis is that if an LLM ideally aligns with a target model’s predictions, it can imitate the execution logic of the target model and make corresponding predictions, then the LLM can leverage its inherent knowledge and reasoning capabilities to generate an explanation for its predictions. Fine-tuning tasks include: Task 1: Next item retrieval. Given item titles of user history x 𝑖, this task teaches the LLM about the recommendations the target model would make to the user. It is important to note that there are two major differences between Task 1 for training 𝑔 and the traditional next item prediction task for training model 𝑓. First, the label in Task 1 is based on the predicted items from the target model
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/e8c4/e8c47128-b68e-4229-b7c6-3334a041fc78.png" style="width: 50%;"></div>
+<div style="text-align: center;">illustrations for aligning LLM with different tasks.
+</div>
+<div style="text-align: center;">Figure 1: Graphical illustrations for align
+</div>
+<div style="text-align: center;">Figure 1: Graphical illustrations for aligning LLM with different tasks.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/3781/3781c5e5-f9cc-4ec0-9dd5-858a4ebbe114.png" style="width: 50%;"></div>
+<div style="text-align: center;">Recommender model
+</div>
+<div style="text-align: center;">Explanations
+</div>
+𝑓, rather than the ground truth in the original dataset. Second, the input and output content do not contain item IDs but are replaced with textual titles. These modifications ensure that the LLM focuses on understanding the target model’s decision-making patterns. Task 2: Item ranking. Given the item titles of user history x 𝑖 and a short list of item candidates p 𝑖 = ⟨ 𝑎 1,𝑎 2, ...,𝑎 𝑘 ⟩, this task teaches the LLM to reorder p 𝑖 to reflect the order provided by 𝑓 (). Retrieval and ranking are two of the most crucial tasks for recommender systems; therefore, Task 1 and Task 2 are specifically designed to align an LLM with the recommendation process of the recommender model. Task 3: Interest classification. Given the item titles of user history x 𝑖 and one candidate item 𝑎 𝑗, the LLM must generate a binary label: like or dislike, reflecting whether user 𝑖 likes item 𝑗 or not from the perspective of 𝑓 (). To prepare training data samples, we set up two thresholds 𝑡 + and 𝑡 −, selecting items with 𝑓 (x 𝑖,𝑎 𝑗)> 𝑡 +
+as positive samples, and items with 𝑓 (x 𝑖,𝑎 𝑗) <𝑡 − as negative samples. Task 3 serves as a complement to Task 2: while Task 2 teaches the LLM to recognize relative orders between items, it lacks the ability to discern the absolute sentiment of 𝑓 () towards items. Task 4: Item discrimination. A pretrained LLM may not possess sufficient knowledge about all items in a recommendation domain. This insufficiency can arise due to various reasons, such as the
+
+presence of fresh items and domain-specific items that appear less frequently in general knowledge sources. To address this issue of missing item knowledge, we design the item discrimination task: given an item title, let the LLM describe item details, including tags, descriptions, and related items 1. This task helps the LLM to better understand the characteristics of items. Task 5: ShareGPT training. To mitigate catastrophic forgetting, which leads to a decline in the LLM’s general intelligence during fine-tuning, we also incorporate a general-purpose instruction tuning dataset. ShareGPT 2 is a publicly available dataset that contains conversations between users and ChatGPT, which is gathered from ShareGPT.com with public APIs. This dataset has been used for training numerous popular LLMs, such as Vicuna [5] and MPT 3. Incorporating ShareGPT training helps preserve the LLM’s general intelligence and adaptability while fine-tuning on specific tasks. This task is important because when generating explanations, not only does LLM need to understand the target recommender model, but it also needs to combine its own reasoning, instruction following and other general intelligence abilities. All five tasks play a crucial role in generating training samples for behavior alignment. After fine-tuning, the LLM is prompted to produce model explanations. For example, given a prompt like"[some system prompts here] Given a user with history: item title 1, item title 2, ..., will you recommend item xx to the user and why?", the LLM can mimic the execution logic of the recommendation model and generate a well-informed and coherent explanation, demonstrating its understanding of the underlying recommendation process and user preferences.
+
+# 2.3 Intention Alignment
+
+Nonetheless, LLMs exhibit capabilities far beyond mere behavior cloning. Recently, cross-modality training has shown remarkable success in enabling LLMs to comprehend multimodal content. For example, vision-language models treat text and images as two distinct modalities. By aligning perceptions derived from text and images, the resulting LLM can effectively understand the content of images. Consequently, by leveraging the inherent reasoning
+
+1 For each item, we select the top k items as its related items based on item embeddin similarities generated by the target recommender model. 2 https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered 3 https://www.mosaicml.com/blog/long-context-mpt-7b-8k
+
+abilities of the LLM, it becomes capable of providing linguistic explanations for images, such as answering the question, " Explain why this photo is funny". Building upon these insights, we treat the user and item embeddings generated from 𝑓 as a unique modality. This data modality captures the characteristics of items and users’ preferences. Consequently, we aim to align the LLM’s perceptions with those originating from the user and item embeddings. We term this approach"intention alignment", and its underlying hypothesis is that if an LLM can comprehend the neurons of the target model while retaining its multi-step reasoning capabilities, it holds the potential to elucidate the decision-making logic of the target model. To establish an effective connection between the LLM and embeddings from 𝑓, we modify the training data for Tasks 1 through 4 by replacing item names in the query prompts with their corresponding embeddings. For instance, a prompt of Task 1 becomes"[some system prompts here] Given a user with history: [a vector of user embedding], generate the next most likely item title.". This forces the LLM to generate accurate responses based on user and item embeddings. Specifically, for Tasks 1, 2, and 3, we replace the sequence of item titles in user history with a special token <user> and map it to a single projected user embedding � e 𝑢:
+
+# � e 𝑢 = 𝐺𝐸𝐿𝑈 (e 𝑢 𝑊 1 + b) 𝑊 2
+
+� e 𝑢 = 𝐺𝐸𝐿𝑈 (e 𝑢 𝑊 1 + b) 𝑊 2
+
+(1)
+
+�
+The projection operation aims to extend the original user embeddings generated by f (e.g., with a dimension of 32) to match the length of token embeddings in the LLM (e.g., with a dimension of 4096). For Tasks 2, 3, and 4, we substitute the candidate item title with a special token <item> and map it to the projected item embedding � e 𝑖, using a projection similar to 1 but with a new set of parameters. In addition to Tasks 1 through 5, we design an auxiliary task for intention alignment to enhance the information fidelity between user embeddings and the users’ true history: Task 6: History reconstruction. Given a projected user embedding � e 𝑢, this task recovers the titles of items in the user’s history or the preference summary of the user history. We leverage GPT-4 4
+[29] to generate a preference summary for each user based on user history titles in advance. It is important to note that Tasks 2 and 3 primarily concentrate on understanding the relationships between user embeddings and item embeddings, but they do not sufficiently explore the self-contained information within user embeddings. Task 6 is designed to address this limitation. For better illustration, Figure 1 provides a comparison among the processes of different tasks to highlight the distinctions, while Figure 2 shows the model architecture of the intention alignment.
+
+# 2.4 Hybrid Alignment
+
+The intention alignment approach entirely depends on user/item embeddings to decode preference-related information, which may lead to a too strict hypothesis. During the training of model 𝑓, a certain degree of information will inevitably be lost, such as it is hard to fully identify every item in user history from the encoded user embeddings. To mitigate the information lost, we design the
+
+4 The snapshot of GPT-4 is gpt-4-0314.
+
+third approach called "hybrid alignment", combining both the previous approaches. All Task 1 through 6 are included. for tasks that involve user history or item candidates, hybrid alignment not only include both data forms of behavior alignment and intention alignment, but also add a new data form: simultaneously put both user history/item candidates and user/item embeddings in the query prompt. Thus, a prompt may look like: "[some system prompts here] Given a user with history: [a vector of user embedding], item title 1, item title 2, ..., generate the next most likely item title."
+
+# 3 Experiments
+
+# 3.1 Evaluation Strategies and Metrics
+
+In measuring performance of our RecExplainer on explaining recommendation models, we evaluate from two perspectives:
+
+3.1.1 Alignment Effect. We first assess the LLM’s alignment effect, that is, to what extent LLMs can understand neurons and predictive patterns of the target recommender model. Following the previous work [52], we apply the leave-one-out strategy for evaluation. We take the last item of each user’s interaction sequence as the test data and use the other records for training the LLM and target recommender model. It should be noted that when training the target recommender model, we use labels from the original dataset, but when training the LLM, we use labels inferred by the welltrained recommendation model. We evaluate four alignment tasks, including task1 (next item retrieval), task2 (item ranking), task3 (interest classification), and task6 (history reconstruction). For next item retrieval, we adopt the top-K hit ratio (HR) and top-K normalized discounted cumulative gain (NDCG) for evaluation, where we set K to 5. For item ranking, we calculate the NDCG@5. For interest classification, we use classification accuracy. For history reconstruction, we define a history coverage ratio (HCR) metric, which calculates the proportion of items in the user history that appear in the predicted sequence. During the inference of LLM, we use greedy decoding to generate texts and consider a successful output when there is a strict string match between generated item names and their ground-truth names.
+3.1.2 Explanation Generation Ability. Considering that there is no available ground truth for the explanation, we need a new evaluation system to demonstrate the effectiveness of our method on model explainability. Specifically, we design an instruction to prompt the LLM to first evaluate the target item and then generate a coherent explanation:"The user has the following purchase history: {USER HISTORY} . Will the user like the item: {ITEM} ? Please give your answer and explain why you make this decision from the perspective of a recommender model. Your explanation should include the following aspects: summary of patterns and traits from user purchase history, the consistency or inconsistency between user preferences and the item." Following [46], we implement a four-level scoring system to quantitatively evaluate the response from the LLM. Complete criteria can be found in Appendix A.1. •  RATING0: Incorrect classification. •  RATING1: Correct classification, insufficient explanation. LLM provides irrelevant explanations or provide explanations with hallucination.
+
+3.1.1 Alignment Effect. We first assess the LLM’s alignment effect, that is, to what extent LLMs can understand neurons and predictive patterns of the target recommender model. Following the previous work [52], we apply the leave-one-out strategy for evaluation. We take the last item of each user’s interaction sequence as the test data and use the other records for training the LLM and target recommender model. It should be noted that when training the target recommender model, we use labels from the original dataset, but when training the LLM, we use labels inferred by the welltrained recommendation model. We evaluate four alignment tasks, including task1 (next item retrieval), task2 (item ranking), task3 (interest classification), and task6 (history reconstruction). For next item retrieval, we adopt the top-K hit ratio (HR) and top-K normalized discounted cumulative gain (NDCG) for evaluation, where we set K to 5. For item ranking, we calculate the NDCG@5. For interest classification, we use classification accuracy. For history reconstruction, we define a history coverage ratio (HCR) metric, which calculates the proportion of items in the user history that appear in the predicted sequence. During the inference of LLM, we use greedy decoding to generate texts and consider a successful output when there is a strict string match between generated item names and their ground-truth names.
+
+3.1.2 Explanation Generation Ability. Considering that there is no available ground truth for the explanation, we need a new evaluation system to demonstrate the effectiveness of our method on model explainability. Specifically, we design an instruction to prompt the LLM to first evaluate the target item and then generate a coherent explanation:"The user has the following purchase history: {USER HISTORY} . Will the user like the item: {ITEM} ? Please give your answer and explain why you make this decision from the perspective of a recommender model. Your explanation should include the following aspects: summary of patterns and traits from user purchase history, the consistency or inconsistency between user preferences and the item." Following [46], we implement a four-level scoring system to quantitatively evaluate the response from the LLM. Complete criteria can be found in Appendix A.1. •  RATING0: Incorrect classification. •  RATING1: Correct classification, insufficient explanation. LLM provides irrelevant explanations or provide explanations with hallucination.
+
+•  RATING2: Correct classification, acceptable explanation with minor imperfections such as lack of persuasiveness or informativeness.
+RATING3: Correct classification, satisfying explanation.
+
+•  RATING2: Correct classification, acceptable explanation with minor imperfections such as lack of persuasiveness or informativeness.
+
+•  RATING3: Correct classification, satisfying explanation.
+
+The evaluation criteria are formulated with a two-step approach: initially assessing correctness of the classification, followed by the assessment of explanation quality. The correctness of classification holds significant importance as it serves as an indicator of whether the LLM is formulating explanations based on an accurate understanding of the target model, rather than relying on conjecture. Considering that human annotation is extremely time-consuming and labor-intensive, we adopt a combined approach using both human annotators and LLM annotators. Some studies [4, 7] have already demonstrated that LLM can to some extent replace manual annotations. Since GPT-4 4 is currently the most powerful LLM with strong abilities to follow instructions and perform reasoning tasks, we adopt both GPT-4 scoring and human scoring strategies to evaluate our generated explanations. More specifically, for GPT-4, we use the aforementioned evaluation criteria as prompts, inputting them into GPT-4 to generate scores. We sample 500 test cases for each dataset, calculating the mean score of each LLM on each dataset. Regarding human scoring, due to cost considerations, we select a sample of 120 test cases from a single dataset. Given that there are five different LLMs for text generation, this results in a total of 600 generated texts for human evaluation. For more details about human and GPT-4 annotations, please refer to Appendix A. These human evaluation results effectively complement the GPT-4 evaluation results, providing a comprehensive assessment.
+
+# 3.2 Experimental Setup
+
+3.2.1 Datasets. We evaluate our model on three public datasets: Video Games and Movies & TV dataset released in Amazon platform 5 [28], and Steam 6 [16, 30]. For the specific tasks, we generate data as follows: for next item retrieval, we treat the top-1 prediction of the target recommender model as the ground truth; for item ranking, we sample five items from the entire item set for each sample, and use the ranking order produced by the target model as the ground truth; for interest classification, we set the 𝑡 + and 𝑡 − threshold as the top 20%, bottom 50% respectively, and sample one positive and one negative item for each user for training and testing. The dataset details can be found in Appendix B.
+
+3.2.2 Implementation details. Our backbone LLM is vicuna-v1.3-7b [5] with a maximum context length of 1024. We employ LoRA [14] for parameter-efficient tuning and leverage DeepSpeed’s ZeRO-2 [35] to further reduce gpu memory consumption. We use 8 NVIDIA V100-32GB GPUs and fp16 for training 10 epochs, with a total batch size of 64. The peak learning rate is 1e-4 with a linear warmup for the first 10% steps. We train our model using the standard language modeling objective and only compute loss on the response tokens. For the target recommender model, we adopt the powerful transformer-based model SASRec [16], which is lightweight and effective. Hyperparameter tuning is performed to train SASRec on three datasets, obtaining a well-trained sequential recommender.
+
+5 https://cseweb.ucsd.edu/~jmcauley/datasets/amazon_v2/ 6 https://github.com/kang205/SASRec
+
+Specifically, the embedding size is set to 256, 192, 256 on Video Games, Movies & TV and Steam datasets, respectively, and the max sequence length is set to 9, 13, 16 respectively. During LLM’s training, the target SASRec is fixed, which is used only for inferring user embeddings and item embeddings.
+3.2.3 Baselines. For evaluating the alignment effect, we employ two statistical models, a raw LLM and three aligned models.
+• Random: Sample k items uniformly from the item set for retrieval. Random shuffle the candidate items for ranking.
+• Popularity: Sample k items based on the item popularity distribution for retrieval. Sort the candidate items according to the item popularity.
+• Vicuna-v1.3-7B [5]: An open-source LLM obtained by finetuning the LLaMa model on ShareGPT data. This model serves as the base model which is not fine-tuned on our in-domain dataset.
+• Vicuna-v1.3-7B-ICL [5]: In-context learning is an effective approach to align LLMs to do specific tasks. Specifically, when performing a specific task, we randomly select two instances from the training set of that task and place them at the beginning of the LLM’s context.
+• GPT4-ICL [29]: Same in-context learning strategy but with the currently most powerful closed-source LLM from OpenAI.
+• SASRec [16]: a mainstream traditional sequential recommender model. To enable the SASRec to align to the target recommender model and complete several alignment tasks, we use knowledge distillation outlined in EMKD[10]. Specifically, we minimize the Kullback-Leibler divergence between the teacher logits and the student logits, where the logits represent the scores given by users for the entire item set.
+For evaluating the explanation generation ability, we use  Vicunav1.3-7B and ChatGPT 7 (gpt-3.5-turbo-0301), as other aforementioned methods either are not text generation models or lack readily available examples for in-context learning. Additionally, the three proposed alignment methods themselves are suitable for mutual comparisons on both evaluation settings.
+
+Specifically, the embedding size is set to 256, 192, 256 on Video Games, Movies & TV and Steam datasets, respectively, and the max sequence length is set to 9, 13, 16 respectively. During LLM’s training, the target SASRec is fixed, which is used only for inferring user embeddings and item embeddings.
+
+# 3.3 Performance w.r.t. Alignment
+
+To investigate the alignment effect of LLM after training, we evaluate model’s performance on four recommendation-related tasks, with the results presented in Table 1. It should be noted that for Tasks 1, 2 and 3 in Table 1, we use the inference results of the target recommender model as ground truth labels and the SASRec baseline in Table 1 is actually another model aligned with the target recommender model. We have the following observations: RecExplainer-H can achieve comparable performance with the powerful SASRec, and often performs better in retrieval (task1) and classification (task3) tasks. This demonstrates that our RecExplainer’s alignment training is sufficiently effective, as only thorough alignment can ensure the reliability of subsequent explanation generation. For the vicuna-7b model without alignment, the performance is unsatisfactory across all tasks. This suggests that there is still a significant gap between the target model and the LLMs, demonstrating the necessity of alignment training. In comparison to vicuna-7B, vicuna-7B-ICL with the adoption of the in-context
+
+7 https://chat.openai.com/
+
+formance w.r.t Alignment to the target recommender model. "N/A" represents that the method can not be applied t
+
+Table 1: Performance w.r.t Alignment to the target recommender model. "N/A" represents that the method can not b corresponding task.
+
+Table 1: Performance w.r.t Alignment to the target recommender model. "N/A" represents that the method ca corresponding task.
+
+Table 1: Performance w.r.t Alignment to the target recommender model. "N/A" re corresponding task.
+
+Dataset
+Amazon Video Games
+Amazon Movies and TV
+Steam
+Task
+Task1
+Task2
+Task3
+Task6
+Task1
+Task2
+Task3
+Task6
+Task1
+Task2
+Task3
+Task6
+Methods
+H@5
+N@5
+N@5
+ACC
+HCR
+H@5
+N@5
+N@5
+ACC
+HCR
+H@5
+N@5
+N@5
+ACC
+HCR
+Random
+0.0023
+0.0015
+0.6153
+0.5030
+N/A
+0.0050
+0.0030
+0.6100
+0.4987
+N/A
+0.0060
+0.0039
+0.6139
+0.4977
+N/A
+Popularity
+0.0077
+0.0047
+0.6683
+N/A
+N/A
+0.0150
+0.0088
+0.7044
+N/A
+N/A
+0.0321
+0.0201
+0.7971
+N/A
+N/A
+Vicuna-7B
+0.0026
+0.0014
+0.2391
+0.5026
+N/A
+0.0091
+0.0062
+0.2706
+0.5011
+N/A
+0.0028
+0.0015
+0.3229
+0.5000
+N/A
+Vicuna-7B-ICL
+0.0379
+0.0304
+0.2661
+0.5070
+N/A
+0.0144
+0.0104
+0.3005
+0.5079
+N/A
+0.0461
+0.0332
+0.2907
+0.5076
+N/A
+GPT4-ICL
+0.1105
+0.0864
+0.6492
+0.6338
+N/A
+0.0886
+0.0692
+0.5954
+0.5964
+N/A
+0.3008
+0.2525
+0.6750
+0.5886
+N/A
+SASRec
+0.6736
+0.5234
+0.8759
+0.7768
+N/A
+0.6217
+0.5025
+0.8252
+0.6541
+N/A
+0.9751
+0.8780
+0.9577
+0.8914
+N/A
+RecExplainer-B
+0.7460
+0.6260
+0.7521
+0.8365
+N/A
+0.8106
+0.7027
+0.7033
+0.7818
+N/A
+0.9310
+0.8100
+0.8699
+0.9554
+N/A
+RecExplainer-I
+0.8436
+0.6994
+0.8299
+0.9385
+0.1162
+0.9039
+0.7709
+0.8290
+0.8396
+0.1201
+0.9615
+0.8122
+0.9083
+0.9904
+0.0659
+RecExplainer-H
+0.8057
+0.6922
+0.8458
+0.9189
+0.1325
+0.8773
+0.7750
+0.7638
+0.8109
+0.1461
+0.9358
+0.8242
+0.9036
+0.9815
+0.0707
+learning method shows some improvements, but its performance remains relatively low. On the other hand, gpt4-ICL demonstrates significantly higher performance than vicuna-7B-ICL, showcasing its strong general intelligence. However, the performance of gpt4-ICL still lags far behind RecExplainer-H, as alignment training enables the LLM to thoroughly learn the recommendation paradigm of the target model on the entire dataset. Regarding our three alignment methods, RecExplainer-B performs the worst across all tasks and datasets, suggesting that merely imitating the recommendation behavior of the target model is not an optimal solution for understanding the target model. Given that the neurons of the target recommender model (such as user and item embeddings) can inherently reflect the recommendation paradigms and collaborative signals in the target model, we can see that the performance of RecExplainer-I improves significantly when these embeddings are used as part of prompts for the LLM. For RecExplainer-H, its performance is superior to all other approaches except on next item retrieval (task1) and interest classification (task3) tasks, which are slightly lower than that of RecExplainer-I in some datasets. A possible reason is that when both neuron signals and textual signals are added to LLM’s inputs, the LLM may overly rely on the text and, to some extent, neglect the role of neurons. Overall, The performance of RecExplainer-H is very powerful, indicating that textual and neuron signals can complement each other, jointly enhancing the LLM’s understanding of the target model. In conclusion, compared to models without alignment, LLMs with alignment training significantly enhance their predictive ability for the pre-trained target model. They can achieve comparable performance with existing alignment-based recommendation models, indicating that LLMs with alignment training have effectively learned the paradigm and neurons of the target model, making it suitable for subsequent recommendation explanation tasks.
+
+# Performance w.r.t. Explanation
+
+3.4.1 Overall Ratings. Evaluation results from GPT-4 and human experts are shown in Table 2 and Figure 3 respectively. We have the following observations: The trend of the two evaluation strategies are the same, validating the credibility of our evaluation method. Among which,
+
+RecExplainer-H achieves the highest scores on all three datasets, indicating that it can mimic the execution logic of the target model well and give satisfying explanations for that logic. RecExplainer-B comes next, suggesting that behavioral imitation is also helpful in understanding the execution paradigm of target models. For the two unaligned LLMs, Vicuna-7B and ChatGPT, they can generate reasonably good explanatory texts in some cases through their powerful reasoning capabilities and internal knowledge. However, since they are unrelated to the target model and are not aware of the target models’ predictive patterns, they are not sure whether the target model would recommend the item or not. As a result, their explanations tend to be ambiguous and lack persuasiveness and their scores tend to fall under the RATING-2. Another point worth mentioning is that we find RecExplainer-I has the lowest evaluation scores. By examining specific examples, we discover that it generates explanations with hallucination, such as mistaking other items as the current user’s history. This indicates that there might be a certain gap in directly reconstructing textual content from neuron signals, as the information may be insufficient. This is also demonstrated by the relatively low metrics of the history reconstruction task in the previous section.
+
+3.4.2
+
+3.4.2 Distinction and Coherence.  To further verify whether RecExplainer are indeed explaining its own predictions, we conduct validation from two perspectives: (1) Is RecExplainer’s explanations distinct from other LLM’s explanations? (2) Do RecExplainer’s explanations reflect RecExplainer’s predictions? We generate 2500 explanations for each of Vicuna-7B, ChatGPT, and RecExplainer-H, and divide them into training and testing sets at 4:1 ratio. Firstly, we train a discriminator to prove that the explanations generated by RecExplainer possess sufficient distinctiveness and are different from those produced by models without alignment training. The experimental results are illustrated in Figure 4, revealing that this discriminator can easily differentiate explanations from RecExplainer and other models. Secondly, we develop score predictors to assess the alignment between the explainer’s textual explanations and the target recommender model’s predictions. Specifically, for a given user-item pair (𝑢,𝑖), 𝑓 (x 𝑢,𝑎 𝑖) represents the prediction made by the target recommender model. The score
+
+predictors are then trained using the explainer’s textual explanations as input, with the goal of closely approximating 𝑓 (x 𝑢,𝑎 𝑖). This is a regression task, so we evaluate this using Mean Squared Error (MSE). The results, as presented in Table 3, indicate that explanations produced by RecExplainer offer a significant advantage when used to predict scores of the target model, confirming that RecExplainer effectively utilizes the understanding of the target model’s behavior patterns during the explanation generation process. Both the discriminator and the score predictor employed in this study are based on the base version of BERT[17].
+
+Table 2: Performance w.r.t. Explanation (GPT-4). The higher score represents the better performance in explanation, ranging from 0 to 3.
+
+Methods
+Games
+Movies
+Steam
+Vicuna-7B
+2.0703
+2.0261
+2.0341
+ChatGPT
+1.9320
+1.8360
+1.9560
+RecExplainer-B
+2.3240
+2.1360
+2.4660
+RecExplainer-I
+1.6653
+1.4689
+1.3394
+RecExplainer-H
+2.5240
+2.2204
+2.4920
+Table 3: Performance w.r.t score predictors. The metric is Mean Squared Error (MSE).
+
+<div style="text-align: center;">Table 3: Performance w.r.t score predictors. The metric is Mean Squared Error (MSE).
+</div>
+Methods
+Games
+Movies
+Steam
+Vicuna-7B
+3.6970
+2.8373
+0.9687
+ChatGPT
+3.4803
+2.8393
+1.0288
+RecExplainer-H
+1.2786
+1.9190
+0.3248
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/ec24/ec24fa43-88e4-44e4-ae9c-313be8a6ef7e.png" style="width: 50%;"></div>
+<div style="text-align: center;">e 3: Performance w.r.t Explanation (Human experts) on
+</div>
+<div style="text-align: center;">Figure 3: Performance w.r.t Explanation (Human experts) o Amazon Video Games dataset.
+</div>
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/cd1f/cd1ff5d6-ab70-4224-8057-116ca35d5f29.png" style="width: 50%;"></div>
+<div style="text-align: center;">Figure 4: Confusion matrix of explanation discriminatio
+</div>
+# 3.5 Case Study
+
+3.5.1 Explanation Quality. We show cases of each method for straightforward effect of explanation, illustrated in Figure 5. Both RecExplainer-B and RecExplainer-H give convincing explanations, which point out that firstly the user prefers gaming accessories and devices instead of games, and secondly the user has no explicit engagement in Xbox-360 platform, exhibiting high consistency with the output of the target recommender model. Nevertheless, Vicuna and ChatGPT do not give a satisfying and persuasive explanation. This is because they do not align with the target model and can only rely on their own knowledge and logic to make certain conjectures about user preferences, which may cause errors. Notably, RecExplainer-I exhibits hallucination in giving non-existing games. This illustrates that although the alignment is effective, solely relying on hidden neurons to recover the domain information of user history/items and make explanations are not enough due to the information compression loss in embeddings of the target model.
+3.5.2 Controllable Explanations.  Benefit from the powerful instruction following capability and multi-step reasoning ability of LLM, our RecExplainer possesses interactive capabilities, enabling itself to understand user requirements and dynamically adjust the content of its explanations accordingly. Concretely, we instruct RecExplainer to predict and explain from two different view, i.e. the game platforms and game genres, the cases are shown in Figure 6. The model could generate consistent predictions with the target model in each case, and the two explanations indeed vary corresponding to the instructions, demonstrating the remained instruction following capability and the controllability of our RecExplainer.
+
+# 3.6 Ablation Study w.r.t Explanation
+
+In our method, we design multiple training tasks to help the LLM better understand target recommender models and domain-specific data. To explore the impact of each task on LLM’s explanation generation ability, we remove each task to train a RecExplainer and evaluate the explanation quality using GPT-4. As shown in Figure 7, each training task contributes to the final explanation quality. Specifically, task3 (interest classification) and task 6 (history reconstruction) have shown to have the most substantial impacts. On the one hand, compared to item embedding, information in user embedding is more severely compressed, and history reconstruction effectively facilitates learning this information. On the other hand, during explanation generation, the model needs to justify the prediction of the target model. Therefore, the classification task also has a significant impact on the model’s explanation performance.
+
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/af64/af640462-d4f3-4479-a9a5-42faf9497dcc.png" style="width: 50%;"></div>
+# 
+<div style="text-align: center;"></div>
+
+# 
+
+# 
+
+
+Figure 5: Case study for explanation on Amazon Video Games dataset. Fonts highlighted in red signify the presence of errors within the generated explanations, while those highlighted in green denote accurate and logical explanations.
+
+# 4 Related Work
+
+# 4 Related Work 4.1 Model Explainability
+
+# 4.1 Model Explainability
+
+Deep neural models have demonstrated state-of-the-art (SOTA) performance in various machine learning tasks, and explaining the decision-making logic behind these black-box models has become a significant area of research. Existing literature in this field can be broadly divided into two categories [49]. The first category focuses on identifying the most salient parts of input features that contribute to the decision result of the target model, with the primary challenge being the effective implementation of score attribution. [11] present early work investigating the explainability of deep models by visualizing what a neuron computes in the input space, using several alternative methods such as sampling from a neuron and maximizing the activation of a neuron. Input space visualization
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/5ea7/5ea7c29c-9da9-4123-a270-1d4cbe715263.png" style="width: 50%;"></div>
+# 
+Figure 6: Case study for controllable explanation on Amazon Video Games dataset.
+
+<div style="text-align: center;"><img src="https://public-pdf-extract-kit.oss-cn-shanghai.aliyuncs.com/afbb/afbbb0a2-e668-442b-98ab-4e98178563f9.png" style="width: 50%;"></div>
+<div style="text-align: center;"></div>
+<div style="text-align: center;">igure 7: Ablation study on Amazon Video Games dataset.
+</div>
+Figure 7: Ablation study on Amazon Video Games da
+
+has since been widely applied in vision tasks [50, 51] to facilitate human understanding of deep models. [3, 12] propose models that select salient input features by maximizing the mutual information between salient features and response variables. Additionally, other popular feature selection methods include neuron contribution difference [38], integrated gradients [40], influence functions [18], and Shapley value estimation [6, 27, 39]. The second category of methods involves training a surrogate model to explain the target model. Surrogate models should maintain high fidelity to the target model’s predictive patterns while also possessing explainable properties. Consequently, linear models and decision trees are the most commonly used surrogate models. [21, 37, 54] develop methods for generating a small number of compact decision rules as surrogates to explain the target model. [36] proposes a general model explanation framework that allows for the flexible selection of various surrogate model forms, such as linear models or decision trees. However, surrogate models need
+
+to be structurally simple for explaining complex models, which creates a dilemma with model fidelity. Recently, LLMs have demonstrated strong versatility in terms of predictive accuracy and reasoning/explanation ability, providing an opportunity to overcome this dilemma. As a novel advancement in the first category of related works, [1] utilizes GPT-4 to automatically generate explanations for neurons based on the attributed input features. To the best of our knowledge, this paper is the first to discuss leveraging LLMs for the second category of methods.
+
+# 4.2 LLMs and Multimodality
+
+In recent years, the Transformer architecture [42] has become a fundamental building block for language models. Researchers have discovered that by pretraining large Transformer-based language models on extensive open data sources, these models exhibit enhanced capabilities in knowledge accumulation, multi-task learning, and few-shot or even zero-shot predictions [2, 8, 17, 33, 34]. Remarkably, when the model size reaches a certain scale (e.g., 170 billion parameters), language models exhibit emergent abilities [47], which are unforeseen phenomena, such as instruction following, reasoning, and problem-solving skills, indicating a preliminary step towards AGI. Consequently, researchers have begun to investigate whether emergent abilities can also be present in smaller-scale models (e.g., 7B models) if trained effectively. This inquiry has led to the development of several popular models, including OPT [53], Llama [41], Vicuna [5], WizardLM [48], and phi-1.5 [24]. The intelligence of large models is not solely confined to text; other data modalities, such as images [9, 13] and audio [32], can also benefit from large-scale pretraining. Multimodal models [23, 31, 43, 44] seek to break boundaries and bridge different modalities, as humans can simultaneously comprehend multimodal knowledge and perform complex tasks using all available information. Fundamentally, multimodal models align the models’ representations across different modalities in the form of latent embeddings [15, 45], enabling them to not only perceive each individual modality but also the interactions across modalities. With this perspective in mind, this paper considers the embeddings of recommender models as a new data modality and proposes a novel model explainer based on aligning LLMs.
+
+# 5 Conclusion
+
+In this paper, we investigate the potential of employing large language models (LLMs) as surrogate models to enhance the explainability of recommender systems. LLMs, known for generating highquality, human-readable explanations, offer a promising solution to the traditional dilemma of necessitating simple models for selfexplainability, thus paving the way for more advanced and transparent AI systems. We introduce three innovative alignment approaches — behavior alignment, intention alignment, and hybrid alignment — to facilitate effective model alignment. Each of these approaches offers unique advantages in terms of explainability and fidelity. Through rigorous evaluation on three publicly available datasets, we demonstrate the effectiveness of our proposed alignment approaches in both comprehension and explanation. Empirical evidence highlights the potential of LLMs as a new type of surrogate model for explainable recommender systems. As an
+
+initial attempt, our research contributes to the ongoing efforts in explainable AI, paving the way for future work on leveraging LLMs for a wide range of explainability applications in complex systems.
+
+# Acknowledgments
+
+The work was supported by grants from the National Key R&D Program of China (No. 2021ZD0111801) and the National Natural Science Foundation of China (No. 62022077).
+
+# References
+
+[1] Steven Bills, Nick Cammarata, Dan Mossing, Henk Tillman, Leo Gao, Gabriel Goh, Ilya Sutskever, Jan Leike, Jeff Wu, and William Saunders. 2023. Language models can explain neurons in language models. URL https://openaipublic. blob. core. windows. net/neuron-explainer/paper/index. html.(Date accessed: 14.05. 2023) (2023).
+[2] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. 2020. Language models are few-shot learners. Advances in neural information processing systems 33 (2020), 1877–1901.
+[3] Jianbo Chen, Le Song, Martin Wainwright, and Michael Jordan. 2018. Learning to explain: An information-theoretic perspective on model interpretation. In International conference on machine learning. PMLR, 883–892.
+[4] David Cheng-Han Chiang and Hung-yi Lee. 2023. Can Large Language Models Be an Alternative to Human Evaluations?. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2023, Toronto, Canada, July 9-14, 2023. Association for Computational Linguistics, 15607–15631. https://doi.org/10.18653/V1/2023.ACL-LONG.870
+[5] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E Gonzalez, et al. 2023. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt quality. See https://vicuna. lmsys. org (accessed 14 April 2023) (2023).
+[6] Anupam Datta, Shayak Sen, and Yair Zick. 2016. Algorithmic transparency via quantitative input influence: Theory and experiments with learning systems. In 2016 IEEE symposium on security and privacy (SP). IEEE, 598–617.
+[7] Bosheng Ding, Chengwei Qin, Linlin Liu, Yew Ken Chia, Boyang Li, Shafiq Joty, and Lidong Bing. 2023. Is GPT-3 a Good Data Annotator?. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2023, Toronto, Canada, July 9-14, 2023. Association for Computational Linguistics, 11173–11195. https://doi.org/10.18653/V1/2023.ACL-LONG.626
+[8] Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming Zhou, and Hsiao-Wuen Hon. 2019. Unified language model pretraining for natural language understanding and generation. Advances in neural information processing systems 32 (2019).
+[9]  Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. 2021. An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale. In  9th International Conference on Learning Representations, ICLR 2021, Virtual Event, Austria, May 3-7, 2021. OpenReview.net. https://openreview.net/forum?id=YicbFdNTTy
+10] Hanwen Du, Huanhuan Yuan, Pengpeng Zhao, Fuzhen Zhuang, Guanfeng Liu, Lei Zhao, Yanchi Liu, and Victor S. Sheng. 2023. Ensemble Modeling with Contrastive Knowledge Distillation for Sequential Recommendation. In Proceedings of the 46th International ACM SIGIR Conference on Research and Development in Information Retrieval, SIGIR 2023, Taipei, Taiwan, July 23-27, 2023. ACM, 58–67. https://doi. org/10.1145/3539618.3591679
+11]  Dumitru Erhan, Yoshua Bengio, Aaron Courville, and Pascal Vincent. 2009. Visualizing higher-layer features of a deep network. University of Montreal 1341, 3 (2009), 1.
+12] Chaoyu Guan, Xiting Wang, Quanshi Zhang, Runjin Chen, Di He, and Xing Xie. 2019. Towards a Deep and Unified Understanding of Deep Neural Models in NLP. In Proceedings of the 36th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 97), Kamalika Chaudhuri and Ruslan Salakhutdinov (Eds.). PMLR, 2454–2463. https://proceedings.mlr.press/ v97/guan19a.html
+13] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Dollár, and Ross Girshick. 2022. Masked autoencoders are scalable vision learners. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. 16000–16009.
+14] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In The Tenth International Conference on Learning Representations, ICLR 2022, Virtual Event, April 25-29, 2022. OpenReview.net. https://openreview.net/forum?id=nZeVKeeFYf9
+15]  Shaohan Huang, Li Dong, Wenhui Wang, Yaru Hao, Saksham Singhal, Shuming Ma, Tengchao Lv, Lei Cui, Owais Khan Mohammed, Qiang Liu, et al. 2023.
+
+Language is not all you need: Aligning perception with language models. arXiv preprint arXiv:2302.14045 (2023).
+[16]  Wang-Cheng Kang and Julian J. McAuley. 2018. Self-Attentive Sequential Recommendation. In IEEE International Conference on Data Mining, ICDM 2018, Singapore, November 17-20, 2018. IEEE Computer Society, 197–206. https: //doi.org/10.1109/ICDM.2018.00035
+[17] Jacob Devlin Ming-Wei Chang Kenton and Lee Kristina Toutanova. 2019. Bert: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of naacL-HLT, Vol. 1. 2.
+[18] Pang Wei Koh and Percy Liang. 2017. Understanding Black-box Predictions via Influence Functions. In Proceedings of the 34th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 70), Doina Precup and Yee Whye Teh (Eds.). PMLR, 1885–1894. https://proceedings.mlr. press/v70/koh17a.html
+[19] Yehuda Koren. 2008. Factorization meets the neighborhood: a multifaceted collaborative filtering model. In Proceedings of the 14th ACM SIGKDD international conference on Knowledge discovery and data mining. 426–434.
+[20]  Yehuda Koren, Robert Bell, and Chris Volinsky. 2009. Matrix factorization techniques for recommender systems. Computer 42, 8 (2009), 30–37.
+[21]  Himabindu Lakkaraju, Ece Kamar, Rich Caruana, and Jure Leskovec. 2017. Interpretable & explorable approximations of black box models. arXiv preprint arXiv:1707.01154 (2017).
+[22] Yuxuan Lei, Xiaolong Chen, Defu Lian, Peiyan Zhang, Jianxun Lian, Chaozhuo Li, and Xing Xie. 2023. Practical Content-aware Session-based Recommendation: Deep Retrieve then Shallow Rank. In Amazon KDD Cup 2023 Workshop.
+[23] Liunian Harold Li, Mark Yatskar, Da Yin, Cho-Jui Hsieh, and Kai-Wei Chang. 2019. Visualbert: A simple and performant baseline for vision and language. arXiv preprint arXiv:1908.03557 (2019).
+[24] Yuanzhi Li, Sébastien Bubeck, Ronen Eldan, Allie Del Giorno, Suriya Gunasekar, and Yin Tat Lee. 2023. Textbooks Are All You Need II: phi-1.5 technical report. arXiv preprint arXiv:2309.05463 (2023).
+[25] Defu Lian, Haoyu Wang, Zheng Liu, Jianxun Lian, Enhong Chen, and Xing Xie. 2020. Lightrec: A memory and search-efficient recommender system. In Proceedings of The Web Conference 2020. 695–705.
+[26] Defu Lian, Cong Zhao, Xing Xie, Guangzhong Sun, Enhong Chen, and Yong Rui. 2014. GeoMF: joint geographical modeling and matrix factorization for point-ofinterest recommendation. In Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining. 831–840.
+[27] Scott M Lundberg and Su-In Lee. 2017. A unified approach to interpreting model predictions. Advances in neural information processing systems 30 (2017).
+[28] Jianmo Ni, Jiacheng Li, and Julian McAuley. 2019. Justifying recommendations using distantly-labeled reviews and fine-grained aspects. In Proceedings of the 2019 conference on empirical methods in natural language processing and the 9th international joint conference on natural language processing (EMNLP-IJCNLP). 188–197.
+[29] OpenAI. 2023. GPT-4 Technical Report. arXiv:2303.08774 [cs.CL] [30]  Apurva Pathak, Kshitiz Gupta, and Julian McAuley. 2017. Generating and personalizing bundle recommendations on steam. In Proceedings of the 40th International ACM SIGIR Conference on Research and Development in Information Retrieval. 1073–1076.
+[31] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. 2021. Learning transferable visual models from natural language supervision. In International conference on machine learning. PMLR, 8748–8763.
+[32] Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine McLeavey, and Ilya Sutskever. 2023. Robust speech recognition via large-scale weak supervision. In International Conference on Machine Learning. PMLR, 28492–28518.
+[33] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al. 2018. Improving language understanding by generative pre-training. (2018).
+[34] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. 2019. Language models are unsupervised multitask learners. OpenAI blog 1, 8 (2019), 9.
+[35] Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase, and Yuxiong He. 2020. ZeRO: memory optimizations toward training trillion parameter models. In Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis, SC 2020, Virtual Event / Atlanta, Georgia, USA, November 9-19, 2020, Christine Cuicchi, Irene Qualters, and William T. Kramer (Eds.). IEEE/ACM, 20. https://doi.org/10.1109/SC41405.2020.00024
+[36] Marco Tulio Ribeiro, Sameer Singh, and Carlos Guestrin. 2016. " Why should i trust you?" Explaining the predictions of any classifier. In Proceedings of the 22nd ACM SIGKDD international conference on knowledge discovery and data mining. 1135–1144.
+[37] Gregor PJ Schmitz, Chris Aldrich, and Francois S Gouws. 1999. ANN-DT: an algorithm for extraction of decision trees from artificial neural networks. IEEE Transactions on Neural Networks 10, 6 (1999), 1392–1401.
+[38]  Avanti Shrikumar, Peyton Greenside, and Anshul Kundaje. 2017. Learning Important Features Through Propagating Activation Differences. In Proceedings of the
+
+34th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 70), Doina Precup and Yee Whye Teh (Eds.). PMLR, 3145–3153. https://proceedings.mlr.press/v70/shrikumar17a.html
+[39] Erik Štrumbelj and Igor Kononenko. 2014. Explaining prediction models and individual predictions with feature contributions. Knowledge and information systems 41 (2014), 647–665.
+[40] Mukund Sundararajan, Ankur Taly, and Qiqi Yan. 2017. Axiomatic Attribution for Deep Networks. In Proceedings of the 34th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 70), Doina Precup and Yee Whye Teh (Eds.). PMLR, 3319–3328. https://proceedings.mlr.press/v70/ sundararajan17a.html
+[41]  Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 (2023).
+[42] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. Advances in neural information processing systems 30 (2017).
+[43] Teng Wang, Wenhao Jiang, Zhichao Lu, Feng Zheng, Ran Cheng, Chengguo Yin, and Ping Luo. 2022. Vlmixer: Unpaired vision-language pre-training via cross-modal cutmix. In International Conference on Machine Learning. PMLR, 22680–22690.
+[44] Wenhui Wang, Hangbo Bao, Li Dong, Johan Bjorck, Zhiliang Peng, Qiang Liu, Kriti Aggarwal, Owais Khan Mohammed, Saksham Singhal, Subhojit Som, and Furu Wei. 2023. Image as a Foreign Language: BEIT Pretraining for Vision and Vision-Language Tasks. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2023, Vancouver, BC, Canada, June 17-24, 2023. IEEE, 19175–19186. https://doi.org/10.1109/CVPR52729.2023.01838
+[45] Weizhi Wang, Li Dong, Hao Cheng, Haoyu Song, Xiaodong Liu, Xifeng Yan, Jianfeng Gao, and Furu Wei. 2023. Visually-Augmented Language Modeling. In The Eleventh International Conference on Learning Representations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023. OpenReview.net. https://openreview.net/pdf?id= 8IN-qLkl215
+[46] Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, Alisa Liu, Noah A. Smith, Daniel Khashabi, and Hannaneh Hajishirzi. 2023. Self-Instruct: Aligning Language Models with Self-Generated Instructions. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2023, Toronto, Canada, July 9-14, 2023, Anna Rogers, Jordan L. Boyd-Graber, and Naoaki Okazaki (Eds.). Association for Computational Linguistics, 13484–13508. https://doi.org/10.18653/v1/2023.acl-long.754
+[47] Jason Wei, Yi Tay, Rishi Bommasani, Colin Raffel, Barret Zoph, Sebastian Borgeaud, Dani Yogatama, Maarten Bosma, Denny Zhou, Donald Metzler, et al. 2022. Emergent abilities of large language models. arXiv preprint arXiv:2206.07682 (2022).
+[48] Can Xu, Qingfeng Sun, Kai Zheng, Xiubo Geng, Pu Zhao, Jiazhan Feng, Chongyang Tao, and Daxin Jiang. 2023. Wizardlm: Empowering large language models to follow complex instructions. arXiv preprint arXiv:2304.12244 (2023).
+[49] Zhitao Ying, Dylan Bourgeois, Jiaxuan You, Marinka Zitnik, and Jure Leskovec. 2019. Gnnexplainer: Generating explanations for graph neural networks.  Advances in neural information processing systems 32 (2019).
+[50] Jason Yosinski, Jeff Clune, Anh Nguyen, Thomas Fuchs, and Hod Lipson. 2015. Understanding neural networks through deep visualization. arXiv preprint arXiv:1506.06579 (2015).
+[51]  Matthew D Zeiler and Rob Fergus. 2014. Visualizing and understanding convolutional networks. In Computer Vision–ECCV 2014: 13th European Conference, Zurich, Switzerland, September 6-12, 2014, Proceedings, Part I 13. Springer, 818–833.
+[52]  Junjie Zhang, Ruobing Xie, Yupeng Hou, Wayne Xin Zhao, Leyu Lin, and JiRong Wen. 2023. Recommendation as Instruction Following: A Large Language Model Empowered Recommendation Approach. CoRR abs/2305.07001 (2023). https://doi.org/10.48550/arXiv.2305.07001 arXiv:2305.07001
+[53] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. 2022. Opt: Open pre-trained transformer language models. arXiv preprint arXiv:2205.01068 (2022).
+[54] Jan Ruben Zilke, Eneldo Loza Mencía, and Frederik Janssen. 2016. Deepred–rule extraction from deep neural networks. In Discovery Science: 19th International Conference, DS 2016, Bari, Italy, October 19–21, 2016, Proceedings 19. Springer, 457–473.
+
+# A Details for human and GPT-4 annotations A.1 Criteria for GPT-4 and Human Experts
+
+# A Details for human and GPT-4 annotations
+
+# A.1 Criteria for GPT-4 and Human Experts
+
+We ask human experts and GPT-4 to score explanations generated by all the LLMs with the same criteria. The prompt is shown in Figure A1.
+
+We ask human experts and GPT-4 to score explanations generated by all the LLMs with the same criteria. The prompt is shown in Figure A1.
+
+Please act as an impartial judge and evaluate the AI assistant’s recommendation decision as well as decision explanation based on the user’s purchase history, target item, and ground truth label. Assign a score according to the following four levels:
+RATING-0: Incorrect classification - The assistant fails to generate a correct recommendation decision.
+RATING-1: Correct classification, insufficient explanation - The assistant correctly makes the recommendation decision but provides no, few, or irrelevant explanations, or provides explanations with hallucination, some of which do not conform to the actual situation.
+RATING-2: Correct classification, acceptable explanation - The assistant correctly makes the recommendation decision and provides an explanation that is logically consistent and aligns with the user’s history and target item. But the explanation still has minor imperfections such as lack of persuasiveness or informativeness.
+RATING-3: Correct classification, satisfying explanation - The assistant correctly makes the recommendation decision and provides a satisfactory explanation, including a summary of the user’s historical behavior patterns and characteristics, as well as a thorough analysis of the consistency or inconsistency between user preferences and the target item.
+Please give your score in the form of <br>RATING</br>, for example, if the rating is 1, output <br>RATING-1</br>. Do not allow the length of the explanation to influence your evaluation. Be as objective as possible.
+Known information: User history: {USER HISTORY}, Target item: {ITEM}, Label: {YES/NO}. Assistant’s output: {EXPLANATIONS}
+
+Figure A1: Prompt for the evaluation criteria
+
+<div style="text-align: center;">Table B1: Statistics of the datasets.
+</div>
+Dataset
+#Users
+#Items
+#Inters
+Sparsity
+Games
+3,901
+1,864
+31,672
+99.564%
+Movies
+3,194
+1,170
+28,105
+99.248%
+Steam
+2,493
+986
+27,498
+98.881%
+<div style="text-align: center;">Table B2: Dataset details for each task.
+</div>
+Dataset
+Video Games
+Movies and TV
+Steam
+Split
+# Train
+# Test
+# Train
+# Test
+# Train
+# Test
+Task 1
+23,870
+3,901
+21,717
+3,194
+22,512
+2,493
+Task 2
+23,870
+3,901
+21,717
+3,194
+22,512
+2,493
+Task 3
+7,802
+2,294
+6,388
+1,888
+4,986
+1,456
+Task 4
+9,177
+0
+4,363
+0
+3,856
+0
+Task 5
+10,000
+1,000
+10,000
+1,000
+10,000
+1,000
+Task 6
+27,771
+3,901
+24,911
+3,194
+25,005
+2,493
+Total
+102,490
+14,997
+89,096
+12,470
+88,871
+9,935
+# A.2 Human Evaluation Setup
+
+We ask three experts, all of whom are master students majoring in recommender systems and are not involved in the co-author list, to evaluate the generated results of all LLMs. These three experts coordinate the standards of the 4-level rating system before starting annotations and then each of them rates all the instances independently. During the evaluation process, they are presented with the target label, user history, target item, and model responses. Model responses are listed in random order, with all the model information anonymized, ensuring that the experts are unaware of the specific LLM responsible for generating each text.
+
+# A.3 Human and GPT-4 Evaluation Agreement
+
+We have also included calculations for both inter-human agreement and gpt4-human agreement. When calculating inter-human agreement, we conduct pairwise comparisons among the three human
+
+annotators and compute the average metric. For the gpt4-human agreement calculation, we separately compute the metrics for the three gpt4-human pairs and then average them. We first report Cohen’s 𝜅, which is commonly used to measure inter-rater agreement for categorical items. When calculating this, we treat the 4-level rating (1-4) as a categorical variable. The 𝜅 for inter-human and gpt4-human is 0.366 and 0.316 respectively, which both show a moderate agreement. We also compute the Spearman correlation coefficient 𝜌 between the ratings of our two evaluators (human or gpt4) by treating the rating as an ordinal variable (4>3>2>1). The coefficient for interhuman and gpt4-human is 0.563 and 0.714 respectively, which both indicate a high correlation between the two evaluators.
+
+# B Details about Dataset generation B.1 Templates for Data Generation
+
+To better align the LLM to the target recommendation model, we design several training tasks for the LLM to understand the predictive behaviors of the target model and the domain-specific data. Following [5], All tasks are formed into USER-ASSISTANT format. We list all the templates used in our datasets in Figure B2.
+
+# B.2 Statistics of the Datasets
+
+Considering that each dataset has millions of interaction records, we reduce their sizes to avoid unacceptable training costs. Concretely, we filter each dataset by first selecting items with top frequency, and retaining users’ interaction history on this item set. Finally, we randomly select a subset of users as our dataset. Following prior work [52], we also apply a 5-core filter, further removing users and items with fewer than five interactions from the dataset. We show the overall data statistics and statistics for each task in Table B1 and Table B2, respectively.
+
+Task Name: Next Item Retrieval Assistant Response:"{ITEM TITLE}" User Question: 1."Given the user purchase history: {USER HISTORY} , generate the next most likely clicked item title." 2."What is the next most likely clicked item title for the purchase history: {USER HISTORY} ?" 3."Predict the item that the user with this history: {USER HISTORY} might like next." 4."Considering the purchasing history: {USER HISTORY} , what will be the next item the user click on?" 5."Based on the buying history {USER HISTORY} , what item is the user likely to click on next?" 6."With the given purchase records {USER HISTORY} , can you determine the next item the user will click?" 7."What item is expected to be clicked next by a user who has this purchase history: {USER HISTORY} ?" 8."Generate the next probable clicked item for a user with the purchase history: {USER HISTORY} ." 9."For a user with the following purchase background: {USER HISTORY} , which item will he most likely click next?"
+
+Task Name: Item Ranking Assistant Response:"{SORTED ITEM TITLES}" User Question: 1."Given the user history: {USER HISTORY} and next items to be ranked: {ITEMS} , generate the sorted item titles from the user’s favorite to least favorite." 2."Considering user: {USER HISTORY} and some items he might like next: {ITEMS} , provide a ranking list of them according to the user preference." 3."Please rank the following items: {ITEMS} from what the user likes to dislikes. Here is the user history: {USER HISTORY} ." 4."For user with purchase history: {USER HISTORY} , please arrange these items in order of preference: {ITEMS} ." 5."Taking into account user’s history: {USER HISTORY} , create a list of the items: {ITEMS} ranked by the user’s interests." 6."With the user’s purchase history given: {USER HISTORY} , sort the items: {ITEMS} based on the user’s taste from best to worst." 7."Based on the purchase history: {USER HISTORY} , please provide a ranking of the following items: {ITEMS} according to the user’s preferences." 8."Given user’s past history: {USER HISTORY} , rank these items: {ITEMS} from most to least appealing." 9."Using the provided user purchase history: {USER HISTORY} , generate a ranked list of items: {ITEMS} in accordance with the user’s likes and dislikes."
+
+Task Name: Interest classification Assistant Response:"{YES/NO}" User Question: 1."The user has the following purchase history: {USER HISTORY} . Will the user like the item: {ITEM} ?" 2."Considering user: {USER HISTORY} and item: {ITEM} , will the user like the item?" 3."Here is the user history: {USER HISTORY} . Do you think the user will prefer the item: {ITEM} ?" 4."User’s purchase records are: {USER HISTORY} . Can you tell if the user will enjoy item: {ITEM} ?" 5."Given the purchase background of the user: {USER HISTORY} , would the user appreciate the item: {ITEM} ?" 6."The buyer has this purchase history: {USER HISTORY} . Would the user be interested in the product: {ITEM} ?" 7."With the following purchasing history for the user: {USER HISTORY} , can we predict if the user will like item: {ITEM} ?" 8."Here’s the customer’s buying log: {USER HISTORY} . Would you say the user might favor the item: {ITEM} ?"
+Task Name: Item discrimination Assistant Response:"{TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE}" User Question: 1."What is the {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE} of the item: {ITEM} ?" 2. Given the item: {ITEM} , generate its {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE}." 3. For the item: {ITEM} , what is its {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE}?" 4."Can you tell me the {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE} of the item: {ITEM} ?" 5."Please generate the {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE} of the item: {ITEM} ." 6. {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE} of the item: {ITEM} ?" 7."Item: {ITEM} , what is its {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE}?" 8."Could you generate the {TITLE/DESCRIPTION/TAGS/SIMILAR ITEM TITLE/BRAND/FEATURE} for the item: {ITEM} ?"
+Task Name: History reconstruction
+
+# "The user has the following purchase history: {USER HISTORY} . Will the user like the item: {ITEM} ?""Considering user: {USER HISTORY} and item: {ITEM} , will the user like the item?"
+
+Figure B2: Prompt templates for data generation.
+

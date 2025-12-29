@@ -1,0 +1,39 @@
+# SurveyX CUDA 版本依赖
+# 包含 CPU 版本的所有依赖 + CUDA 相关依赖
+
+# 基础依赖（从 requirements.txt）
+-r requirements.txt
+
+# ============================================
+# CUDA/GPU 相关依赖
+# ============================================
+
+# PyTorch (带 CUDA 支持)
+# 注意：根据你的 CUDA 版本选择对应的安装命令
+# 
+# CUDA 12.1:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+# CUDA 11.8:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# CUDA 12.4:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+#
+# 或者使用 conda:
+# conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+
+# 由于 PyTorch 需要根据 CUDA 版本单独安装，这里不直接包含
+# 请根据你的 CUDA 版本手动安装 PyTorch
+
+# Transformers (HuggingFace) - 用于 embedding 模型
+transformers>=4.30.0
+
+# Sentence Transformers (可选，但推荐)
+sentence-transformers>=2.2.0
+
+# 注意：
+# 1. llama-index-embeddings-huggingface 会自动安装 transformers
+# 2. 但建议显式安装以确保版本兼容性
+# 3. PyTorch 必须根据 CUDA 版本单独安装（见上方注释）
+
