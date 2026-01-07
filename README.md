@@ -2,7 +2,7 @@
 
 <p align="center">
   <i>
-✨Welcome to SurveyX! If you want to experience the full features, please log in to our website. This open-source code only provides offline processing capabilities.✨
+✨Welcome to SurveyX Enhanced Version! This repository includes online arXiv search, multimodal processing, CoT & Multi-Agent generation, and more advanced features. For the full commercial version, please visit our website.✨
   </i>
   <br>
   <a href="https://arxiv.org/abs/2502.14776">
@@ -41,13 +41,153 @@
 
 ---
 
-## 🆚 Full Version vs. Offline Open Source Version
+## 🆕 Enhanced Version - New Features
 
-The open-source code in this repository only provides offline processing capabilities. If you want to experience the full features, please log in to [our website](https://www.surveyx.cn).
+This repository is an **enhanced version** based on the original SurveyX baseline, incorporating significant improvements and new capabilities:
 
-**Missing features in the open-source version:**
-1. **Real-time online search:** You can only generate surveys based on your own uploaded `.md` format references. The open-source version lacks access to our paper database, web crawler system, keyword expansion algorithms, and dual-layer semantic filtering for literature acquisition.
-2. **Multimodal document parsing:** The generated survey will not include image understanding or illustrations from the references.
+### ✨ New Features Compared to Baseline SurveyX
+
+#### 1. **🔍 Online arXiv Search**
+- **Real-time paper retrieval** from arXiv using the official arXiv API
+- Automatic extraction of paper metadata, abstracts, and full-text content
+- Support for batch processing and rate limit handling
+- HTML and LaTeX source parsing for comprehensive content extraction
+- **Implementation**: `src/modules/preprocessor/data_fetcher_arxiv_alternative.py`
+
+#### 2. **🖼️ Multimodal Document Processing**
+- **Image understanding and processing** capabilities
+- Support for both image URLs and local image files
+- Integration with vision-language models for multimodal content generation
+- Automatic figure extraction and caption generation from PDF documents
+- **Implementation**: Enhanced `ChatAgent` with `image_urls` and `local_images` support
+
+#### 3. **🌳 Attribute Tree Extraction**
+- **Structured attribute extraction** from academic papers
+- Automatic classification of paper types (method, benchmark, survey, theory)
+- Hierarchical attribute tree generation for different paper categories
+- Enhanced fact verification using attribute tree data
+- **Implementation**: `src/modules/preprocessor/data_cleaner.py` with `get_attri()` method, integrated in `multi_agent_generator.py`
+
+#### 4. **🧠 Chain-of-Thought (CoT) & Multi-Agent Generation**
+- **Writer-Critic verification loop** for high-quality content generation
+- Multi-agent architecture with specialized roles:
+  - **Writer Agent**: Creative content generation with higher temperature
+  - **Critic Agent**: Strict fact/logic verification with lower temperature
+  - **Planner Agent**: Strategic content planning and organization
+- Iterative refinement based on critic feedback
+- Attribute tree-based fact verification
+- **Implementation**: `src/models/generator/multi_agent_generator.py`
+- **Usage**: Enable with `--cot` flag in `offline_run.py`
+
+#### 5. **🛡️ System Resilience and Robustness**
+- **Comprehensive error handling** with automatic retry mechanisms
+- Rate limit handling and exponential backoff for API calls
+- Graceful degradation when optional dependencies are missing
+- Robust exception handling across all modules
+- **Retry decorators** using `tenacity` library for critical operations
+- Automatic recovery from transient failures
+- **Implementation**: Extensive use of `@retry` decorators and try-except blocks throughout the codebase
+
+#### 6. **📚 Citation and Reference Integrity**
+- **Automatic citation validation** and repair
+- Fuzzy matching for incorrect citation names
+- BibTeX entry completion and enhancement using LLM
+- Reference integrity checking between citations and bibliography
+- Automatic replacement of invalid citations with closest matches
+- Comprehensive citation statistics and reporting
+- **Implementation**: 
+  - `src/modules/heuristic_modules/map_cited_bib_names_to_refs.py` for citation validation
+  - `src/modules/post_refine/rag_refiner.py` for citation enhancement
+  - `src/modules/preprocessor/data_cleaner.py` for BibTeX completion
+
+#### 7. **🔧 LaTeX Error Auto-Fixing**
+- **Automatic LaTeX compilation error detection and repair**
+- Intelligent parsing of LaTeX error logs
+- LLM-powered error fixing suggestions
+- Multiple fix attempts with progressive refinement
+- **Implementation**: `src/modules/latex_handler/latex_error_fixer.py`
+
+---
+
+## 🌿 Branch Overview
+
+This repository contains multiple branches, each with different features and capabilities:
+
+| Branch | Description | Key Features |
+|--------|-------------|--------------|
+| **`main`** | **Baseline SurveyX** | Original SurveyX implementation, basic survey generation capabilities |
+| **`multimodal`** | Multimodal Extension | Adds image understanding and processing capabilities to the baseline |
+| **`arxiv_search`** | arXiv Search Extension | Adds real-time arXiv paper retrieval and online search functionality |
+| **`cot`** | CoT & Multi-Agent Extension | Adds Chain-of-Thought reasoning and Multi-Agent Writer-Critic architecture |
+| **`final_merged`** | **Complete Enhanced Version** ⭐ | **All features merged**: arXiv search + Multimodal + CoT & Multi-Agent + Attribute Tree + System Resilience + Citation Integrity |
+
+### Branch Details
+
+#### `main` - Baseline SurveyX
+- Original SurveyX baseline implementation
+- Basic survey generation from local markdown references
+- Standard content generation pipeline
+
+#### `multimodal` - Multimodal Extension
+- **Based on**: `main`
+- **Adds**: Image understanding and processing
+- Enhanced `ChatAgent` with `image_urls` and `local_images` support
+- Automatic figure extraction from PDF documents
+
+#### `arxiv_search` - arXiv Search Extension
+- **Based on**: `multimodal`
+- **Adds**: Online arXiv paper retrieval
+- `data_fetcher_arxiv_alternative.py` for real-time paper search
+- HTML and LaTeX source parsing
+- Rate limit handling and batch processing
+
+#### `cot` - CoT & Multi-Agent Extension
+- **Based on**: `multimodal`
+- **Adds**: 
+  - Chain-of-Thought (CoT) reasoning
+  - Multi-Agent Writer-Critic verification loop
+  - Attribute Tree extraction and fact verification
+  - LaTeX error auto-fixing
+  - Enhanced citation integrity
+- `multi_agent_generator.py` for high-quality content generation
+- `latex_error_fixer.py` for automatic LaTeX error repair
+
+#### `final_merged` - Complete Enhanced Version ⭐
+- **Based on**: `cot` (which includes multimodal features)
+- **Adds**: arXiv search functionality from `arxiv_search` branch
+- **Complete feature set**:
+  - ✅ Online arXiv search
+  - ✅ Multimodal document processing
+  - ✅ Attribute Tree extraction
+  - ✅ CoT & Multi-Agent generation
+  - ✅ System resilience and robustness
+  - ✅ Citation and reference integrity
+  - ✅ LaTeX error auto-fixing
+- **Recommended for**: Production use and full feature access
+
+### Which Branch Should I Use?
+
+- **For basic usage**: Use `main` (baseline SurveyX)
+- **For image processing**: Use `multimodal`
+- **For online paper search**: Use `arxiv_search`
+- **For high-quality generation**: Use `cot`
+- **For all features**: Use `final_merged` ⭐ (recommended)
+
+---
+
+## 🆚 Enhanced Version vs. Original Baseline
+
+This enhanced version includes significant improvements over the original SurveyX baseline:
+
+**New capabilities in this enhanced version:**
+1. ✅ **Real-time arXiv search:** Direct integration with arXiv API for online paper retrieval (via `data_fetcher_arxiv_alternative.py`)
+2. ✅ **Multimodal document parsing:** Full support for image understanding and processing in generated surveys
+3. ✅ **CoT & Multi-Agent generation:** High-quality mode with Writer-Critic verification loop
+4. ✅ **Attribute Tree extraction:** Structured attribute extraction for enhanced fact verification
+5. ✅ **System resilience:** Comprehensive error handling and automatic recovery mechanisms
+6. ✅ **Citation integrity:** Automatic citation validation, repair, and BibTeX enhancement
+
+**Note:** For the full commercial version with additional features (paper database, advanced keyword expansion, dual-layer semantic filtering), please visit [our website](https://www.surveyx.cn).
 
 ---
 
@@ -68,7 +208,7 @@ sudo apt update && sudo apt install texlive-full
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/IAAR-Shanghai/SurveyX.git
+git clone https://github.com/PhoenixGS/SurveyX.git
 cd SurveyX
 ```
 
@@ -79,7 +219,13 @@ cd SurveyX
 pip install -r requirements.txt
 ```
 
-**CUDA/GPU 版本（推荐，速度更快）：**
+**Note:** The enhanced version includes additional dependencies for new features:
+- `arxiv`: For online arXiv paper search
+- `beautifulsoup4`: For HTML parsing in arXiv search
+- `tenacity`: For retry mechanisms and system resilience
+- All dependencies are already included in `requirements.txt`
+
+**CUDA/GPU 版本 (extension)：**
 ```bash
 # 1. 安装基础依赖
 pip install -r requirements.txt
@@ -141,8 +287,22 @@ python scripts/convert_ref_to_md.py eval/data/ref references/LLMs_for_Recommenda
 Each run creates a unique result folder under `outputs/`, named by the task id `outputs/<task_id>` (e.g., `outputs/2025-06-18-0935_keyword/`).
 
 Run the full pipeline:
+
+**Basic mode (original SurveyX behavior):**
 ```bash
-python tasks/offline_run.py --title "Your Survey Title" --key_words "keyword1, keyword2, ..." --ref_path "path/to/your/reference/dir"  --quality_mode high --cot
+python tasks/offline_run.py --title "Your Survey Title" --key_words "keyword1, keyword2, ..." --ref_path "path/to/your/reference/dir"
+```
+
+**High-quality mode with CoT & Multi-Agent (recommended):**
+```bash
+python tasks/offline_run.py --title "Your Survey Title" --key_words "keyword1, keyword2, ..." --ref_path "path/to/your/reference/dir" --quality_mode high --cot
+```
+
+**Using online arXiv search (new feature):**
+```bash
+# The system will automatically use arXiv search if data_fetcher_arxiv_alternative.py is available
+# Make sure to install: pip install arxiv beautifulsoup4
+python tasks/offline_run.py --title "Your Survey Title" --key_words "keyword1, keyword2, ..." --use_arxiv_search
 ```
 
 **Device Selection (CPU/GPU):**
@@ -225,11 +385,38 @@ python tasks/workflow/06_gen_latex.py --task_id $task_id
 | [A survey on  flow batteries](examples/Other/battery.pdf)    | battery electrolyte formulation                              |
 | [Research on battery electrolyte formulation](examples/Other/flow_battery.pdf) | flow batteries                                               |
 
-## 📃Citing SurveyX
+<hr style="border: 1px solid #ecf0f1;">
 
-Please cite us if you find this project helpful for your project/paper:
 
-```plain text
+## Open Source Version Notice
+
+This enhanced open source version includes significant improvements over the original baseline:
+
+**✅ Included in this enhanced version:**
+- ✅ Online arXiv search (via `data_fetcher_arxiv_alternative.py`)
+- ✅ Multimodal image parsing and figure extraction
+- ✅ CoT & Multi-Agent generation for high-quality content
+- ✅ Attribute Tree extraction for structured information
+- ✅ System resilience and robust error handling
+- ✅ Citation and reference integrity validation
+
+**❌ Still missing (available in commercial version only):**
+- Advanced keyword expansion and filtering algorithms
+- Dual-layer semantic filtering for literature acquisition
+- Access to proprietary paper database
+- Advanced web crawler system
+
+The commercial full version is hosted by MemTensor (Shanghai) Technology Co., Ltd. If you would like to experience the complete commercial features, please visit our official website: [surveyx.cn](https://surveyx.cn)
+
+For questions or issues, please open an issue on the repository.
+
+## ⚠️ Disclaimer
+
+SurveyX uses advanced language models to assist with the generation of academic papers. However, it is important to note that the generated content is a tool for research assistance. Users should verify the accuracy of the generated papers, as SurveyX cannot guarantee full compliance with academic standards.
+
+
+## Citing
+This repository is an extension of SurveyX.
 @misc{liang2025surveyxacademicsurveyautomation,
       title={SurveyX: Academic Survey Automation via Large Language Models}, 
       author={Xun Liang and Jiawei Yang and Yezhaohui Wang and Chen Tang and Zifan Zheng and Shichao Song and Zehao Lin and Yebin Yang and Simin Niu and Hanyu Wang and Bo Tang and Feiyu Xiong and Keming Mao and Zhiyu li},
@@ -239,23 +426,3 @@ Please cite us if you find this project helpful for your project/paper:
       primaryClass={cs.CL},
       url={https://arxiv.org/abs/2502.14776}, 
 }
-```
-
-<hr style="border: 1px solid #ecf0f1;">
-
-
-## Open Source Version Notice
-This open source version of Surveyx is a simplified edition. It relies entirely on user-provided local reference documents and does not include advanced features such as:
-- Keyword expansion and filtering algorithms
-- Multimodal image parsing or figure extraction
-- Online reference search or automatic data fetching
-
-These advanced modules are only available in the full version of Surveyx, which is hosted by MemTensor (Shanghai) Technology Co., Ltd. If you would like to experience the complete features, please visit our official website: [surveyx.cn](https://surveyx.cn)
-
-For questions or issues, please open an issue on the repository.
-
-## ⚠️ Disclaimer
-
-SurveyX uses advanced language models to assist with the generation of academic papers. However, it is important to note that the generated content is a tool for research assistance. Users should verify the accuracy of the generated papers, as SurveyX cannot guarantee full compliance with academic standards.
-
-
