@@ -417,6 +417,7 @@ SurveyX uses advanced language models to assist with the generation of academic 
 
 ## Citing
 This repository is an extension of SurveyX.
+```
 @misc{liang2025surveyxacademicsurveyautomation,
       title={SurveyX: Academic Survey Automation via Large Language Models}, 
       author={Xun Liang and Jiawei Yang and Yezhaohui Wang and Chen Tang and Zifan Zheng and Shichao Song and Zehao Lin and Yebin Yang and Simin Niu and Hanyu Wang and Bo Tang and Feiyu Xiong and Keming Mao and Zhiyu li},
@@ -426,3 +427,4 @@ This repository is an extension of SurveyX.
       primaryClass={cs.CL},
       url={https://arxiv.org/abs/2502.14776}, 
 }
+```
